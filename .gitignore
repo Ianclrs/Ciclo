@@ -487,3 +487,5 @@ $RECYCLE.BIN/
 
 # DsCode internal state
 .dscode/
+
+src/Ciclo.Api/uploads/
