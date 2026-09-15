@@ -6,6 +6,13 @@ public interface ITenantContext
 {
     Guid TenantId { get; }
     bool IsResolved { get; }
+
+    /// <summary>
+    /// Define o tenant do escopo atual. Usado pelo middleware de autenticação
+    /// e por fluxos pré-autenticação (register/reset de senha) que precisam
+    /// executar consultas do Identity sobre entidades tenant-scoped.
+    /// </summary>
+    void SetTenant(Guid tenantId);
 }
 
 /// <summary>
