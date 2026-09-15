@@ -33,6 +33,7 @@ export async function getDocumentTypes(): Promise<DocumentType[]> {
   return res.data;
 }
 
-export async function getDocumentDownloadUrl(id: string): Promise<string> {
-  return `${api.defaults.baseURL}/documents/${id}/download`;
+export async function downloadDocument(id: string): Promise<Blob> {
+  const res = await api.get(`/documents/${id}/download`, { responseType: 'blob' });
+  return res.data;
 }
