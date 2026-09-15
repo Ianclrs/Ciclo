@@ -18,12 +18,14 @@ public class AuthController : ControllerBase
     private readonly IAuthService _authService;
     private readonly AppDbContext _dbContext;
     private readonly IConfiguration _configuration;
+    private readonly IWebHostEnvironment _environment;
 
-    public AuthController(IAuthService authService, AppDbContext dbContext, IConfiguration configuration)
+    public AuthController(IAuthService authService, AppDbContext dbContext, IConfiguration configuration, IWebHostEnvironment environment)
     {
         _authService = authService;
         _dbContext = dbContext;
         _configuration = configuration;
+        _environment = environment;
     }
 
     /// <summary>FR-001: Register a new user with email/password.</summary>
@@ -192,7 +194,14 @@ public class AuthController : ControllerBase
     [HttpPost("forgot-password")]
     public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordRequest request)
     {
-        await _authService.ForgotPasswordAsync(request.Email);
+        var resetToken = await _authService.ForgotPasswordAsync(request.Email);
+
+        // Em Development o token é retornado na resposta para viabilizar o fluxo
+        // sem um servidor de email real. Em produção, retorne apenas Ok() e
+        // entregue o token por email.
+        if (_environment.IsDevelopment() && resetToken is not null)
+            return Ok(new { resetToken });
+
         return Ok();
     }
 

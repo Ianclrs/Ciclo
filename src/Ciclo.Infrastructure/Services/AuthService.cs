@@ -5,6 +5,7 @@ using Ciclo.Infrastructure.Contracts;
 using Ciclo.Core.Entities;
 using Ciclo.Infrastructure.Auth;
 using Ciclo.Infrastructure.Data;
+using Ciclo.Infrastructure.Tenancy;
 
 namespace Ciclo.Infrastructure.Services;
 
@@ -14,7 +15,7 @@ public interface IAuthService
     Task<AuthResponse> LoginAsync(LoginRequest request);
     Task<AuthResponse> RefreshTokenAsync(string refreshToken);
     Task RevokeTokenAsync(string refreshToken);
-    Task ForgotPasswordAsync(string email);
+    Task<string?> ForgotPasswordAsync(string email);
     Task ResetPasswordAsync(ResetPasswordRequest request);
     Task<User?> FindByEmailAsync(string email);
     Task<AuthResponse> GenerateAuthResponseForUser(User user);
@@ -25,17 +26,20 @@ public class AuthService : IAuthService
     private readonly UserManager<User> _userManager;
     private readonly IJwtTokenGenerator _tokenGenerator;
     private readonly AppDbContext _dbContext;
+    private readonly ITenantContext _tenantContext;
     private readonly ILogger<AuthService> _logger;
 
     public AuthService(
         UserManager<User> userManager,
         IJwtTokenGenerator tokenGenerator,
         AppDbContext dbContext,
+        ITenantContext tenantContext,
         ILogger<AuthService> logger)
     {
         _userManager = userManager;
         _tokenGenerator = tokenGenerator;
         _dbContext = dbContext;
+        _tenantContext = tenantContext;
         _logger = logger;
     }
 
@@ -64,6 +68,10 @@ public class AuthService : IAuthService
             CreatedAt = DateTime.UtcNow
         };
 
+        // Resolve o tenant do usuário para que as consultas internas do Identity
+        // (ex.: FindByNameAsync) não falhem por causa do global query filter.
+        _tenantContext.SetTenant(request.TenantId);
+
         var result = await _userManager.CreateAsync(user, request.Password);
         if (!result.Succeeded)
         {
@@ -87,9 +95,27 @@ public class AuthService : IAuthService
         if (!user.IsActive)
             throw new AuthException("account_inactive", 403);
 
+        // Bloqueio por excesso de tentativas (5 tentativas / 30 minutos)
+        if (await _userManager.IsLockedOutAsync(user))
+            throw new AuthException("account_locked_30min", 423);
+
         var passwordValid = await _userManager.CheckPasswordAsync(user, request.Password);
         if (!passwordValid)
+        {
+            // Identity internamente consulta Users (ex.: FindByNameAsync) durante o
+            // UpdateUserAsync; resolve o tenant para o query filter global não falhar.
+            _tenantContext.SetTenant(user.TenantId);
+            await _userManager.AccessFailedAsync(user);
+
+            // Na 5ª tentativa errada o Identity já aplica o lockout de 30 minutos
+            if (await _userManager.IsLockedOutAsync(user))
+                throw new AuthException("account_locked_30min", 423);
+
             throw new AuthException("invalid_credentials", 401);
+        }
+
+        _tenantContext.SetTenant(user.TenantId);
+        await _userManager.ResetAccessFailedCountAsync(user);
 
         return await GenerateAuthResponse(user);
     }
@@ -142,18 +168,20 @@ public class AuthService : IAuthService
         await _dbContext.SaveChangesAsync();
     }
 
-    public async Task ForgotPasswordAsync(string email)
+    public async Task<string?> ForgotPasswordAsync(string email)
     {
         var user = await _dbContext.Users
             .IgnoreQueryFilters()
             .FirstOrDefaultAsync(u => u.Email == email);
         if (user == null)
-            return;
+            return null;
 
         var token = await _userManager.GeneratePasswordResetTokenAsync(user);
 #pragma warning disable CA1848, CA1873
         _logger.LogInformation("Password reset token for {Email}: {Token}", email, token);
 #pragma warning restore CA1848, CA1873
+
+        return token;
     }
 
     public async Task ResetPasswordAsync(ResetPasswordRequest request)
@@ -168,6 +196,11 @@ public class AuthService : IAuthService
         var isSamePassword = await _userManager.CheckPasswordAsync(user, request.NewPassword);
         if (isSamePassword)
             throw new AuthException("same_password", 400);
+
+        // O fluxo de reset é pré-autenticação, então o tenant ainda não foi resolvido
+        // pelo middleware. Resolvemos o tenant do próprio usuário para que as consultas
+        // internas do Identity (ex.: FindByNameAsync) funcionem com o query filter global.
+        _tenantContext.SetTenant(user.TenantId);
 
         var result = await _userManager.ResetPasswordAsync(user, request.Token, request.NewPassword);
         if (!result.Succeeded)
