@@ -153,7 +153,7 @@ public class DocumentService : IDocumentService
                 throw new DocumentException("not_linked_to_student", 403);
         }
 
-        var stream = await _storage.GetAsync(doc.CaminhoArquivo);
+        var stream = await GetFileStreamSafeAsync(doc.CaminhoArquivo);
         var ext = Path.GetExtension(doc.NomeArquivo).ToLowerInvariant();
         var contentType = ext switch
         {
@@ -311,6 +311,23 @@ public class DocumentService : IDocumentService
     }
 
     // ── Helpers ────────────────────────────────────────────────────
+
+    private async Task<Stream> GetFileStreamSafeAsync(string caminhoArquivo)
+    {
+        try
+        {
+            return await _storage.GetAsync(caminhoArquivo);
+        }
+        catch (FileNotFoundException)
+        {
+            throw new DocumentException("document_file_not_found", 404);
+        }
+        catch (UnauthorizedAccessException)
+        {
+            // Caminho armazenado aponta para fora do storage (ex.: seed antigo)
+            throw new DocumentException("document_file_not_found", 404);
+        }
+    }
 
     private static DocumentDto MapToDto(Document d)
     {

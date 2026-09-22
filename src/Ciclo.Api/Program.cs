@@ -47,6 +47,9 @@ try
         options.Password.RequireDigit = true;
         options.Password.RequireNonAlphanumeric = true;
         options.User.RequireUniqueEmail = false; // We enforce uniqueness per tenant
+        options.Lockout.MaxFailedAccessAttempts = 5;
+        options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(30);
+        options.Lockout.AllowedForNewUsers = true;
     })
     .AddRoles<IdentityRole<Guid>>()
     .AddEntityFrameworkStores<AppDbContext>()

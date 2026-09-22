@@ -1,9 +1,11 @@
+using System.Text;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Ciclo.Core.Entities;
+using Ciclo.Infrastructure.Storage;
 using Ciclo.Infrastructure.Tenancy;
 
 #pragma warning disable CA1848, CA1873 // LoggerMessage/expensive-arg — acceptable for seeders
@@ -126,13 +128,36 @@ public static class DemoDataSeeder
         db.DocumentTypes.AddRange(docTypeRg, docTypeCpf, docTypeResidencia, docTypeHistorico);
         await db.SaveChangesAsync();
 
-        // 8. Sample documents
-        db.Documents.AddRange(
-            CreateDocument(tenant.Id, students[0].Id, docTypeRg.Id, "joao-rg.pdf", DocumentStatus.Aprovado, verifiedAt: DateTime.UtcNow),
-            CreateDocument(tenant.Id, students[0].Id, docTypeCpf.Id, "joao-cpf.pdf", DocumentStatus.Aprovado, verifiedAt: DateTime.UtcNow),
-            CreateDocument(tenant.Id, students[1].Id, docTypeRg.Id, "ana-rg.pdf", DocumentStatus.Pendente),
-            CreateDocument(tenant.Id, students[2].Id, docTypeResidencia.Id, "lucas-residencia.pdf", DocumentStatus.Pendente),
-            CreateDocument(tenant.Id, students[4].Id, docTypeHistorico.Id, "miguel-historico.pdf", DocumentStatus.Rejeitado, motivo: "Arquivo ilegível"));
+        // 8. Sample documents (grava arquivos reais para o download funcionar)
+        var fileStorage = services.GetRequiredService<IFileStorage>();
+        var sampleDocuments = new (Student Student, DocumentType Type, string FileName, DocumentStatus Status, DateTime? VerifiedAt, string? Motivo)[]
+        {
+            (students[0], docTypeRg, "joao-rg.pdf", DocumentStatus.Aprovado, DateTime.UtcNow, null),
+            (students[0], docTypeCpf, "joao-cpf.pdf", DocumentStatus.Aprovado, DateTime.UtcNow, null),
+            (students[1], docTypeRg, "ana-rg.pdf", DocumentStatus.Pendente, null, null),
+            (students[2], docTypeResidencia, "lucas-residencia.pdf", DocumentStatus.Pendente, null, null),
+            (students[4], docTypeHistorico, "miguel-historico.pdf", DocumentStatus.Rejeitado, null, "Arquivo ilegível"),
+        };
+
+        foreach (var (student, type, fileName, status, verifiedAt, motivo) in sampleDocuments)
+        {
+            var caminhoArquivo = await fileStorage.SaveAsync(
+                tenant.Id, student.Id, fileName, new MemoryStream(PlaceholderPdfBytes(fileName)));
+
+            db.Documents.Add(new Document
+            {
+                Id = Guid.NewGuid(),
+                TenantId = tenant.Id,
+                StudentId = student.Id,
+                DocumentTypeId = type.Id,
+                NomeArquivo = fileName,
+                CaminhoArquivo = caminhoArquivo,
+                Status = status,
+                MotivoRejeicao = motivo,
+                VerifiedAt = verifiedAt,
+                CreatedAt = DateTime.UtcNow
+            });
+        }
         await db.SaveChangesAsync();
 
         // 9. Log credentials
@@ -223,23 +248,10 @@ public static class DemoDataSeeder
         };
     }
 
-    private static Document CreateDocument(
-        Guid tenantId, Guid studentId, Guid documentTypeId, string fileName,
-        DocumentStatus status, DateTime? verifiedAt = null, string? motivo = null)
+    private static byte[] PlaceholderPdfBytes(string fileName)
     {
-        return new Document
-        {
-            Id = Guid.NewGuid(),
-            TenantId = tenantId,
-            StudentId = studentId,
-            DocumentTypeId = documentTypeId,
-            NomeArquivo = fileName,
-            CaminhoArquivo = $"/uploads/demo/{fileName}",
-            Status = status,
-            MotivoRejeicao = motivo,
-            VerifiedAt = verifiedAt,
-            CreatedAt = DateTime.UtcNow
-        };
+        return Encoding.UTF8.GetBytes(
+            $"%PDF-1.4\n% Documento de exemplo gerado pelo seeder: {fileName}\n% Conteudo ficticio para fins de demonstracao.\n%%EOF\n");
     }
 }
 

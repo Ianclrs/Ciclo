@@ -155,7 +155,7 @@ public class DocumentController : ControllerBase
 
     /// <summary>FR-008: List document types.</summary>
     [HttpGet("document-types")]
-    [Authorize(Roles = "Admin,Staff")]
+    [Authorize(Roles = "Admin,Staff,Parent")]
     public async Task<IActionResult> GetDocumentTypes()
     {
         try

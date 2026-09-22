@@ -6,6 +6,7 @@ import { Sidebar } from './components/Sidebar';
 import DocumentTitle from './components/DocumentTitle';
 import { LayoutDashboard, Users, FileText, Bell, GraduationCap } from 'lucide-react';
 import LoginPage from './pages/LoginPage';
+import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import AdminDashboard from './pages/admin/AdminDashboard';
 import StudentList from './pages/admin/StudentList';
 import StudentForm from './pages/admin/StudentForm';
@@ -73,6 +74,7 @@ export default function App() {
         <Toaster position="top-right" />
         <Routes>
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
           <Route path="/auth/google/callback" element={<LoginPage />} />
           <Route path="/admin/*" element={<ProtectedRoute roles={['Admin', 'Staff']}><AdminLayout /></ProtectedRoute>} />
           <Route path="/parent/*" element={<ProtectedRoute roles={['Parent']}><ParentLayout /></ProtectedRoute>} />

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
+import axios from 'axios';
 import { Card } from '../../components/Card';
 import { Badge } from '../../components/Badge';
 import { Button } from '../../components/Button';
@@ -10,8 +11,6 @@ import { Table } from '../../components/Table';
 import { Download } from 'lucide-react';
 import * as api from '../../api/documents';
 import type { Document } from '../../types';
-
-const API = import.meta.env.VITE_API_URL || '';
 
 export default function DocumentVerification() {
   const [tab, setTab] = useState<'pending' | 'all'>('pending');
@@ -40,11 +39,33 @@ export default function DocumentVerification() {
     } catch { toast.error('Erro.'); }
   };
 
+  const handleDownload = async (doc: Document) => {
+    try {
+      const blob = await api.downloadDocument(doc.id);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = doc.nomeArquivo;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      const title =
+        axios.isAxiosError(err) && typeof err.response?.data?.title === 'string'
+          ? err.response.data.title
+          : '';
+      toast.error(title === 'document_file_not_found'
+        ? 'Arquivo não encontrado no servidor.'
+        : 'Erro ao baixar o documento.');
+    }
+  };
+
   const columns = [
     { header: 'Arquivo', accessor: (d: Document) => (
       <div className="flex items-center gap-2">
         <span>{d.nomeArquivo}</span>
-        <a href={`${API}/documents/${d.id}/download`} className="text-indigo-600 hover:text-indigo-800" title="Download"><Download size={14} /></a>
+        <button type="button" onClick={() => handleDownload(d)} className="text-indigo-600 hover:text-indigo-800" title="Download"><Download size={14} /></button>
       </div>
     )},
     { header: 'Aluno', accessor: (d: Document) => d.studentName },
