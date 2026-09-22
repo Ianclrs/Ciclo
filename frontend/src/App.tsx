@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider } from './context/AuthContext';
 import { ProtectedRoute } from './components/ProtectedRoute';
+import { SplashGate } from './components/SplashGate';
 import { Sidebar } from './components/Sidebar';
 import DocumentTitle from './components/DocumentTitle';
 import { LayoutDashboard, Users, FileText, Bell, GraduationCap } from 'lucide-react';
@@ -73,7 +74,7 @@ export default function App() {
       <AuthProvider>
         <Toaster position="top-right" />
         <Routes>
-          <Route path="/login" element={<LoginPage />} />
+          <Route path="/login" element={<SplashGate><LoginPage /></SplashGate>} />
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />
           <Route path="/auth/google/callback" element={<LoginPage />} />
           <Route path="/admin/*" element={<ProtectedRoute roles={['Admin', 'Staff']}><AdminLayout /></ProtectedRoute>} />
