@@ -9,9 +9,20 @@ interface ModalProps {
   onConfirm?: () => void;
   confirmLabel?: string;
   confirmVariant?: 'primary' | 'danger';
+  /** Bloqueia a confirmação enquanto o formulário do modal não estiver completo. */
+  confirmDisabled?: boolean;
 }
 
-export function Modal({ open, onClose, title, children, onConfirm, confirmLabel, confirmVariant = 'primary' }: ModalProps) {
+export function Modal({
+  open,
+  onClose,
+  title,
+  children,
+  onConfirm,
+  confirmLabel,
+  confirmVariant = 'primary',
+  confirmDisabled = false,
+}: ModalProps) {
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
@@ -22,7 +33,9 @@ export function Modal({ open, onClose, title, children, onConfirm, confirmLabel,
         <div className="flex justify-end gap-3">
           <Button variant="secondary" onClick={onClose}>Cancelar</Button>
           {onConfirm && (
-            <Button variant={confirmVariant} onClick={onConfirm}>{confirmLabel || 'Confirmar'}</Button>
+            <Button variant={confirmVariant} onClick={onConfirm} disabled={confirmDisabled}>
+              {confirmLabel || 'Confirmar'}
+            </Button>
           )}
         </div>
       </div>

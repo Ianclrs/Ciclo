@@ -232,7 +232,8 @@ public class EnrollmentService : IEnrollmentService
                 e.Status.ToString(),
                 e.MotivoRejeicao,
                 e.CreatedAt,
-                e.ApprovedAt))
+                e.ApprovedAt,
+                e.Student.Foto))
             .ToListAsync();
 
         return new PagedResponse<EnrollmentDto>(enrollments, total, page, pageSize);

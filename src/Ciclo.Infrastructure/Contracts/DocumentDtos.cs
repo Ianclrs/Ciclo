@@ -14,6 +14,8 @@ public record DocumentDto(
     string Status,
     DateTime? DataValidade,
     string? MotivoRejeicao,
-    DateTime CreatedAt);
+    DateTime CreatedAt,
+    // Foto do aluno (data URL). Preenchido apenas nos endpoints que exibem o avatar.
+    string? StudentFoto = null);
 
 public record VerifyDocumentRequest(bool Approved, string? MotivoRejeicao);

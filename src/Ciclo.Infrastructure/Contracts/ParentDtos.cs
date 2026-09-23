@@ -13,7 +13,9 @@ public record ChildSummaryDto(
     string Turma,
     int AnoLetivo,
     string? EnrollmentStatus,
-    int PendingDocuments);
+    int PendingDocuments,
+    // Foto do aluno (data URL). Preenchido apenas nos endpoints que exibem o avatar.
+    string? StudentFoto = null);
 
 public record ChildDetailDto(
     StudentDto Student,

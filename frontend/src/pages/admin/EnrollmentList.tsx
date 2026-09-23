@@ -2,74 +2,265 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { Card } from '../../components/Card';
-import { Badge } from '../../components/Badge';
+import { StatusBadge } from '../../components/StatusBadge';
+import { StudentAvatar } from '../../components/StudentAvatar';
 import { Button } from '../../components/Button';
 import { Pagination } from '../../components/Pagination';
 import { Modal } from '../../components/Modal';
 import { Input } from '../../components/Input';
+import { Select } from '../../components/Select';
 import { Table } from '../../components/Table';
 import * as api from '../../api/enrollments';
 import type { Enrollment, EnrollmentPeriod } from '../../types';
+
+const PAGE_SIZE = 10;
+
+const STATUS_OPTIONS = ['Pendente', 'Aprovado', 'Rejeitado'];
+
+interface Query {
+  page: number;
+  periodId: string;
+  status: string;
+}
+
+const INITIAL_QUERY: Query = { page: 1, periodId: '', status: '' };
+
+function statusVariant(status: string) {
+  if (status === 'Aprovado') return 'success';
+  if (status === 'Pendente') return 'warning';
+  if (status === 'Rejeitado') return 'danger';
+  return 'info';
+}
 
 export default function EnrollmentList() {
   const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
   const [periods, setPeriods] = useState<EnrollmentPeriod[]>([]);
   const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(1);
-  const [periodId, setPeriodId] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [failed, setFailed] = useState(false);
+  const [query, setQuery] = useState<Query>(INITIAL_QUERY);
+  const [reloadKey, setReloadKey] = useState(0);
   const [rejectId, setRejectId] = useState('');
   const [motivo, setMotivo] = useState('');
 
-  const load = async (p: number) => {
-    try {
-      const [res, per] = await Promise.all([
-        api.getEnrollments({ periodId: periodId || undefined, status: statusFilter || undefined, page: p, pageSize: 10 }),
-        api.getEnrollmentPeriods(),
-      ]);
-      setEnrollments(res.items); setTotal(res.total); setPeriods(per); setPage(p);
-    } catch { toast.error('Erro.'); }
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const res = await api.getEnrollments({
+          periodId: query.periodId || undefined,
+          status: query.status || undefined,
+          page: query.page,
+          pageSize: PAGE_SIZE,
+        });
+        if (cancelled) return;
+        setEnrollments(res.items);
+        setTotal(res.total);
+        setFailed(false);
+      } catch {
+        if (cancelled) return;
+        setFailed(true);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [query, reloadKey]);
+
+  // Períodos mudam raramente: buscados uma vez, fora do ciclo de paginação.
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const list = await api.getEnrollmentPeriods();
+        if (!cancelled) setPeriods(list);
+      } catch {
+        if (!cancelled) toast.error('Não foi possível carregar os períodos.');
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const applyQuery = (next: Query) => {
+    setLoading(true);
+    setQuery(next);
   };
-  useEffect(() => { load(1); }, [periodId, statusFilter]);
 
-  const handleApprove = async (id: string) => { try { await api.approveEnrollment(id); toast.success('Aprovada!'); load(page); } catch { toast.error('Erro.'); } };
-  const handleReject = async () => { try { await api.rejectEnrollment(rejectId, motivo); toast.success('Rejeitada.'); setRejectId(''); load(page); } catch { toast.error('Erro.'); } };
+  const refresh = () => {
+    setLoading(true);
+    setReloadKey((key) => key + 1);
+  };
 
-  const statusV = (s: string) => s === 'Aprovado' ? 'success' : s === 'Pendente' ? 'warning' : s === 'Rejeitado' ? 'danger' : 'info';
+  const handleApprove = async (id: string) => {
+    try {
+      await api.approveEnrollment(id);
+      toast.success('Matrícula aprovada.');
+      refresh();
+    } catch {
+      toast.error('Não foi possível aprovar a matrícula.');
+    }
+  };
+
+  const handleReject = async () => {
+    try {
+      await api.rejectEnrollment(rejectId, motivo);
+      toast.success('Matrícula rejeitada.');
+      setRejectId('');
+      setMotivo('');
+      refresh();
+    } catch {
+      toast.error('Não foi possível rejeitar a matrícula.');
+    }
+  };
 
   const columns = [
-    { header: 'Aluno', accessor: (e: Enrollment) => <Link to={`/admin/enrollments/${e.id}`} className="text-indigo-600 hover:underline">{e.studentName}</Link> },
-    { header: 'Período', accessor: (e: Enrollment) => e.periodName },
-    { header: 'Status', accessor: (e: Enrollment) => <Badge variant={statusV(e.status)}>{e.status}</Badge> },
-    { header: '', accessor: (e: Enrollment) => e.status === 'Pendente' ? (
-      <div className="flex justify-end gap-1">
-        <Button variant="ghost" size="sm" onClick={() => handleApprove(e.id)}>Aprovar</Button>
-        <Button variant="ghost" size="sm" onClick={() => setRejectId(e.id)}>Rejeitar</Button>
-      </div>
-    ) : null, className: 'text-right' },
+    {
+      header: '',
+      className: 'w-16 pl-4 text-center',
+      // Coluna própria só para a foto: a largura fixa garante que todos os avatares
+      // fiquem na mesma linha vertical, independentemente do tamanho do nome.
+      accessor: (enrollment: Enrollment) => (
+        <StudentAvatar name={enrollment.studentName} photo={enrollment.studentFoto} />
+      ),
+    },
+    {
+      header: 'Aluno',
+      className: 'text-center',
+      accessor: (enrollment: Enrollment) => (
+        <div className="min-w-0">
+          <Link
+            to={`/admin/enrollments/${enrollment.id}`}
+            className="font-medium text-gray-900 hover:text-indigo-600"
+          >
+            {enrollment.studentName}
+          </Link>
+          <p className="text-xs text-gray-500 mt-0.5">{enrollment.periodName}</p>
+        </div>
+      ),
+    },
+    {
+      header: 'Status',
+      className: 'text-center',
+      accessor: (enrollment: Enrollment) => (
+        <StatusBadge status={enrollment.status} variant={statusVariant(enrollment.status)} />
+      ),
+    },
+    {
+      header: '',
+      className: 'text-right',
+      accessor: (enrollment: Enrollment) =>
+        enrollment.status === 'Pendente' ? (
+          <div className="flex justify-end gap-1">
+            <Button variant="ghost" size="sm" onClick={() => handleApprove(enrollment.id)}>
+              Aprovar
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-red-600 hover:bg-red-50"
+              onClick={() => {
+                setMotivo('');
+                setRejectId(enrollment.id);
+              }}
+            >
+              Rejeitar
+            </Button>
+          </div>
+        ) : null,
+    },
   ];
+
+  const hasFilters = query.periodId !== '' || query.status !== '';
 
   return (
     <div>
-      <h2 className="text-2xl font-bold text-gray-900 mb-6">Matrículas</h2>
+      <div className="mb-6">
+        <h2 className="text-2xl font-bold text-gray-900">Matrículas</h2>
+        <p className="text-sm text-gray-500 mt-1">Acompanhe e aprove as matrículas por período.</p>
+      </div>
+
       <Card>
-        <div className="flex flex-wrap gap-3 mb-4">
-          <select className="border rounded-lg px-3 py-2 text-sm" value={periodId} onChange={(e) => setPeriodId(e.target.value)}>
-            <option value="">Todos períodos</option>
-            {periods.map((p) => <option key={p.id} value={p.id}>{p.nome} ({p.anoLetivo})</option>)}
-          </select>
-          <select className="border rounded-lg px-3 py-2 text-sm" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-            <option value="">Todos status</option>
-            <option value="Pendente">Pendente</option>
-            <option value="Aprovado">Aprovado</option>
-            <option value="Rejeitado">Rejeitado</option>
-          </select>
+        <div className="flex flex-wrap items-end gap-3 mb-5">
+          <Select
+            label="Período"
+            className="min-w-[210px]"
+            value={query.periodId}
+            onChange={(event) => applyQuery({ ...query, page: 1, periodId: event.target.value })}
+          >
+            <option value="">Todos os períodos</option>
+            {periods.map((period) => (
+              <option key={period.id} value={period.id}>
+                {period.nome} ({period.anoLetivo})
+              </option>
+            ))}
+          </Select>
+
+          <Select
+            label="Status"
+            className="min-w-[170px]"
+            value={query.status}
+            onChange={(event) => applyQuery({ ...query, page: 1, status: event.target.value })}
+          >
+            <option value="">Todos os status</option>
+            {STATUS_OPTIONS.map((status) => (
+              <option key={status} value={status}>
+                {status}
+              </option>
+            ))}
+          </Select>
+
+          {hasFilters && (
+            <Button type="button" variant="ghost" onClick={() => applyQuery(INITIAL_QUERY)}>
+              Limpar
+            </Button>
+          )}
         </div>
-        <Table columns={columns} data={enrollments} keyExtractor={(e) => e.id} />
-        <Pagination page={page} pageSize={10} total={total} onPageChange={load} />
+
+        <Table
+          columns={columns}
+          data={enrollments}
+          keyExtractor={(enrollment) => enrollment.id}
+          loading={loading}
+          emptyMessage={
+            failed
+              ? 'Não foi possível carregar as matrículas. Tente novamente.'
+              : 'Nenhuma matrícula encontrada com estes filtros.'
+          }
+        />
+
+        <Pagination
+          page={query.page}
+          pageSize={PAGE_SIZE}
+          total={total}
+          onPageChange={(nextPage) => applyQuery({ ...query, page: nextPage })}
+        />
       </Card>
-      <Modal open={!!rejectId} onClose={() => setRejectId('')} title="Rejeitar Matrícula" onConfirm={handleReject} confirmLabel="Rejeitar" confirmVariant="danger">
-        <Input label="Motivo da rejeição" value={motivo} onChange={(e) => setMotivo(e.target.value)} />
+
+      <Modal
+        open={!!rejectId}
+        onClose={() => {
+          setRejectId('');
+          setMotivo('');
+        }}
+        title="Rejeitar matrícula"
+        onConfirm={handleReject}
+        confirmLabel="Rejeitar"
+        confirmVariant="danger"
+        confirmDisabled={motivo.trim() === ''}
+      >
+        <Input
+          label="Motivo da rejeição"
+          value={motivo}
+          onChange={(event) => setMotivo(event.target.value)}
+        />
       </Modal>
     </div>
   );

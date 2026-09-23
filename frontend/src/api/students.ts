@@ -8,6 +8,8 @@ export interface CreateStudentRequest {
   turma: string;
   anoLetivo: number;
   observacoes?: string;
+  /** Data URL (Base64) já redimensionada no navegador. Omitido remove a foto. */
+  foto?: string;
 }
 
 export async function getStudents(params: {

@@ -1,80 +1,253 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
+import { Plus, Search } from 'lucide-react';
 import { Button } from '../../components/Button';
+import { buttonClass } from '../../components/buttonStyles';
 import { Input } from '../../components/Input';
+import { Select } from '../../components/Select';
 import { Card } from '../../components/Card';
 import { Pagination } from '../../components/Pagination';
-import { Badge } from '../../components/Badge';
+import { StatusBadge } from '../../components/StatusBadge';
+import { StudentAvatar } from '../../components/StudentAvatar';
 import { Table } from '../../components/Table';
-import { Plus, Search } from 'lucide-react';
+import { Modal } from '../../components/Modal';
 import * as api from '../../api/students';
 import type { Student } from '../../types';
+
+const PAGE_SIZE = 10;
+
+interface Query {
+  page: number;
+  search: string;
+  turma: string;
+  status: string;
+}
+
+const NO_FILTERS: Query = { page: 1, search: '', turma: '', status: '' };
+
+const STATUS_OPTIONS = ['Ativo', 'Inativo', 'Transferido'];
+
+function statusVariant(status: string) {
+  if (status === 'Ativo') return 'success';
+  if (status === 'Inativo') return 'warning';
+  return 'info';
+}
 
 export default function StudentList() {
   const [students, setStudents] = useState<Student[]>([]);
   const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(1);
-  const [search, setSearch] = useState('');
-  const [turma, setTurma] = useState('');
-  const [status, setStatus] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [failed, setFailed] = useState(false);
+  const [removeId, setRemoveId] = useState('');
+  // `query` é o que foi consultado; `form` é o texto ainda não enviado. Isso impede
+  // que a consulta use um valor obsoleto do campo.
+  const [query, setQuery] = useState<Query>(NO_FILTERS);
+  const [form, setForm] = useState({ search: '', turma: '' });
+  const [reloadKey, setReloadKey] = useState(0);
 
-  const load = async (p: number) => {
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const res = await api.getStudents({
+          search: query.search || undefined,
+          turma: query.turma || undefined,
+          status: query.status || undefined,
+          page: query.page,
+          pageSize: PAGE_SIZE,
+        });
+        if (cancelled) return;
+        setStudents(res.items);
+        setTotal(res.total);
+        setFailed(false);
+      } catch {
+        if (cancelled) return;
+        setFailed(true);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+
+    // Descarta respostas de consultas antigas (evita exibir página fora de ordem).
+    return () => {
+      cancelled = true;
+    };
+  }, [query, reloadKey]);
+
+  /** Toda troca de filtro/página passa por aqui: o reset do carregamento é um evento, não um efeito. */
+  const applyQuery = (next: Query) => {
     setLoading(true);
+    setQuery(next);
+  };
+
+  const refresh = () => {
+    setLoading(true);
+    setReloadKey((key) => key + 1);
+  };
+
+  const handleRemove = async () => {
     try {
-      const res = await api.getStudents({ search: search || undefined, turma: turma || undefined, status: status || undefined, page: p, pageSize: 10 });
-      setStudents(res.items); setTotal(res.total); setPage(p);
-    } catch { toast.error('Erro ao carregar.'); }
-    finally { setLoading(false); }
+      await api.deleteStudent(removeId);
+      toast.success('Aluno removido.');
+      setRemoveId('');
+      refresh();
+    } catch {
+      toast.error('Não foi possível remover o aluno.');
+    }
   };
 
-  useEffect(() => { load(1); }, []);
-
-  const handleDelete = async (id: string) => {
-    if (!confirm('Remover este aluno?')) return;
-    try { await api.deleteStudent(id); toast.success('Removido.'); load(page); }
-    catch { toast.error('Erro.'); }
-  };
-
-  const statusVariant = (s: string) => s === 'Ativo' ? 'success' : s === 'Inativo' ? 'warning' : 'info';
+  const hasFilters = query.search !== '' || query.turma !== '' || query.status !== '';
 
   const columns = [
-    { header: 'Nome', accessor: (s: Student) => <Link to={`/admin/students/${s.id}`} className="text-indigo-600 hover:underline">{s.nome}</Link> },
-    { header: 'Turma', accessor: (s: Student) => s.turma },
-    { header: 'Ano', accessor: (s: Student) => String(s.anoLetivo) },
-    { header: 'Status', accessor: (s: Student) => <Badge variant={statusVariant(s.status)}>{s.status}</Badge> },
-    { header: '', accessor: (s: Student) => (
-      <div className="flex justify-end gap-1">
-        <Link to={`/admin/students/${s.id}/edit`}><Button variant="ghost" size="sm">Editar</Button></Link>
-        <Button variant="ghost" size="sm" onClick={() => handleDelete(s.id)}>Remover</Button>
-      </div>
-    ), className: 'text-right' },
+    {
+      header: '',
+      className: 'w-16 pl-4 text-center',
+      // Coluna própria só para a foto: a largura fixa garante que todos os avatares
+      // fiquem na mesma linha vertical, independentemente do tamanho do nome.
+      accessor: (student: Student) => <StudentAvatar name={student.nome} photo={student.foto} />,
+    },
+    {
+      header: 'Aluno',
+      className: 'text-center',
+      accessor: (student: Student) => (
+        <div className="min-w-0">
+          <Link
+            to={`/admin/students/${student.id}`}
+            className="font-medium text-gray-900 hover:text-indigo-600"
+          >
+            {student.nome}
+          </Link>
+          <p className="text-xs text-gray-500 mt-0.5">
+            {student.turma} · {student.anoLetivo}
+          </p>
+        </div>
+      ),
+    },
+    {
+      header: 'Status',
+      className: 'text-center',
+      accessor: (student: Student) => <StatusBadge status={student.status} variant={statusVariant(student.status)} />,
+    },
+    {
+      header: '',
+      className: 'text-right',
+      accessor: (student: Student) => (
+        <div className="flex justify-end gap-1">
+          <Link to={`/admin/students/${student.id}/edit`} className={buttonClass('ghost', 'sm')}>
+            Editar
+          </Link>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-red-600 hover:bg-red-50"
+            onClick={() => setRemoveId(student.id)}
+          >
+            Remover
+          </Button>
+        </div>
+      ),
+    },
   ];
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between gap-4 mb-6">
         <h2 className="text-2xl font-bold text-gray-900">Alunos</h2>
-        <Link to="/admin/students/new"><Button><Plus size={16} className="mr-1" /> Novo Aluno</Button></Link>
+        <Link to="/admin/students/new" className={buttonClass('primary', 'md', 'shrink-0')}>
+          <Plus size={16} className="mr-1" /> Novo Aluno
+        </Link>
       </div>
+
       <Card>
-        <div className="flex flex-wrap gap-3 mb-4">
-          <div className="flex-1 min-w-[200px] flex gap-2">
-            <Input placeholder="Buscar por nome..." value={search} onChange={(e) => setSearch(e.target.value)} />
-            <Button variant="secondary" onClick={() => load(1)}><Search size={16} /></Button>
+        <form
+          className="flex flex-wrap items-end gap-3 mb-5"
+          onSubmit={(event) => {
+            event.preventDefault();
+            applyQuery({ ...query, page: 1, search: form.search, turma: form.turma });
+          }}
+        >
+          <div className="flex-1 min-w-[200px]">
+            <Input
+              aria-label="Buscar por nome"
+              placeholder="Buscar por nome"
+              value={form.search}
+              onChange={(event) => setForm({ ...form, search: event.target.value })}
+            />
           </div>
-          <Input placeholder="Turma" value={turma} onChange={(e) => setTurma(e.target.value)} className="max-w-[150px]" />
-          <select className="border rounded-lg px-3 py-2 text-sm" value={status} onChange={(e) => { setStatus(e.target.value); setTimeout(() => load(1), 0); }}>
-            <option value="">Todos status</option>
-            <option value="Ativo">Ativo</option>
-            <option value="Inativo">Inativo</option>
-            <option value="Transferido">Transferido</option>
-          </select>
-        </div>
-        {loading ? <p className="text-gray-500">Carregando...</p> : <Table columns={columns} data={students} keyExtractor={(s) => s.id} />}
-        <Pagination page={page} pageSize={10} total={total} onPageChange={load} />
+
+          <div className="w-32">
+            <Input
+              aria-label="Filtrar por turma"
+              placeholder="Turma"
+              value={form.turma}
+              onChange={(event) => setForm({ ...form, turma: event.target.value })}
+            />
+          </div>
+
+          <Select
+            aria-label="Filtrar por status"
+            className="min-w-[170px]"
+            value={query.status}
+            onChange={(event) => applyQuery({ ...query, page: 1, status: event.target.value })}
+          >
+            <option value="">Todos os status</option>
+            {STATUS_OPTIONS.map((status) => (
+              <option key={status} value={status}>
+                {status}
+              </option>
+            ))}
+          </Select>
+
+          <Button type="submit" variant="secondary">
+            <Search size={16} className="mr-1" /> Buscar
+          </Button>
+
+          {hasFilters && (
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => {
+                setForm({ search: '', turma: '' });
+                applyQuery(NO_FILTERS);
+              }}
+            >
+              Limpar
+            </Button>
+          )}
+        </form>
+
+        <Table
+          columns={columns}
+          data={students}
+          keyExtractor={(student) => student.id}
+          loading={loading}
+          emptyMessage={
+            failed
+              ? 'Não foi possível carregar os alunos. Tente novamente.'
+              : 'Nenhum aluno encontrado com estes filtros.'
+          }
+        />
+
+        <Pagination
+          page={query.page}
+          pageSize={PAGE_SIZE}
+          total={total}
+          onPageChange={(nextPage) => applyQuery({ ...query, page: nextPage })}
+        />
       </Card>
+
+      <Modal
+        open={!!removeId}
+        onClose={() => setRemoveId('')}
+        title="Remover aluno"
+        onConfirm={handleRemove}
+        confirmLabel="Remover"
+        confirmVariant="danger"
+      >
+        <p>O aluno e os dados vinculados a ele serão removidos. Esta ação não pode ser desfeita.</p>
+      </Modal>
     </div>
   );
 }

@@ -3,7 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import axios from 'axios';
 import { Card } from '../../components/Card';
-import { Badge } from '../../components/Badge';
+import { StatusBadge } from '../../components/StatusBadge';
 import { Button } from '../../components/Button';
 import { ArrowLeft, Upload } from 'lucide-react';
 import * as api from '../../api/parent';
@@ -113,7 +113,7 @@ export default function ChildDocuments() {
                   <p className="text-sm font-medium">{d.nomeArquivo}</p>
                   <p className="text-xs text-gray-500">{d.documentTypeName} • {new Date(d.createdAt).toLocaleDateString()}</p>
                 </div>
-                <Badge variant={d.status === 'Aprovado' ? 'success' : d.status === 'Pendente' ? 'warning' : 'danger'}>{d.status}</Badge>
+                <StatusBadge status={d.status} variant={d.status === 'Aprovado' ? 'success' : d.status === 'Pendente' ? 'warning' : 'danger'} />
               </li>
             ))}
           </ul>

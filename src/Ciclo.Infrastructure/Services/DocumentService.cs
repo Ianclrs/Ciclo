@@ -224,7 +224,8 @@ public class DocumentService : IDocumentService
             .Take(pageSize)
             .Select(d => new DocumentDto(
                 d.Id, d.StudentId, d.Student.Nome, d.DocumentTypeId, d.DocumentType.Nome,
-                d.NomeArquivo, d.Status.ToString(), d.DataValidade, d.MotivoRejeicao, d.CreatedAt))
+                d.NomeArquivo, d.Status.ToString(), d.DataValidade, d.MotivoRejeicao, d.CreatedAt,
+                d.Student.Foto))
             .ToListAsync();
 
         return new PagedResponse<DocumentDto>(docs, total, page, pageSize);

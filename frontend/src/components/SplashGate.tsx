@@ -63,11 +63,12 @@ export function SplashGate({ children }: { children: ReactNode }) {
       <div className="absolute -top-24 -left-24 w-72 h-72 bg-red-400/30 rounded-full blur-3xl animate-blob" style={{ animationDelay: '8s', animationDuration: '25s' }} />
       <div className="absolute bottom-12 right-4 w-56 h-56 bg-fuchsia-300/30 rounded-full blur-3xl animate-blob" style={{ animationDelay: '10s', animationDuration: '28s', animationDirection: 'reverse' }} />
       <div className="absolute top-1/2 right-0 w-52 h-52 bg-orange-300/35 rounded-full blur-3xl animate-blob" style={{ animationDelay: '12s', animationDuration: '34s' }} />
+      {/* Antigo halo fixo atrás da logo: agora deriva como os demais blobs.
+          -ml-36/-mt-36 centralizam por margin (não por transform, que a keyframe sobrescreve). */}
+      <div className="absolute top-1/2 left-1/2 -ml-36 -mt-36 w-72 h-72 bg-violet-400/30 rounded-full blur-3xl animate-blob motion-reduce:animate-none" style={{ animationDelay: '14s', animationDuration: '41s' }} />
 
       <div className="flex flex-col items-center relative z-10">
         <div className="relative">
-          {/* Halo pulsante atrás da logo */}
-          <div className="absolute inset-0 rounded-full bg-violet-400/30 blur-2xl animate-logo-pulse motion-reduce:animate-none" />
           <img
             src="/Ciclo_favicon.png"
             alt="Ciclo"

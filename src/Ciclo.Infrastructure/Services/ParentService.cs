@@ -63,7 +63,7 @@ public class ParentService : IParentService
             var childPendingDocs = await _db.Documents
                 .CountAsync(d => d.StudentId == s.Id && d.Status == DocumentStatus.Pendente);
 
-            children.Add(new ChildSummaryDto(s.Id, s.Nome, s.Turma, s.AnoLetivo, enrollmentStatus, childPendingDocs));
+            children.Add(new ChildSummaryDto(s.Id, s.Nome, s.Turma, s.AnoLetivo, enrollmentStatus, childPendingDocs, s.Foto));
         }
 
         return new ParentDashboardDto(
@@ -86,7 +86,7 @@ public class ParentService : IParentService
             .Where(s => linkedIds.Contains(s.Id))
             .Select(s => new StudentDto(
                 s.Id, s.Nome, s.DataNascimento, s.Cpf, s.Turma, s.AnoLetivo,
-                s.Status.ToString(), s.Observacoes, s.CreatedAt, new List<ParentLinkDto>()))
+                s.Status.ToString(), s.Observacoes, s.Foto, s.CreatedAt, new List<ParentLinkDto>()))
             .ToListAsync();
     }
 
@@ -100,7 +100,7 @@ public class ParentService : IParentService
             .Where(s => s.Id == studentId)
             .Select(s => new StudentDto(
                 s.Id, s.Nome, s.DataNascimento, s.Cpf, s.Turma, s.AnoLetivo,
-                s.Status.ToString(), s.Observacoes, s.CreatedAt, new List<ParentLinkDto>()))
+                s.Status.ToString(), s.Observacoes, s.Foto, s.CreatedAt, new List<ParentLinkDto>()))
             .FirstOrDefaultAsync();
 
         if (student is null)

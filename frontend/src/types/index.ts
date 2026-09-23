@@ -15,6 +15,8 @@ export interface Student {
   anoLetivo: number;
   status: string;
   observacoes: string | null;
+  /** Foto como data URL (Base64); null quando o aluno não tem foto. */
+  foto: string | null;
   createdAt: string;
   parents: ParentLink[];
 }
@@ -29,6 +31,7 @@ export interface Document {
   id: string;
   studentId: string;
   studentName: string;
+  studentFoto: string | null;
   documentTypeId: string;
   documentTypeName: string;
   nomeArquivo: string;
@@ -51,6 +54,7 @@ export interface Enrollment {
   id: string;
   studentId: string;
   studentName: string;
+  studentFoto: string | null;
   periodId: string;
   periodName: string;
   status: string;
@@ -107,6 +111,7 @@ export interface ChildSummary {
   anoLetivo: number;
   enrollmentStatus: string | null;
   pendingDocuments: number;
+  studentFoto: string | null;
 }
 
 export interface ChildDetail {

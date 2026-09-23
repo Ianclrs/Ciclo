@@ -77,6 +77,7 @@ public class StudentService : IStudentService
                 s.AnoLetivo,
                 s.Status.ToString(),
                 s.Observacoes,
+                s.Foto,
                 s.CreatedAt,
                 s.StudentParents.Select(sp => new ParentLinkDto(
                     sp.ParentId,
@@ -112,6 +113,7 @@ public class StudentService : IStudentService
     public async Task<StudentDto> CreateAsync(CreateStudentRequest request, Guid tenantId)
     {
         ValidateFields(request.Nome, request.DataNascimento, request.Turma, request.AnoLetivo);
+        ValidateFoto(request.Foto);
 
         // CPF duplicate check
         if (!string.IsNullOrWhiteSpace(request.Cpf))
@@ -133,6 +135,7 @@ public class StudentService : IStudentService
             AnoLetivo = request.AnoLetivo,
             Status = StudentStatus.Ativo,
             Observacoes = request.Observacoes,
+            Foto = request.Foto,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
         };
@@ -152,6 +155,7 @@ public class StudentService : IStudentService
             throw new StudentException("student_not_found", 404);
 
         ValidateFields(request.Nome, request.DataNascimento, request.Turma, request.AnoLetivo);
+        ValidateFoto(request.Foto);
 
         // CPF duplicate check (exclude self)
         if (!string.IsNullOrWhiteSpace(request.Cpf))
@@ -168,6 +172,7 @@ public class StudentService : IStudentService
         student.Turma = request.Turma;
         student.AnoLetivo = request.AnoLetivo;
         student.Observacoes = request.Observacoes;
+        student.Foto = request.Foto;
         student.UpdatedAt = DateTime.UtcNow;
 
         await _db.SaveChangesAsync();
@@ -278,6 +283,22 @@ public class StudentService : IStudentService
         return enrollments;
     }
 
+    /// <summary>Tamanho máximo da foto como data URL (~150 KB de imagem).</summary>
+    private const int MaxFotoLength = 200_000;
+
+    /// <summary>
+    /// A foto chega do cliente como data URL Base64: valida tamanho e formato antes de persistir.
+    /// </summary>
+    private static void ValidateFoto(string? foto)
+    {
+        if (foto is null)
+            return;
+        if (foto.Length > MaxFotoLength)
+            throw new StudentException("foto_too_large", 400);
+        if (!foto.StartsWith("data:image/", StringComparison.Ordinal))
+            throw new StudentException("foto_invalid_format", 400);
+    }
+
     private static void ValidateFields(string nome, DateTime dataNascimento, string turma, int anoLetivo)
     {
         if (string.IsNullOrWhiteSpace(nome))
@@ -305,6 +326,7 @@ public class StudentService : IStudentService
             s.AnoLetivo,
             s.Status.ToString(),
             s.Observacoes,
+            s.Foto,
             s.CreatedAt,
             s.StudentParents.Select(sp => new ParentLinkDto(
                 sp.ParentId,

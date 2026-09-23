@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { Card } from '../../components/Card';
-import { Badge } from '../../components/Badge';
+import { StatusBadge } from '../../components/StatusBadge';
+import { StudentAvatar } from '../../components/StudentAvatar';
 import { Button } from '../../components/Button';
 import { ArrowLeft, FileText } from 'lucide-react';
 import * as api from '../../api/parent';
@@ -18,7 +19,10 @@ export default function ChildDetail() {
   return (
     <div>
       <Link to="/parent" className="flex items-center gap-1 text-sm text-gray-500 mb-4"><ArrowLeft size={16} /> Voltar</Link>
-      <h2 className="text-2xl font-bold text-gray-900 mb-6">{child.student.nome}</h2>
+      <div className="flex items-center gap-4 mb-6">
+        <StudentAvatar name={child.student.nome} photo={child.student.foto} size="lg" />
+        <h2 className="text-2xl font-bold text-gray-900">{child.student.nome}</h2>
+      </div>
 
       <div className="flex flex-wrap gap-2 mb-6">
         {(['info', 'docs', 'grades'] as const).map((t) => (
@@ -34,14 +38,14 @@ export default function ChildDetail() {
             <dl className="space-y-2 text-sm">
               <div className="flex justify-between"><dt className="text-gray-500">Turma:</dt><dd>{child.student.turma}</dd></div>
               <div className="flex justify-between"><dt className="text-gray-500">Ano:</dt><dd>{child.student.anoLetivo}</dd></div>
-              <div className="flex justify-between"><dt className="text-gray-500">Status:</dt><dd><Badge variant={child.student.status === 'Ativo' ? 'success' : 'warning'}>{child.student.status}</Badge></dd></div>
+              <div className="flex justify-between"><dt className="text-gray-500">Status:</dt><dd><StatusBadge status={child.student.status} variant={child.student.status === 'Ativo' ? 'success' : 'warning'} /></dd></div>
             </dl>
           </Card>
           <Card title="Matrícula Atual">
             {child.currentEnrollment ? (
               <dl className="space-y-2 text-sm">
                 <div className="flex justify-between"><dt className="text-gray-500">Período:</dt><dd>{child.currentEnrollment.periodName}</dd></div>
-                <div className="flex justify-between"><dt className="text-gray-500">Status:</dt><dd><Badge variant={child.currentEnrollment.status === 'Aprovado' ? 'success' : 'warning'}>{child.currentEnrollment.status}</Badge></dd></div>
+                <div className="flex justify-between"><dt className="text-gray-500">Status:</dt><dd><StatusBadge status={child.currentEnrollment.status} variant={child.currentEnrollment.status === 'Aprovado' ? 'success' : 'warning'} /></dd></div>
               </dl>
             ) : <p className="text-gray-500">Nenhuma matrícula ativa.</p>}
           </Card>
@@ -55,7 +59,7 @@ export default function ChildDetail() {
               {child.documents.map((d) => (
                 <li key={d.id} className="py-3 flex items-center justify-between">
                   <div><p className="font-medium">{d.nomeArquivo}</p><p className="text-xs text-gray-500">{d.documentTypeName} • {new Date(d.createdAt).toLocaleDateString()}</p></div>
-                  <Badge variant={d.status === 'Aprovado' ? 'success' : d.status === 'Pendente' ? 'warning' : 'danger'}>{d.status}</Badge>
+                  <StatusBadge status={d.status} variant={d.status === 'Aprovado' ? 'success' : d.status === 'Pendente' ? 'warning' : 'danger'} />
                 </li>
               ))}
             </ul>

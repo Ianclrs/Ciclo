@@ -93,6 +93,8 @@ public class AppDbContext : IdentityDbContext<User, IdentityRole<Guid>, Guid>
             entity.Property(s => s.Cpf).HasMaxLength(14);
             entity.Property(s => s.Turma).HasMaxLength(50).IsRequired();
             entity.Property(s => s.Observacoes).HasMaxLength(1000);
+            // text: sem limite no banco; o tamanho da foto é validado na aplicação.
+            entity.Property(s => s.Foto).HasColumnType("text");
             entity.Property(s => s.Status).HasConversion<int>();
             entity.Property(s => s.CreatedAt).HasDefaultValueSql("now()");
             entity.Property(s => s.UpdatedAt).HasDefaultValueSql("now()");

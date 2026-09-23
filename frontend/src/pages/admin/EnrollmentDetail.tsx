@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { Card } from '../../components/Card';
-import { Badge } from '../../components/Badge';
+import { StatusBadge } from '../../components/StatusBadge';
 import { Button } from '../../components/Button';
 import { Modal } from '../../components/Modal';
 import { Input } from '../../components/Input';
@@ -42,7 +42,7 @@ export default function EnrollmentDetail() {
           <dl className="space-y-2 text-sm">
             <div className="flex justify-between"><dt className="text-gray-500">Aluno:</dt><dd>{enrollment.studentName}</dd></div>
             <div className="flex justify-between"><dt className="text-gray-500">Período:</dt><dd>{enrollment.periodName}</dd></div>
-            <div className="flex justify-between"><dt className="text-gray-500">Status:</dt><dd><Badge variant={enrollment.status === 'Aprovado' ? 'success' : 'warning'}>{enrollment.status}</Badge></dd></div>
+            <div className="flex justify-between"><dt className="text-gray-500">Status:</dt><dd><StatusBadge status={enrollment.status} variant={enrollment.status === 'Aprovado' ? 'success' : 'warning'} /></dd></div>
             {enrollment.motivoRejeicao && <div className="flex justify-between"><dt className="text-gray-500">Motivo:</dt><dd className="text-red-600">{enrollment.motivoRejeicao}</dd></div>}
             <div className="flex justify-between"><dt className="text-gray-500">Data:</dt><dd>{new Date(enrollment.createdAt).toLocaleDateString()}</dd></div>
             {enrollment.approvedAt && <div className="flex justify-between"><dt className="text-gray-500">Aprovada em:</dt><dd>{new Date(enrollment.approvedAt).toLocaleDateString()}</dd></div>}

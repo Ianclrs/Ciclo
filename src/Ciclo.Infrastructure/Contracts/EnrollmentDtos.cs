@@ -15,7 +15,9 @@ public record EnrollmentDto(
     string Status,
     string? MotivoRejeicao,
     DateTime CreatedAt,
-    DateTime? ApprovedAt);
+    DateTime? ApprovedAt,
+    // Foto do aluno (data URL). Preenchido apenas nos endpoints que exibem o avatar.
+    string? StudentFoto = null);
 
 public record RejectEnrollmentRequest(string Motivo);
 

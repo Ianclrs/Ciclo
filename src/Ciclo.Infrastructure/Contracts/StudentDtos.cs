@@ -9,6 +9,7 @@ public record StudentDto(
     int AnoLetivo,
     string Status,
     string? Observacoes,
+    string? Foto,
     DateTime CreatedAt,
     List<ParentLinkDto> Parents);
 
@@ -18,7 +19,8 @@ public record CreateStudentRequest(
     string? Cpf,
     string Turma,
     int AnoLetivo,
-    string? Observacoes);
+    string? Observacoes,
+    string? Foto);
 
 public record UpdateStudentRequest(
     string Nome,
@@ -26,7 +28,8 @@ public record UpdateStudentRequest(
     string? Cpf,
     string Turma,
     int AnoLetivo,
-    string? Observacoes);
+    string? Observacoes,
+    string? Foto);
 
 public record LinkParentRequest(Guid ParentId);
 

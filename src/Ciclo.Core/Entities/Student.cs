@@ -13,6 +13,8 @@ public class Student : ITenantScoped
     public int AnoLetivo { get; set; }
     public StudentStatus Status { get; set; } = StudentStatus.Ativo;
     public string? Observacoes { get; set; }
+    // Foto do aluno como data URL (Base64), já redimensionada pelo navegador antes do envio.
+    public string? Foto { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
