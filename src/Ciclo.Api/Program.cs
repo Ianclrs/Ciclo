@@ -94,6 +94,9 @@ try
     builder.Services.AddScoped<IJwtTokenGenerator, JwtTokenGenerator>();
     builder.Services.AddScoped<IAuthService, AuthService>();
 
+    // Tenant services (school registration)
+    builder.Services.AddScoped<ITenantService, TenantService>();
+
     // Student services (Spec 40)
     builder.Services.AddScoped<IStudentService, StudentService>();
 

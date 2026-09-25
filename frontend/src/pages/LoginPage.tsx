@@ -7,6 +7,7 @@ import { useAuth } from '../hooks/useAuth';
 import { setAccessToken } from '../api/client';
 import { Button } from '../components/Button';
 import { Input } from '../components/Input';
+import { buttonClass } from '../components/buttonStyles';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -103,6 +104,12 @@ export default function LoginPage() {
               {loading ? 'Entrando...' : 'Entrar'}
             </Button>
           </form>
+          <Link
+            to="/register"
+            className={buttonClass('secondary', 'md', 'mt-4 w-full !bg-white !text-stone-700 border border-stone-300 hover:!bg-gray-50 shadow-sm hover:shadow-md')}
+          >
+            Cadastrar meu colégio
+          </Link>
           <div className="relative my-6">
             <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-stone-300" /></div>
             <div className="relative flex justify-center text-xs"><span className="bg-stone-200 px-3 text-stone-400">ou</span></div>

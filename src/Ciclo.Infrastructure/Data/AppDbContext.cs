@@ -40,6 +40,13 @@ public class AppDbContext : IdentityDbContext<User, IdentityRole<Guid>, Guid>
             entity.HasIndex(t => t.Slug).IsUnique();
             entity.Property(t => t.Name).HasMaxLength(200).IsRequired();
             entity.Property(t => t.Slug).HasMaxLength(100).IsRequired();
+            entity.Property(t => t.Country).HasMaxLength(2).IsRequired();
+            entity.Property(t => t.DocumentoFiscal).HasMaxLength(30);
+            entity.Property(t => t.Telefone).HasMaxLength(30);
+            entity.Property(t => t.Endereco).HasMaxLength(200);
+            entity.Property(t => t.Cidade).HasMaxLength(100);
+            entity.Property(t => t.Estado).HasMaxLength(100);
+            entity.Property(t => t.Cep).HasMaxLength(20);
             entity.Property(t => t.IsActive).HasDefaultValue(true);
             entity.Property(t => t.CreatedAt).HasDefaultValueSql("now()");
         });

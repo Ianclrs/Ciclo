@@ -38,3 +38,12 @@
 .animate-logo-pulse {
   animation: logo-pulse 1.6s ease-in-out infinite;
 }
+
+/* Abertura de "gaveta": a seção revelada desliza de cima para baixo. */
+@keyframes drawer-open {
+  from { opacity: 0; transform: translateY(-10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-drawer {
+  animation: drawer-open 0.28s ease-out;
+}
