@@ -8,7 +8,7 @@ using Ciclo.Infrastructure.Services;
 namespace Ciclo.Api.Controllers;
 
 [ApiController]
-[Route("enrollment-periods")]
+[Route("api/enrollment-periods")]
 public class EnrollmentPeriodController : ControllerBase
 {
     private readonly IEnrollmentService _service;
@@ -79,7 +79,7 @@ public class EnrollmentPeriodController : ControllerBase
 }
 
 [ApiController]
-[Route("enrollments")]
+[Route("api/enrollments")]
 public class EnrollmentController : ControllerBase
 {
     private readonly IEnrollmentService _service;

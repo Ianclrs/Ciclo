@@ -7,24 +7,24 @@ export async function getEnrollments(params: {
   page?: number;
   pageSize?: number;
 }): Promise<PagedResponse<Enrollment>> {
-  const res = await api.get('/enrollments', { params });
+  const res = await api.get('/api/enrollments', { params });
   return res.data;
 }
 
 export async function getEnrollment(id: string): Promise<Enrollment> {
-  const res = await api.get(`/enrollments/${id}`);
+  const res = await api.get(`/api/enrollments/${id}`);
   return res.data;
 }
 
 export async function approveEnrollment(id: string): Promise<void> {
-  await api.post(`/enrollments/${id}/approve`);
+  await api.post(`/api/enrollments/${id}/approve`);
 }
 
 export async function rejectEnrollment(id: string, motivo: string): Promise<void> {
-  await api.post(`/enrollments/${id}/reject`, { motivo });
+  await api.post(`/api/enrollments/${id}/reject`, { motivo });
 }
 
 export async function getEnrollmentPeriods(): Promise<EnrollmentPeriod[]> {
-  const res = await api.get('/enrollment-periods');
+  const res = await api.get('/api/enrollment-periods');
   return res.data.items;
 }

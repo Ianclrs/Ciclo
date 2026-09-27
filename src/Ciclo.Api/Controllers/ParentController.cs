@@ -8,7 +8,7 @@ using Ciclo.Infrastructure.Services;
 namespace Ciclo.Api.Controllers;
 
 [ApiController]
-[Route("parent")]
+[Route("api/parent")]
 [Authorize(Roles = "Parent")]
 public class ParentController : ControllerBase
 {

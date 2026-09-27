@@ -166,3 +166,26 @@ services.AddIdentityCore<User>(...)
 ```
 
 **Takeaway:** Testes que usam Identity completo (com token providers) precisam de Data Protection registrado manualmente. Em produção, o `WebApplication.CreateBuilder` já configura isso automaticamente.
+
+---
+
+## L7: Duas classes com `WebApplicationFactory<Program>` em paralelo quebram a suíte
+
+**Date:** 2026-09-26  
+**Category:** testing
+
+**Problem:** Adicionar uma segunda classe de teste com `IClassFixture<WebApplicationFactory<Program>>` faz a suíte falhar com:
+
+```
+System.InvalidOperationException : The entry point exited without ever building an IHost.
+   at Microsoft.Extensions.Hosting.HostFactoryResolver.HostingListener.CreateHost()
+   at Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactory`1.CreateHost(...)
+```
+
+O xUnit executa classes diferentes em coleções paralelas. `WebApplicationFactory` descobre o host interceptando o entry point do `Program` por um hook de processo (`HostFactoryResolver`), e duas factories do mesmo entry point construindo host ao mesmo tempo disputam esse estado global. A falha aparece na classe **que já existia** (`HealthControllerTests`), não na nova — o que torna o diagnóstico enganoso.
+
+**Solution:** Preferir testes de contrato **sem host**: reflexão sobre atributos (rotas, autorização) é determinística, não toca banco e não tem corrida. Exemplo: `tests/Ciclo.Api.Tests/ApiRouteConventionTests.cs`.
+
+Se o host for realmente necessário em mais de uma classe, compartilhar **uma** factory via `ICollectionFixture` e marcar as classes com a mesma `[Collection]`, para serializá-las.
+
+**Takeaway:** `WebApplicationFactory<Program>` é estado global do processo, não um objeto isolado. Antes de criar a segunda classe que usa o host, decidir entre teste por reflexão ou collection fixture compartilhada.

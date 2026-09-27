@@ -5,15 +5,10 @@ import { VitePWA } from 'vite-plugin-pwa'
 
 export default defineConfig({
   server: {
+    // A API inteira vive sob /api (ver management/arch.md), então um único proxy
+    // cobre todas as rotas. Em produção quem faz isso é o rewrite da Vercel.
     proxy: {
-      '/auth': 'http://localhost:5264',
-      '/students': 'http://localhost:5264',
-      '/enrollments': 'http://localhost:5264',
-      '/enrollment-periods': 'http://localhost:5264',
-      '/documents': 'http://localhost:5264',
-      '/document-types': 'http://localhost:5264',
-      '/notifications': 'http://localhost:5264',
-      '/parent': 'http://localhost:5264',
+      '/api': 'http://localhost:5264',
     },
   },
   plugins: [
@@ -35,11 +30,9 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
-        runtimeCaching: [{
-          urlPattern: /^https?:\/\/.*\/api\/.*/i,
-          handler: 'NetworkFirst',
-          options: { cacheName: 'api-cache', expiration: { maxEntries: 50, maxAgeSeconds: 300 } },
-        }],
+        // Sem runtimeCaching para a API, de propósito: as respostas são autenticadas e a
+        // chave de cache do Workbox não inclui o header Authorization — cachear /api/*
+        // poderia servir a resposta de um usuário para outro no mesmo dispositivo.
       },
     }),
   ],

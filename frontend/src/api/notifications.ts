@@ -21,35 +21,35 @@ export async function getNotifications(params: {
   page?: number;
   pageSize?: number;
 }): Promise<PagedResponse<Notification>> {
-  const res = await api.get('/notifications', { params });
+  const res = await api.get('/api/notifications', { params });
   return res.data;
 }
 
 export async function createNotification(data: CreateNotificationRequest): Promise<Notification> {
-  const res = await api.post('/notifications', data);
+  const res = await api.post('/api/notifications', data);
   return res.data;
 }
 
 export async function broadcastNotification(data: BroadcastNotificationRequest): Promise<{ recipientCount: number }> {
-  const res = await api.post('/notifications/broadcast', data);
+  const res = await api.post('/api/notifications/broadcast', data);
   return res.data;
 }
 
 export async function sendByStudent(studentId: string, titulo: string, mensagem: string, tipo: number): Promise<{ recipientCount: number }> {
-  const res = await api.post(`/notifications/by-student/${studentId}`, { titulo, mensagem, tipo });
+  const res = await api.post(`/api/notifications/by-student/${studentId}`, { titulo, mensagem, tipo });
   return res.data;
 }
 
 export async function markRead(id: string): Promise<void> {
-  await api.put(`/notifications/${id}/read`);
+  await api.put(`/api/notifications/${id}/read`);
 }
 
 export async function markAllRead(): Promise<{ updatedCount: number }> {
-  const res = await api.put('/notifications/read-all');
+  const res = await api.put('/api/notifications/read-all');
   return res.data;
 }
 
 export async function getUnreadCount(): Promise<{ count: number }> {
-  const res = await api.get('/notifications/unread-count');
+  const res = await api.get('/api/notifications/unread-count');
   return res.data;
 }

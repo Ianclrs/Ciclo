@@ -60,7 +60,7 @@ export default function LoginPage() {
   };
 
   const handleGoogleLogin = () => {
-    window.location.href = `${import.meta.env.VITE_API_URL || ''}/auth/google`;
+    window.location.href = `${import.meta.env.VITE_API_URL || ''}/api/auth/google`;
   };
 
   return (

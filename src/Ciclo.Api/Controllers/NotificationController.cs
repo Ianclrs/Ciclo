@@ -8,7 +8,7 @@ using Ciclo.Infrastructure.Services;
 namespace Ciclo.Api.Controllers;
 
 [ApiController]
-[Route("notifications")]
+[Route("api/notifications")]
 public class NotificationController : ControllerBase
 {
     private readonly INotificationService _service;

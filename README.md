@@ -104,6 +104,41 @@ dotnet test
 
 ---
 
+## Deploy
+
+### Frontend na Vercel
+
+| Configuração do projeto | Valor |
+|---|---|
+| Root Directory | `frontend` |
+| Framework Preset | Vite (detectado automaticamente) |
+| Build Command | `npm run build` (padrão) |
+| Output Directory | `dist` (padrão) |
+
+O `frontend/vercel.json` faz duas coisas:
+
+1. **Rewrite de `/api/*` para a API.** O navegador continua falando com o próprio domínio, então o cookie de refresh (`HttpOnly`, `SameSite=Strict`, `Secure` — `AuthController.cs`) é first-party e nenhuma política de CORS é necessária.
+2. **Fallback do SPA:** `/(.*)` → `/index.html`, para que recarregar `/admin/students` não retorne 404.
+
+> **Ação obrigatória antes do deploy:** trocar `https://TROCAR-PELO-HOST-DA-API` no `frontend/vercel.json` pelo host real da API. Enquanto isso não for feito, o site abre e navega, mas toda chamada de API falha.
+
+Em desenvolvimento nada disso é necessário: o `vite.config.ts` faz o mesmo proxy de `/api` para `localhost:5264`.
+
+### Backend
+
+A API precisa estar publicada em **HTTPS** e alcançável pela internet — o rewrite da Vercel chama o host diretamente.
+
+| Configuração | Por quê |
+|---|---|
+| `Frontend:Url` | O `AuthController` redireciona para cá ao final do login com Google (`GetFrontendUrl()`); sem definir, ele manda o usuário para `http://localhost:5173` |
+| `Jwt:Secret` | Vazio em `appsettings.json`; a API não inicia sem ele (`Program.cs`) |
+| `FileStorage:EncryptionKey` | Base64 de 32 bytes; sem ela os endpoints de documentos falham (`LocalFileStorage.cs`) |
+| `FileStorage:RootPath` | Disco local: em container sem volume os arquivos somem a cada deploy |
+
+O endpoint `/health` fica **fora** de `/api` de propósito — é probe de infraestrutura, e pode ser usado como health check do host da API.
+
+---
+
 ## Estrutura de Diretórios
 
 ```

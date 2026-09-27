@@ -42,6 +42,16 @@
 | Background Jobs | Hangfire or Quartz.NET (for notifications) |
 | File Storage | Local disk (dev) / S3-compatible (prod) |
 
+### API Route Convention
+
+Every application endpoint lives under `/api` (`[Route("api/<resource>")]`). This is not cosmetic:
+
+- The SPA calls the API on its **own origin** — Vite proxies `/api` in development and the Vercel rewrite proxies `/api/*` in production. Same-origin keeps the refresh cookie (`SameSite=Strict`) first-party, so no CSRF protection is weakened and no CORS policy is needed.
+- It removes path collisions between SPA routes and API routes. Without the prefix, `/parent/children/:id` existed both as a React Router page and as an API endpoint, and `/auth/google/callback` was both a SPA route and an API callback.
+- `/health` is intentionally **outside** `/api`: it is an infrastructure probe, not part of the application API surface.
+
+Any new controller MUST declare `[Route("api/<resource>")]`.
+
 ### Fundamental Principles
 
 These principles MUST be followed by ALL specs and implementations:

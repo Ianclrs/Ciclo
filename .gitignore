@@ -488,4 +488,6 @@ $RECYCLE.BIN/
 # DsCode internal state
 .dscode/
 
-src/Ciclo.Api/uploads/
+# Documentos enviados em runtime (FileStorage:RootPath). Nunca versionar: são dados
+# de tenants, gravados em disco criptografados com a chave local.
+uploads/

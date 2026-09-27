@@ -8,7 +8,7 @@ using Ciclo.Infrastructure.Services;
 namespace Ciclo.Api.Controllers;
 
 [ApiController]
-[Route("reenrollments")]
+[Route("api/reenrollments")]
 public class ReenrollmentController : ControllerBase
 {
     private readonly IReenrollmentService _service;

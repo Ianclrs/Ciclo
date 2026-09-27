@@ -8,6 +8,7 @@ using Ciclo.Infrastructure.Services;
 namespace Ciclo.Api.Controllers;
 
 [ApiController]
+[Route("api")]
 public class DocumentController : ControllerBase
 {
     private readonly IDocumentService _service;

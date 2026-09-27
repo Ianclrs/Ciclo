@@ -28,19 +28,19 @@ api.interceptors.response.use(
   async (error) => {
     const original = error.config;
     // Não interceptar chamadas ao próprio refresh para evitar loop infinito
-    if (original.url === '/auth/refresh') {
+    if (original.url === '/api/auth/refresh') {
       return Promise.reject(error);
     }
     // Não tentar refresh em endpoints anônimos de autenticação:
     // o 401 do login é só "credenciais inválidas" e deve aparecer na tela.
-    const anonymousAuthEndpoints = ['/auth/login', '/auth/forgot-password', '/auth/reset-password'];
+    const anonymousAuthEndpoints = ['/api/auth/login', '/api/auth/forgot-password', '/api/auth/reset-password'];
     if (anonymousAuthEndpoints.includes(original.url)) {
       return Promise.reject(error);
     }
     if (error.response?.status === 401 && !original._retry) {
       original._retry = true;
       try {
-        const res = await axios.post(`${api.defaults.baseURL}/auth/refresh`, {}, { withCredentials: true });
+        const res = await axios.post(`${api.defaults.baseURL}/api/auth/refresh`, {}, { withCredentials: true });
         const newToken = res.data.accessToken as string;
         setAccessToken(newToken);
         original.headers.Authorization = `Bearer ${newToken}`;

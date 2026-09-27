@@ -4,7 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace Ciclo.Api.Controllers;
 
 [ApiController]
-[Route("test-auth")]
+[Route("api/test-auth")]
 public class TestAuthController : ControllerBase
 {
     /// <summary>Only Admin role can access.</summary>

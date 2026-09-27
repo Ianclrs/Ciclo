@@ -21,6 +21,6 @@ export interface RegisterSchoolResponse {
 }
 
 export async function registerSchool(payload: RegisterSchoolPayload): Promise<RegisterSchoolResponse> {
-  const res = await api.post('/tenants/register', payload);
+  const res = await api.post('/api/tenants/register', payload);
   return res.data;
 }

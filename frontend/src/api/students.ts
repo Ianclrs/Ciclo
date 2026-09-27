@@ -19,33 +19,33 @@ export async function getStudents(params: {
   page?: number;
   pageSize?: number;
 }): Promise<PagedResponse<Student>> {
-  const res = await api.get('/students', { params });
+  const res = await api.get('/api/students', { params });
   return res.data;
 }
 
 export async function getStudent(id: string): Promise<Student> {
-  const res = await api.get(`/students/${id}`);
+  const res = await api.get(`/api/students/${id}`);
   return res.data;
 }
 
 export async function createStudent(data: CreateStudentRequest): Promise<Student> {
-  const res = await api.post('/students', data);
+  const res = await api.post('/api/students', data);
   return res.data;
 }
 
 export async function updateStudent(id: string, data: CreateStudentRequest): Promise<Student> {
-  const res = await api.put(`/students/${id}`, data);
+  const res = await api.put(`/api/students/${id}`, data);
   return res.data;
 }
 
 export async function deleteStudent(id: string): Promise<void> {
-  await api.delete(`/students/${id}`);
+  await api.delete(`/api/students/${id}`);
 }
 
 export async function linkParent(studentId: string, parentId: string): Promise<void> {
-  await api.post(`/students/${studentId}/link-parent`, { parentId });
+  await api.post(`/api/students/${studentId}/link-parent`, { parentId });
 }
 
 export async function unlinkParent(studentId: string, parentId: string): Promise<void> {
-  await api.delete(`/students/${studentId}/link-parent/${parentId}`);
+  await api.delete(`/api/students/${studentId}/link-parent/${parentId}`);
 }

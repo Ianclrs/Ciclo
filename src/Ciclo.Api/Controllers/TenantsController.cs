@@ -5,7 +5,7 @@ using Ciclo.Infrastructure.Services;
 namespace Ciclo.Api.Controllers;
 
 [ApiController]
-[Route("tenants")]
+[Route("api/tenants")]
 public class TenantsController : ControllerBase
 {
     private readonly ITenantService _tenantService;
