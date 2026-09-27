@@ -108,19 +108,22 @@ dotnet test
 
 ### Frontend na Vercel
 
+O `vercel.json` na **raiz do repositório** contém toda a configuração de deploy — build, pasta de saída e rewrites. Nada precisa ser preenchido no painel da Vercel.
+
 | Configuração do projeto | Valor |
 |---|---|
-| Root Directory | `frontend` |
-| Framework Preset | Vite (detectado automaticamente) |
-| Build Command | `npm run build` (padrão) |
-| Output Directory | `dist` (padrão) |
+| Root Directory | **vazio** (raiz do repositório) |
+| Install / Build / Output | definidos no `vercel.json`, não no painel |
 
-O `frontend/vercel.json` faz duas coisas:
+> **Root Directory precisa ficar vazio.** A Vercel só lê o `vercel.json` que está **dentro** do Root Directory. Se você apontar o Root Directory para `frontend`, o arquivo da raiz é ignorado: o build não roda, nenhum `dist/` é publicado e **todas as rotas respondem 404** (o repositório cru é servido — `/AGENTS.md` responde 200, `/index.html` responde 404). Foi exatamente esse o sintoma do primeiro deploy.
 
-1. **Rewrite de `/api/*` para a API.** O navegador continua falando com o próprio domínio, então o cookie de refresh (`HttpOnly`, `SameSite=Strict`, `Secure` — `AuthController.cs`) é first-party e nenhuma política de CORS é necessária.
-2. **Fallback do SPA:** `/(.*)` → `/index.html`, para que recarregar `/admin/students` não retorne 404.
+O `vercel.json` faz três coisas:
 
-> **Ação obrigatória antes do deploy:** trocar `https://TROCAR-PELO-HOST-DA-API` no `frontend/vercel.json` pelo host real da API. Enquanto isso não for feito, o site abre e navega, mas toda chamada de API falha.
+1. **Build do frontend a partir da raiz:** `cd frontend && npm install` e `cd frontend && npm run build`, com `outputDirectory: frontend/dist`.
+2. **Rewrite de `/api/*` para a API.** O navegador continua falando com o próprio domínio, então o cookie de refresh (`HttpOnly`, `SameSite=Strict`, `Secure` — `AuthController.cs`) é first-party e nenhuma política de CORS é necessária.
+3. **Fallback do SPA:** `/(.*)` → `/index.html`, para que recarregar `/admin/students` não retorne 404. Arquivos estáticos são servidos direto do disco — a Vercel checa o filesystem antes de aplicar os rewrites.
+
+> **Ação obrigatória antes de integrar com a API:** trocar `https://TROCAR-PELO-HOST-DA-API` no `vercel.json` pelo host real da API. **Substitua o valor, não apague a regra:** sem ela, `/api/*` cairia no fallback do SPA e o frontend receberia HTML (status 200) no lugar de JSON.
 
 Em desenvolvimento nada disso é necessário: o `vite.config.ts` faz o mesmo proxy de `/api` para `localhost:5264`.
 
