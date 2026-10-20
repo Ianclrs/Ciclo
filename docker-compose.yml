@@ -22,6 +22,10 @@ services:
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
       - ConnectionStrings__Default=Host=postgres;Database=ciclo;Username=ciclo;Password=${DB_PASSWORD:-1234}
+      # Segredos obrigatórios (fail-closed em Program.cs): a API não inicia sem eles.
+      # Copie .env.example para .env (não versionado) e preencha os dois valores.
+      - "Jwt__Secret=${JWT_SECRET:?defina JWT_SECRET no .env}"
+      - "FileStorage__EncryptionKey=${ENCRYPTION_KEY:?defina ENCRYPTION_KEY no .env}"
     ports:
       - "5000:8080"
     depends_on:

@@ -1,10 +1,17 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Ciclo.Infrastructure.Data;
 
 namespace Ciclo.Api.Controllers;
 
+/// <summary>
+/// Probe de infraestrutura do host: público por decisão (não faz parte da superfície de
+/// aplicação e fica fora de /api — ver management/arch.md). É a única exceção à política de
+/// fallback de autenticação.
+/// </summary>
 [ApiController]
 [Route("[controller]")]
+[AllowAnonymous]
 public class HealthController : ControllerBase
 {
     [HttpGet]

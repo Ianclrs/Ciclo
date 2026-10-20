@@ -9,7 +9,6 @@ public class LocalFileStorage : IFileStorage
     // AES-256-GCM: nonce de 12 bytes e tag de 16 bytes (padrão recomendado)
     private const int NonceSize = 12;
     private const int TagSize = 16;
-    private const int KeySize = 32;
 
     // Cabeçalho mágico para identificar arquivos criptografados
     // (arquivos antigos, sem header, continuam sendo lidos normalmente)
@@ -21,16 +20,7 @@ public class LocalFileStorage : IFileStorage
     public LocalFileStorage(IOptions<FileStorageOptions> options)
     {
         _rootPath = Path.GetFullPath(options.Value.RootPath);
-
-        var key = options.Value.EncryptionKey;
-        if (string.IsNullOrWhiteSpace(key))
-            throw new InvalidOperationException(
-                "FileStorage:EncryptionKey is not configured. Configure a Base64-encoded 32-byte key for document encryption.");
-
-        _encryptionKey = Convert.FromBase64String(key);
-        if (_encryptionKey.Length != KeySize)
-            throw new InvalidOperationException(
-                "FileStorage:EncryptionKey must be a Base64-encoded 32-byte key (AES-256).");
+        _encryptionKey = FileStorageKey.Parse(options.Value.EncryptionKey);
     }
 
     public async Task<string> SaveAsync(Guid tenantId, Guid studentId, string fileName, Stream content)

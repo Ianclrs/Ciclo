@@ -1,9 +1,8 @@
 using System.Globalization;
-using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.IdentityModel.Tokens;
 using Serilog;
 using Ciclo.Core.Entities;
 using Ciclo.Infrastructure;
@@ -14,6 +13,7 @@ using Ciclo.Infrastructure.Storage;
 using Ciclo.Infrastructure.Tenancy;
 using Ciclo.Infrastructure.Email;
 using Ciclo.Api.Middleware;
+using Ciclo.Api.RateLimiting;
 using Ciclo.Infrastructure.Data.Seeders;
 
 Log.Logger = new LoggerConfiguration()
@@ -56,8 +56,10 @@ try
     .AddDefaultTokenProviders();
 
     // JWT Authentication (Spec 30)
-    var jwtSecret = builder.Configuration["Jwt:Secret"]
-        ?? throw new InvalidOperationException("Jwt:Secret is not configured");
+    // Fail-closed: JwtSettings.Read lança quando o segredo está ausente, vazio ou com menos
+    // de 32 bytes. Não existe valor padrão — um segredo embutido no repositório permitiria
+    // forjar tokens em qualquer ambiente que não o sobrescrevesse.
+    var jwtSettings = JwtSettings.Read(builder.Configuration);
 
     builder.Services.AddAuthentication(options =>
     {
@@ -66,29 +68,27 @@ try
     })
     .AddJwtBearer(options =>
     {
-        options.TokenValidationParameters = new TokenValidationParameters
-        {
-            ValidateIssuer = true,
-            ValidateAudience = true,
-            ValidateLifetime = true,
-            ValidateIssuerSigningKey = true,
-            ValidIssuer = builder.Configuration["Jwt:Issuer"],
-            ValidAudience = builder.Configuration["Jwt:Audience"],
-            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret)),
-            ClockSkew = TimeSpan.Zero
-        };
+        options.TokenValidationParameters = jwtSettings.CreateValidationParameters();
     });
 
-    // Google OAuth (only if configured)
-    var googleClientId = builder.Configuration["Google:ClientId"];
-    if (!string.IsNullOrEmpty(googleClientId))
+    // Google OAuth: fluxo removido por decisão explícita (ver management/cross-session/
+    // plano-correcoes.md, item C8). O fluxo existia quebrado e no pior lugar possível: ligava
+    // a conta Google a um usuário existente pelo e-mail, sem validar o e-mail e sem filtrar
+    // tenant — ou seja, tomada de conta. O botão continua no frontend; não há fluxo por trás
+    // dele. Reintroduzir exige implementar a validação e remover o contrato de
+    // ApiRouteConventionTests que proíbe as rotas google.
+
+    // Authorization (Spec 30) — deny-by-default
+    // Sem FallbackPolicy, um endpoint sem [Authorize] fica público por esquecimento, e não há
+    // como distinguir "público por decisão" de "esquecido". Com a política, esquecer o atributo
+    // nega em vez de expor, e todo endpoint público passa a exigir um [AllowAnonymous] explícito
+    // — verificado por ApiAuthorizationTests.
+    builder.Services.AddAuthorization(options =>
     {
-        builder.Services.AddAuthentication().AddGoogle(options =>
-        {
-            options.ClientId = googleClientId;
-            options.ClientSecret = builder.Configuration["Google:ClientSecret"] ?? string.Empty;
-        });
-    }
+        options.FallbackPolicy = new AuthorizationPolicyBuilder()
+            .RequireAuthenticatedUser()
+            .Build();
+    });
 
     // Auth services (Spec 30)
     builder.Services.AddScoped<IJwtTokenGenerator, JwtTokenGenerator>();
@@ -103,22 +103,30 @@ try
     // Enrollment services (Spec 50)
     builder.Services.AddScoped<IEnrollmentService, EnrollmentService>();
 
-    // Reenrollment services (Spec 60)
-    builder.Services.AddScoped<IReenrollmentService, ReenrollmentService>();
 
     // Document services (Spec 70)
     builder.Services.Configure<FileStorageOptions>(builder.Configuration.GetSection(FileStorageOptions.SectionName));
+    // Fail-closed: a chave de criptografia é validada agora, não na primeira requisição de
+    // documento. LocalFileStorage usa a mesma validação (FileStorageKey.Parse).
+    _ = FileStorageKey.Parse(builder.Configuration[FileStorageKey.ConfigurationKey]);
     builder.Services.AddScoped<IFileStorage, LocalFileStorage>();
     builder.Services.AddScoped<IDocumentService, DocumentService>();
 
     // Email (Spec 80)
     builder.Services.AddScoped<IEmailSender, ConsoleEmailSender>();
+    // C9: o envio sai do escopo da requisição — fila em memória + background service com escopo
+    // próprio e retry limitado. Sem isto, o e-mail era disparado numa task descartada que usava
+    // serviços scoped depois da resposta, e a falha virava warning no log.
+    builder.Services.AddCicloEmailDispatch();
 
     // Notification services (Spec 80)
     builder.Services.AddScoped<INotificationService, NotificationService>();
 
     // Parent Portal services (Spec 90)
     builder.Services.AddScoped<IParentService, ParentService>();
+
+    // Rate limiting (Spec 30) — políticas aplicadas por atributo nos endpoints anônimos.
+    builder.Services.AddCicloRateLimiting();
 
     var app = builder.Build();
 
@@ -134,6 +142,11 @@ try
 
     app.UseSerilogRequestLogging();
 
+    // Rate limiting (Spec 30) — protege os endpoints anônimos de força bruta e varredura.
+    // Fica antes da autenticação de propósito: rejeitar cedo evita gastar trabalho com quem
+    // está abusando. As políticas são declaradas nos próprios endpoints ([EnableRateLimiting]).
+    app.UseRateLimiter();
+
     // Auth pipeline (Spec 30)
     app.UseAuthentication();
     app.UseMiddleware<TenantMiddleware>();     // Spec 20 — tenant resolution from JWT
@@ -141,30 +154,59 @@ try
 
     app.MapControllers();
 
-    // Create schema (EnsureCreated) and seed in Development
+    // ── Schema e dados de demonstração — decisão A1 ──────────────────────────────
+    // Plano: management/cross-session/plano-correcoes.md (A1). Estratégia híbrida:
+    //   Development → a API aplica as migrations sozinha (schema em dia, sem passo manual).
+    //   Outros ambientes → a API NÃO aplica: o deploy roda `dotnet ef database update` antes de
+    //     subir. Em troca, o processo em runtime não precisa de permissão de DDL, duas instâncias
+    //     não disputam a migration, e uma migration problemática não impede a API de subir.
+    //   Testing → nada. Antes o host de teste rodava como Development e portanto mexia no banco de
+    //     desenvolvimento a cada execução da suíte. Ver ApiTestHost.
     if (app.Environment.IsDevelopment())
     {
         using var scope = app.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        try
+        var startupLogger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+
+        // Fail-closed. Antes isto era EnsureCreatedAsync dentro de um catch que só logava warning:
+        // a API subia com banco vazio e falhava em toda consulta, sem sinal claro na inicialização.
+        // EnsureCreated também nunca alterava tabela existente — era o defeito do item A1.
+        await db.Database.MigrateAsync();
+
+        await TenantSeeder.SeedAsync(db, app.Environment, startupLogger);
+        await DemoDataSeeder.SeedAsync(scope.ServiceProvider, db, app.Environment, startupLogger);
+    }
+    else if (!app.Environment.IsEnvironment("Testing"))
+    {
+        // Fail-closed: se o passo explícito do deploy não rodou, não subir é melhor do que servir
+        // erro em toda requisição. A verificação apenas LÊ o histórico de migrations — não exige
+        // permissão de DDL.
+        using var scope = app.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var pending = (await db.Database.GetPendingMigrationsAsync()).ToList();
+
+        if (pending.Count > 0)
         {
-            await db.Database.EnsureCreatedAsync();
-            await TenantSeeder.SeedAsync(db, app.Environment,
-                scope.ServiceProvider.GetRequiredService<ILogger<Program>>());
-            await DemoDataSeeder.SeedAsync(scope.ServiceProvider, db, app.Environment,
-                scope.ServiceProvider.GetRequiredService<ILogger<Program>>());
-        }
-        catch (Exception ex)
-        {
-            Log.Warning(ex, "Database schema creation failed — database may not be available");
+            throw new InvalidOperationException(
+                $"The database schema is out of date: {pending.Count} pending migration(s) "
+                + $"({string.Join(", ", pending)}). Run 'dotnet ef database update' before starting the API.");
         }
     }
 
     app.Run();
 }
-catch (Exception ex)
+catch (Exception ex) when (ex is not HostAbortedException)
 {
+    // Fail-closed: uma inicialização que falha (por exemplo, segredo obrigatório ausente)
+    // precisa ser observável como falha — sem isso um script de deploy leria o processo
+    // como bem-sucedido.
+    //
+    // HostAbortedException é excluída de propósito: é o mecanismo NORMAL das ferramentas de
+    // design-time do EF (elas abortam o host de propósito, depois de capturá-lo). Sem esta guarda,
+    // todo `dotnet ef` imprime um FTL "Application terminated unexpectedly" e um agente futuro
+    // persegue uma falha que não existe.
     Log.Fatal(ex, "Application terminated unexpectedly");
+    Environment.ExitCode = 1;
 }
 finally
 {

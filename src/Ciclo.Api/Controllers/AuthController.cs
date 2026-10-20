@@ -1,9 +1,9 @@
-using System.Text.Json;
 using System.Security.Claims;
-using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using Ciclo.Api.RateLimiting;
 using Ciclo.Core.Entities;
 using Ciclo.Infrastructure.Contracts;
 using Ciclo.Infrastructure.Data;
@@ -17,19 +17,19 @@ public class AuthController : ControllerBase
 {
     private readonly IAuthService _authService;
     private readonly AppDbContext _dbContext;
-    private readonly IConfiguration _configuration;
     private readonly IWebHostEnvironment _environment;
 
-    public AuthController(IAuthService authService, AppDbContext dbContext, IConfiguration configuration, IWebHostEnvironment environment)
+    public AuthController(IAuthService authService, AppDbContext dbContext, IWebHostEnvironment environment)
     {
         _authService = authService;
         _dbContext = dbContext;
-        _configuration = configuration;
         _environment = environment;
     }
 
     /// <summary>FR-001: Register a new user with email/password.</summary>
     [HttpPost("register")]
+    [AllowAnonymous]
+    [EnableRateLimiting(RateLimitPolicies.Auth)]
     public async Task<IActionResult> Register([FromBody] RegisterRequest request)
     {
         try
@@ -46,6 +46,8 @@ public class AuthController : ControllerBase
 
     /// <summary>FR-002: Login with email/password.</summary>
     [HttpPost("login")]
+    [AllowAnonymous]
+    [EnableRateLimiting(RateLimitPolicies.Auth)]
     public async Task<IActionResult> Login([FromBody] LoginRequest request)
     {
         try
@@ -62,6 +64,8 @@ public class AuthController : ControllerBase
 
     /// <summary>FR-003: Refresh access token using refresh token cookie.</summary>
     [HttpPost("refresh")]
+    [AllowAnonymous]
+    [EnableRateLimiting(RateLimitPolicies.Auth)]
     public async Task<IActionResult> Refresh()
     {
         var refreshToken = Request.Cookies["refresh_token"];
@@ -120,78 +124,10 @@ public class AuthController : ControllerBase
         });
     }
 
-    /// <summary>FR-005: Redirect to Google OAuth consent screen.</summary>
-    [HttpGet("google")]
-    public IActionResult GoogleLogin()
-    {
-        var redirectUrl = Url.Action(nameof(GoogleCallback), "Auth")!;
-        var properties = new AuthenticationProperties { RedirectUri = redirectUrl };
-        return Challenge(properties, "Google");
-    }
-
-    /// <summary>FR-006: Handle Google OAuth callback.</summary>
-    [HttpGet("google/callback")]
-    public async Task<IActionResult> GoogleCallback()
-    {
-        // The OAuth middleware has already authenticated the user with Google.
-        // We now process the Google claims and create/find our internal user.
-        var authResult = await HttpContext.AuthenticateAsync("Google");
-        if (!authResult.Succeeded)
-            return Redirect($"{GetFrontendUrl()}/login?error=cancelled");
-
-        var googleId = authResult.Principal.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
-        var email = authResult.Principal.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value;
-        var name = authResult.Principal.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value;
-
-        if (string.IsNullOrEmpty(email) || string.IsNullOrEmpty(googleId))
-            return Redirect($"{GetFrontendUrl()}/login?error=invalid_google_response");
-
-        try
-        {
-            // Find user by GoogleId
-            var user = await _dbContext.Users
-                .IgnoreQueryFilters()
-                .FirstOrDefaultAsync(u => u.GoogleId == googleId);
-
-            if (user == null)
-            {
-                // Try to find by email for account linking
-                user = await _authService.FindByEmailAsync(email);
-                if (user != null)
-                {
-                    // Link Google account to existing user
-                    user.GoogleId = googleId;
-                    await _dbContext.SaveChangesAsync();
-                }
-                else
-                {
-                    // New user — need tenant. Redirect to frontend with Google data.
-                    var tempToken = Guid.NewGuid().ToString("N");
-                    var state = new { googleId, email, name, tempToken };
-                    return Redirect($"{GetFrontendUrl()}/register/google?data={Uri.EscapeDataString(
-                        JsonSerializer.Serialize(state))}");
-                }
-            }
-
-            if (user != null)
-            {
-                var result = await _authService.GenerateAuthResponseForUser(user);
-                SetRefreshTokenCookie(result.RefreshToken);
-                return Redirect($"{GetFrontendUrl()}/auth/callback#" +
-                    $"access_token={Uri.EscapeDataString(result.AccessToken)}&" +
-                    $"user={Uri.EscapeDataString(JsonSerializer.Serialize(result.User))}");
-            }
-        }
-        catch
-        {
-            return Redirect($"{GetFrontendUrl()}/login?error=auth_failed");
-        }
-
-        return Redirect($"{GetFrontendUrl()}/login?error=unknown");
-    }
-
     /// <summary>FR-007: Forgot password — sends reset token.</summary>
     [HttpPost("forgot-password")]
+    [AllowAnonymous]
+    [EnableRateLimiting(RateLimitPolicies.Auth)]
     public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordRequest request)
     {
         var resetToken = await _authService.ForgotPasswordAsync(request.Email);
@@ -207,6 +143,8 @@ public class AuthController : ControllerBase
 
     /// <summary>FR-008: Reset password using token.</summary>
     [HttpPost("reset-password")]
+    [AllowAnonymous]
+    [EnableRateLimiting(RateLimitPolicies.Auth)]
     public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordRequest request)
     {
         try
@@ -230,10 +168,5 @@ public class AuthController : ControllerBase
             Expires = DateTime.UtcNow.AddDays(7)
         };
         Response.Cookies.Append("refresh_token", token, cookieOptions);
-    }
-
-    private string GetFrontendUrl()
-    {
-        return _configuration["Frontend:Url"] ?? "http://localhost:5173";
     }
 }

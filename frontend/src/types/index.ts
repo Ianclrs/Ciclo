@@ -61,6 +61,17 @@ export interface Enrollment {
   motivoRejeicao: string | null;
   createdAt: string;
   approvedAt: string | null;
+  // Situação documental: preenchida apenas no DETALHE da matrícula (carry-forward, Spec 60 FR-004).
+  carriedDocuments?: CarriedDocument[] | null;
+  missingDocumentTypes?: string[] | null;
+}
+
+export interface CarriedDocument {
+  documentId: string;
+  documentType: string;
+  dataValidade: string | null;
+  /** Aprovado mas vencido: não conta como entregue e precisa ser reenviado. */
+  isExpired: boolean;
 }
 
 export interface EnrollmentPeriod {

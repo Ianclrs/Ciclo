@@ -70,8 +70,21 @@ public class AppDbContext : IdentityDbContext<User, IdentityRole<Guid>, Guid>
                 .HasForeignKey(u => u.TenantId)
                 .OnDelete(DeleteBehavior.Restrict);
 
-            // Unique composite index (TenantId, Email)
-            entity.HasIndex(u => new { u.TenantId, u.Email }).IsUnique();
+            // E-mail único GLOBALMENTE, não por tenant: o login resolve o usuário só pelo e-mail,
+            // sem tenant (ver EmailUniqueness). O índice composto (TenantId, Email) não sustentava
+            // essa consulta e permitia o mesmo e-mail em duas escolas — o login então escolhia
+            // uma linha arbitrária.
+            //
+            // O índice faz parte da migration inicial (ver Migrations/ e MigrationHistoryTests), então
+            // o schema criado a partir de agora já nasce com ele.
+            //
+            // Banco criado ANTES do A1 (pelo antigo EnsureCreated) não o tem — esse schema não tem
+            // como ser atualizado, porque EnsureCreated nunca alterava tabela existente. Para esses,
+            // ou recria-se o banco, ou roda-se uma vez:
+            //   CREATE UNIQUE INDEX "IX_Users_Email" ON "Users" ("Email");
+            // Se houver duplicatas antigas, a criação FALHA — que é o momento certo de resolver a
+            // ambiguidade em vez de conviver com ela (era justamente o defeito do C2).
+            entity.HasIndex(u => u.Email).IsUnique();
 
             // Unique filtered index on GoogleId (where not null)
             entity.HasIndex(u => u.GoogleId)

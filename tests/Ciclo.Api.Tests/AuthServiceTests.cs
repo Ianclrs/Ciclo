@@ -22,6 +22,7 @@ public sealed class AuthServiceTests : IDisposable
     private readonly RoleManager<IdentityRole<Guid>> _roleManager;
     private readonly IJwtTokenGenerator _tokenGeneratorMock;
     private readonly IAuthService _authService;
+    private readonly CapturingLogger<AuthService> _logger;
 
     public AuthServiceTests()
     {
@@ -68,8 +69,8 @@ public sealed class AuthServiceTests : IDisposable
             });
         _tokenGeneratorMock = tokenMock.Object;
 
-        // Logger mock
-        var loggerMock = new Mock<ILogger<AuthService>>();
+        // Logger que captura as mensagens registradas (verificação de vazamento de segredo)
+        _logger = new CapturingLogger<AuthService>();
 
         // IConfiguration mock for JWT
         var configMock = new Mock<IConfiguration>();
@@ -79,7 +80,7 @@ public sealed class AuthServiceTests : IDisposable
 
         services.AddScoped<IJwtTokenGenerator>(_ => _tokenGeneratorMock);
         services.AddScoped<IAuthService, AuthService>();
-        services.AddSingleton(loggerMock.Object);
+        services.AddSingleton<ILogger<AuthService>>(_logger);
         services.AddSingleton(configMock.Object);
 
         _serviceProvider = services.BuildServiceProvider();
@@ -151,6 +152,63 @@ public sealed class AuthServiceTests : IDisposable
 
         Assert.Equal(409, ex.StatusCode);
         Assert.Equal("email_already_registered", ex.Message);
+    }
+
+    /// <summary>
+    /// C2 — o e-mail é a chave de login (resolvido sem tenant), então um cadastro com e-mail já
+    /// usado em <b>outra</b> escola precisa falhar. Antes desta correção a checagem era por
+    /// tenant: o mesmo e-mail entrava em duas escolas e o login — que consulta só pelo e-mail,
+    /// sem ORDER BY — escolhia uma linha arbitrária. O sintoma era a pessoa entrar na escola
+    /// errada, ou receber o token de reset da conta de outra escola.
+    /// </summary>
+    [Fact]
+    public async Task RegisterAsync_DuplicateEmailInAnotherTenant_ThrowsAuthException()
+    {
+        var otherTenantId = await SeedSecondTenantAsync();
+
+        await _authService.RegisterAsync(
+            new RegisterRequest("cross-tenant@test.com", "Password1!", "First User", TestConstants.TenantId));
+
+        var duplicate = new RegisterRequest("cross-tenant@test.com", "Password1!", "Second User", otherTenantId);
+        var ex = await Assert.ThrowsAsync<AuthException>(() => _authService.RegisterAsync(duplicate));
+
+        Assert.Equal(409, ex.StatusCode);
+        Assert.Equal("email_already_registered", ex.Message);
+    }
+
+    /// <summary>
+    /// Controle positivo do teste acima: um e-mail <b>diferente</b> na outra escola é cadastrado
+    /// normalmente. Sem isto, o teste anterior passaria por um motivo errado (por exemplo, se a
+    /// segunda escola estivesse inválida e o erro fosse outro).
+    /// </summary>
+    [Fact]
+    public async Task RegisterAsync_DistinctEmailInAnotherTenant_Succeeds()
+    {
+        var otherTenantId = await SeedSecondTenantAsync();
+
+        await _authService.RegisterAsync(
+            new RegisterRequest("aluno-a@test.com", "Password1!", "First User", TestConstants.TenantId));
+
+        var result = await _authService.RegisterAsync(
+            new RegisterRequest("aluno-b@test.com", "Password1!", "Second User", otherTenantId));
+
+        Assert.NotNull(result.AccessToken);
+        Assert.Equal(otherTenantId, result.User.TenantId);
+    }
+
+    private async Task<Guid> SeedSecondTenantAsync()
+    {
+        var otherTenantId = Guid.NewGuid();
+        _dbContext.Tenants.Add(new Tenant
+        {
+            Id = otherTenantId,
+            Name = "Outra Escola",
+            Slug = $"outra-escola-{otherTenantId:N}",
+            IsActive = true,
+            CreatedAt = DateTime.UtcNow
+        });
+        await _dbContext.SaveChangesAsync();
+        return otherTenantId;
     }
 
     [Fact]
@@ -318,6 +376,29 @@ public sealed class AuthServiceTests : IDisposable
 
         await _authService.ForgotPasswordAsync("forgot@test.com");
         // Should not throw — always returns 200
+    }
+
+    /// <summary>
+    /// C7 — o token de reset é uma credencial: quem lê o log assume a conta. Ele era registrado
+    /// em texto claro, com o e-mail junto (`LogInformation("... {Email}: {Token}", ...)`).
+    /// </summary>
+    [Fact]
+    public async Task ForgotPasswordAsync_DoesNotWriteTheResetTokenToTheLog()
+    {
+        await _authService.RegisterAsync(
+            new RegisterRequest("leak@test.com", "Password1!", "Leak User", TestConstants.TenantId));
+        _logger.Messages.Clear();
+
+        var token = await _authService.ForgotPasswordAsync("leak@test.com");
+
+        Assert.NotNull(token);
+
+        // Controle: sem nenhuma mensagem capturada, a asserção seguinte passaria sem provar nada.
+        Assert.True(_logger.Messages.Count > 0,
+            "O evento de reset não foi registrado — a captura de log não está funcionando.");
+
+        Assert.DoesNotContain(_logger.Messages,
+            message => message.Contains(token, StringComparison.Ordinal));
     }
 
     [Fact]

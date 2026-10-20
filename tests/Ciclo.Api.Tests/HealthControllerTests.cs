@@ -1,16 +1,16 @@
 using System.Net;
 using System.Net.Http.Json;
-using Microsoft.AspNetCore.Mvc.Testing;
 
 namespace Ciclo.Api.Tests;
 
-public class HealthControllerTests : IClassFixture<WebApplicationFactory<Program>>
+[Collection(ApiTestHost.CollectionName)]
+public class HealthControllerTests
 {
     private readonly HttpClient _client;
 
-    public HealthControllerTests(WebApplicationFactory<Program> factory)
+    public HealthControllerTests(ApiTestHost host)
     {
-        _client = factory.CreateClient();
+        _client = host.CreateClient();
     }
 
     [Fact]

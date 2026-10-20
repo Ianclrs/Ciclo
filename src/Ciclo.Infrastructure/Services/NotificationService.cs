@@ -21,13 +21,13 @@ public interface INotificationService
 public class NotificationService : INotificationService
 {
     private readonly AppDbContext _db;
-    private readonly IEmailSender _emailSender;
+    private readonly IEmailDispatcher _emailDispatcher;
     private readonly ILogger<NotificationService> _logger;
 
-    public NotificationService(AppDbContext db, IEmailSender emailSender, ILogger<NotificationService> logger)
+    public NotificationService(AppDbContext db, IEmailDispatcher emailDispatcher, ILogger<NotificationService> logger)
     {
         _db = db;
-        _emailSender = emailSender;
+        _emailDispatcher = emailDispatcher;
         _logger = logger;
     }
 
@@ -78,8 +78,10 @@ public class NotificationService : INotificationService
         _db.UserNotifications.AddRange(userNotifications);
         await _db.SaveChangesAsync();
 
-        // Send emails (fire-and-forget, don't revert on failure)
-        _ = SendEmailsAsync(validUserIds, request.Titulo, request.Mensagem);
+        // O e-mail sai por um dispatcher que roda FORA do escopo desta requisição
+        // (ver EmailDispatchService): aqui só se entrega a mensagem. Não reverte a notificação
+        // em caso de falha de envio — a notificação in-app é a fonte durável.
+        await EnqueueEmailsAsync(validUserIds, request.Titulo, request.Mensagem);
 
         return MapToDto(notification, false);
     }
@@ -127,7 +129,7 @@ public class NotificationService : INotificationService
 
         await _db.SaveChangesAsync();
 
-        _ = SendEmailsAsync(parentIds, request.Titulo, request.Mensagem);
+        await EnqueueEmailsAsync(parentIds, request.Titulo, request.Mensagem);
 
         return (parentIds.Count, MapToDto(notification, false));
     }
@@ -183,7 +185,7 @@ public class NotificationService : INotificationService
         _db.UserNotifications.AddRange(userNotifications);
         await _db.SaveChangesAsync();
 
-        _ = SendEmailsAsync(parentIds, titulo, mensagem);
+        await EnqueueEmailsAsync(parentIds, titulo, mensagem);
 
         return parentIds.Count;
     }
@@ -278,10 +280,12 @@ public class NotificationService : INotificationService
         return new NotificationDto(n.Id, Guid.Empty, n.Titulo, n.Mensagem, n.Tipo.ToString(), n.ReferenceId, isRead, n.CreatedAt);
     }
 
-    private async Task SendEmailsAsync(List<Guid> userIds, string titulo, string mensagem)
+    private async Task EnqueueEmailsAsync(List<Guid> userIds, string titulo, string mensagem)
     {
         try
         {
+            // A consulta acontece AQUI, dentro do escopo da requisição — antes ela rodava numa task
+            // descartada, depois da resposta, num AppDbContext possivelmente já descartado.
             var users = await _db.Users
                 .IgnoreQueryFilters()
                 .Where(u => userIds.Contains(u.Id))
@@ -292,15 +296,20 @@ public class NotificationService : INotificationService
             {
                 if (!string.IsNullOrWhiteSpace(user.Email))
                 {
-                    await _emailSender.SendAsync(user.Email, user.Name, titulo, mensagem);
+                    _emailDispatcher.Enqueue(
+                        new EmailMessage(user.Email, user.Name, titulo, mensagem));
                 }
             }
         }
         catch (Exception ex)
         {
-#pragma warning disable CA1848
-            _logger.LogWarning(ex, "Failed to send email notifications");
-#pragma warning restore CA1848
+            // Não relança de propósito: a notificação in-app já foi persistida (o SaveChanges
+            // aconteceu antes). Falhar a requisição aqui faria o cliente achar que nada foi criado
+            // e repetir a operação, gerando notificação duplicada. Mas loga como ERRO, e não
+            // warning: o e-mail não vai sair para ninguém neste lote.
+#pragma warning disable CA1848, CA1873
+            _logger.LogError(ex, "Failed to enqueue email notifications");
+#pragma warning restore CA1848, CA1873
         }
     }
 }

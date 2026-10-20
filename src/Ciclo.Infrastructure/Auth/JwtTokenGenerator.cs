@@ -1,7 +1,6 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Security.Cryptography;
-using System.Text;
 using Microsoft.Extensions.Configuration;
 using Microsoft.IdentityModel.Tokens;
 using Ciclo.Core.Entities;
@@ -25,11 +24,9 @@ public class JwtTokenGenerator : IJwtTokenGenerator
 
     public string GenerateAccessToken(User user)
     {
-        var secret = _configuration["Jwt:Secret"]
-            ?? throw new InvalidOperationException("Jwt:Secret is not configured");
+        var settings = JwtSettings.Read(_configuration);
 
-        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secret));
-        var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
+        var credentials = new SigningCredentials(settings.CreateSigningKey(), SecurityAlgorithms.HmacSha256);
 
         var claims = new[]
         {
@@ -41,8 +38,8 @@ public class JwtTokenGenerator : IJwtTokenGenerator
         };
 
         var token = new JwtSecurityToken(
-            issuer: _configuration["Jwt:Issuer"],
-            audience: _configuration["Jwt:Audience"],
+            issuer: settings.Issuer,
+            audience: settings.Audience,
             claims: claims,
             expires: DateTime.UtcNow.AddMinutes(15),
             signingCredentials: credentials);

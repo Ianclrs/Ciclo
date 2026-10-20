@@ -4,8 +4,39 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-    <WarningsNotAsErrors>$(WarningsNotAsErrors);NU1903</WarningsNotAsErrors>
     <AnalysisLevel>latest-recommended</AnalysisLevel>
-    <NoWarn>$(NoWarn);NU1903;CA1707</NoWarn>
+
+    <!--
+      VERSÕES DE PACOTE SÃO EXATAS, de propósito (C10). Com versão flutuante ("10.*"), a versão
+      resolvida muda sem nenhuma alteração de código: o build deixa de ser reprodutível e uma
+      versão nova — inclusive com advisory de segurança — entra sem ninguém decidir. Subir versão
+      passa a ser ato explícito: editar o .csproj e restaurar.
+    -->
+
+    <!-- CA1707: nomes de teste usam underscores (RegisterAsync_ValidRequest_CreatesTokens). -->
+    <!--
+      NU1903 (dependência com vulnerabilidade conhecida) NÃO é silenciado de propósito.
+      O audit do NuGet está ligado (enableAudit=true, auditLevel=low, auditMode=all), então
+      qualquer advisory é detectado no restore; silenciá-lo transformava a detecção em ruído.
+      Com TreatWarningsAsErrors, um pacote vulnerável quebra o build — é o comportamento
+      desejado em um projeto que já trata todo aviso como erro.
+
+      Estado verificado em 2026-10-16: nenhum pacote da solução consta na base de
+      vulnerabilidades do NuGet (consulta direta ao índice de vulnerabilidades, pacote a
+      pacote, contra as versões resolvidas em obj/project.assets.json).
+    -->
+    <NoWarn>$(NoWarn);CA1707</NoWarn>
   </PropertyGroup>
+
+  <!--
+    Guarda do C10. Uma versão flutuante reintroduzida tornaria o build não reprodutível outra vez —
+    e não haveria sintoma até alguém publicar uma versão nova. Aqui a regra falha fechada, na hora,
+    em vez de depender de inspeção manual.
+  -->
+  <Target Name="ForbidFloatingPackageVersions" BeforeTargets="CollectPackageReferences">
+    <Error
+      Code="CICLO0001"
+      Condition="$([System.String]::Copy('%(PackageReference.Version)').Contains('*'))"
+      Text="Versão flutuante de pacote: %(PackageReference.Identity) %(PackageReference.Version). Fixe a versão exata (ver C10 em management/cross-session/plano-correcoes.md)." />
+  </Target>
 </Project>

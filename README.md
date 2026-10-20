@@ -67,10 +67,21 @@ O **Ciclo** centraliza e automatiza o ciclo de vida acadêmico dos alunos: matr�
 
 ### Backend + Banco
 
+O `docker compose` exige dois segredos da API. Copie o exemplo e preencha:
+
 ```bash
-# Subir banco e API
+cp .env.example .env      # .env é ignorado pelo git
+# edite .env: JWT_SECRET (>= 32 bytes) e ENCRYPTION_KEY (Base64 de 32 bytes)
+openssl rand -base64 48   # sugestão de valor para JWT_SECRET
+openssl rand -base64 32   # sugestão de valor para ENCRYPTION_KEY
+
 docker compose up -d
 ```
+
+Sem essas variáveis o `docker compose` falha com uma mensagem explícita em vez de subir com valores padrão.
+Isso vale para o arquivo inteiro — inclusive para subir **só o banco** (`docker compose up -d postgres`),
+porque a interpolação do compose acontece antes de escolher os serviços. Como a API é *fail-closed* e
+em `Development` aplica as migrations, o banco precisa estar no ar antes de rodar a API localmente.
 
 A API estará em `http://localhost:5000` e o Swagger em `http://localhost:5000/swagger`.
 
@@ -90,11 +101,41 @@ O frontend estará em `http://localhost:5173`. O Vite faz proxy das chamadas da 
 # 1. Criar banco e usuário
 psql -U postgres -f db/init-db.sql
 
-# 2. Iniciar a API
+# 2. Configurar os segredos da API (uma vez, ficam fora do repositório)
+dotnet user-secrets set "Jwt:Secret" "$(openssl rand -base64 48)" --project src/Ciclo.Api
+dotnet user-secrets set "FileStorage:EncryptionKey" "$(openssl rand -base64 32)" --project src/Ciclo.Api
+
+# 3. Iniciar a API
 dotnet run --project src/Ciclo.Api
 ```
 
-> As migrations do EF Core são aplicadas automaticamente na inicialização em ambiente Development.
+A API **não inicia** sem `Jwt:Secret` e `FileStorage:EncryptionKey` — os valores não têm padrão no
+repositório (ver `JwtSettings.cs` e `FileStorageKey.cs`). Em outros ambientes, use as variáveis
+`Jwt__Secret` e `FileStorage__EncryptionKey`.
+
+### Schema do banco
+
+O schema tem **um dono único**: as migrations em `src/Ciclo.Infrastructure/Migrations/`, com o
+`AppDbContextModelSnapshot` que as acompanha. O `db/migrations.sql` que existia antes foi removido —
+era uma segunda fonte de schema, escrita à mão, que já divergia do modelo.
+
+**Em `Development`** a API aplica as migrations sozinha na inicialização e depois roda os seeders.
+É *fail-closed*: se o banco não responder, a API **não sobe**. (Antes ela subia com banco vazio e
+falhava em toda consulta, sem sinal claro na inicialização.)
+
+**Fora de `Development`** a API **não** aplica schema. O deploy precisa rodar, antes de subir:
+
+```bash
+dotnet ef database update --project src/Ciclo.Infrastructure --startup-project src/Ciclo.Api
+```
+
+Assim o processo em runtime não precisa de permissão de DDL, duas instâncias não disputam a
+migration, e uma migration problemática não impede a API de subir. Se o passo for esquecido, a API
+**falha na inicialização** listando as migrations pendentes — em vez de servir erro em toda
+requisição.
+
+Ao alterar o modelo (entidade ou `OnModelCreating`), gere a migration correspondente. A suíte falha
+em `MigrationHistoryTests` se o modelo divergir do histórico.
 
 ### Testes
 
@@ -134,8 +175,8 @@ A API precisa estar publicada em **HTTPS** e alcançável pela internet — o re
 | Configuração | Por quê |
 |---|---|
 | `Frontend:Url` | O `AuthController` redireciona para cá ao final do login com Google (`GetFrontendUrl()`); sem definir, ele manda o usuário para `http://localhost:5173` |
-| `Jwt:Secret` | Vazio em `appsettings.json`; a API não inicia sem ele (`Program.cs`) |
-| `FileStorage:EncryptionKey` | Base64 de 32 bytes; sem ela os endpoints de documentos falham (`LocalFileStorage.cs`) |
+| `Jwt:Secret` | **Ausente** de `appsettings.json` por decisão; a API **não inicia** sem ele (`JwtSettings.cs`). Defina pela variável `Jwt__Secret` |
+| `FileStorage:EncryptionKey` | Base64 de 32 bytes; a API **não inicia** sem ela (`FileStorageKey.cs`). Defina pela variável `FileStorage__EncryptionKey` |
 | `FileStorage:RootPath` | Disco local: em container sem volume os arquivos somem a cada deploy |
 
 O endpoint `/health` fica **fora** de `/api` de propósito — é probe de infraestrutura, e pode ser usado como health check do host da API.

@@ -17,6 +17,13 @@ export async function getStudentDocuments(studentId: string, params: {
   return res.data;
 }
 
+// A6: `GET /api/documents/expiring` existia desde a V7 e não era consumido por nenhuma tela.
+// Devolve lista simples (não paginada) — o contrato do servidor é `List<DocumentDto>`.
+export async function getExpiringDocuments(days = 30): Promise<Document[]> {
+  const res = await api.get('/api/documents/expiring', { params: { days } });
+  return res.data;
+}
+
 export async function uploadDocument(formData: FormData): Promise<Document> {
   const res = await api.post('/api/documents/upload', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },

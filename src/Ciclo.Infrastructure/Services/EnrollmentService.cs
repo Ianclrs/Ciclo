@@ -37,7 +37,13 @@ public class EnrollmentService : IEnrollmentService
 
     private static readonly Dictionary<EnrollmentStatus, HashSet<EnrollmentStatus>> Transitions = new()
     {
-        [EnrollmentStatus.Rascunho] = [EnrollmentStatus.Pendente],
+        // Spec 50 FR-007 permite os dois destinos a partir de Rascunho: Pendente quando a
+        // documentação está em ordem, DocumentacaoPendente quando falta documento obrigatório.
+        [EnrollmentStatus.Rascunho] =
+        [
+            EnrollmentStatus.Pendente,
+            EnrollmentStatus.DocumentacaoPendente
+        ],
         [EnrollmentStatus.Pendente] =
         [
             EnrollmentStatus.DocumentacaoPendente,
@@ -256,7 +262,31 @@ public class EnrollmentService : IEnrollmentService
                 throw new EnrollmentException("not_linked_to_student", 403);
         }
 
-        return MapToDto(enrollment);
+        // Spec 60 FR-004 / E4 — a visão de documentação vive aqui desde o A4: a API separada de
+        // rematrícula foi removida por ser uma segunda superfície sobre a MESMA tabela, e esta é a
+        // única parte dela que tinha informação própria. `IsExpired` distingue "reaproveitado" de
+        // "venceu — precisa reenviar", então a lista vem dos documentos APROVADOS (inclusive
+        // vencidos), e não apenas dos válidos.
+        var compliance = await DocumentCompliance.EvaluateAsync(_db, enrollment.StudentId);
+        var validDocumentIds = compliance.ValidDocuments.Select(document => document.Id).ToHashSet();
+
+        var carriedDocuments = compliance.ApprovedDocuments
+            .Select(document => new CarriedDocumentDto(
+                document.Id,
+                document.DocumentType.Nome,
+                document.DataValidade,
+                IsExpired: !validDocumentIds.Contains(document.Id)))
+            .ToList();
+
+        var missingDocumentTypes = compliance.MissingRequiredTypes
+            .Select(type => type.Nome)
+            .ToList();
+
+        return MapToDto(enrollment) with
+        {
+            CarriedDocuments = carriedDocuments,
+            MissingDocumentTypes = missingDocumentTypes,
+        };
     }
 
     // ── State Machine Transitions ──────────────────────────────────
@@ -271,13 +301,19 @@ public class EnrollmentService : IEnrollmentService
         if (enrollment is null)
             throw new EnrollmentException("enrollment_not_found", 404);
 
-        if (!CanTransition(enrollment.Status, EnrollmentStatus.Pendente))
-            throw InvalidTransition(enrollment.Status, EnrollmentStatus.Pendente);
+        // Spec 50 FR-007: se falta documento obrigatório, o destino é DocumentacaoPendente — e não
+        // Pendente. Sem isto o estado existia na máquina de estados mas era inalcançável em
+        // produção (só o seeder o criava), e a escola perdia o sinal de que precisava cobrar
+        // documento antes de aprovar.
+        var compliance = await DocumentCompliance.EvaluateAsync(_db, enrollment.StudentId);
+        var target = compliance.HasMissingRequiredDocuments
+            ? EnrollmentStatus.DocumentacaoPendente
+            : EnrollmentStatus.Pendente;
 
-        // TODO: Spec 70 — check for pending required documents.
-        // If pending docs exist: transition to DocumentacaoPendente.
-        // For now, always go to Pendente.
-        enrollment.Status = EnrollmentStatus.Pendente;
+        if (!CanTransition(enrollment.Status, target))
+            throw InvalidTransition(enrollment.Status, target);
+
+        enrollment.Status = target;
 
         await _db.SaveChangesAsync();
         return MapToDto(enrollment);
@@ -296,8 +332,11 @@ public class EnrollmentService : IEnrollmentService
         if (!CanTransition(enrollment.Status, EnrollmentStatus.Aprovado))
             throw InvalidTransition(enrollment.Status, EnrollmentStatus.Aprovado);
 
-        // TODO: Spec 70 — check for pending required documents.
-        // If pending, return 400 with pending_required_documents error.
+        // Spec 50 FR-008: aprovar exige a documentação obrigatória em dia. É o que dá sentido a
+        // DocumentacaoPendente — sem esta checagem, o estado só serviria de aviso.
+        var compliance = await DocumentCompliance.EvaluateAsync(_db, enrollment.StudentId);
+        if (compliance.HasMissingRequiredDocuments)
+            throw new EnrollmentException("pending_required_documents", 400);
 
         enrollment.Status = EnrollmentStatus.Aprovado;
         enrollment.ApprovedAt = DateTime.UtcNow;

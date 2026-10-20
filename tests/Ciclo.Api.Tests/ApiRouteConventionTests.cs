@@ -1,6 +1,4 @@
-using System.Reflection;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Mvc.Routing;
 
 namespace Ciclo.Api.Tests;
 
@@ -14,14 +12,29 @@ namespace Ciclo.Api.Tests;
 /// </summary>
 public class ApiRouteConventionTests
 {
-    /// <summary>Única exceção intencional: /Health é probe de infraestrutura do host da API.</summary>
-    private const string ProbeController = "Health";
+    /// <summary>
+    /// A4: a API de rematrícula era uma segunda superfície sobre a MESMA tabela de matrículas —
+    /// mesmos create/list/get/approve/reject — e por isso as duas listagens devolviam as mesmas
+    /// linhas. O fluxo único é `/api/enrollments`. Este teste impede a reintrodução.
+    /// </summary>
+    [Fact]
+    public void TheDuplicatedEnrollmentApi_IsNotPublished()
+    {
+        var duplicated = EndpointInventory.All()
+            .Where(endpoint => endpoint.Route.StartsWith("api/reenrollments", StringComparison.OrdinalIgnoreCase))
+            .Select(endpoint => $"{endpoint.Controller}.{endpoint.Action} {endpoint.Route}")
+            .ToList();
+
+        Assert.True(duplicated.Count == 0,
+            "A rematrícula voltou a ter API própria sobre a mesma tabela. Ver A4 em "
+            + "plano-correcoes.md. Rotas: " + string.Join(", ", duplicated));
+    }
 
     [Fact]
     public void EveryApplicationEndpoint_IsUnderApiPrefix()
     {
-        var offenders = EnumerateRoutes()
-            .Where(r => !string.Equals(r.Controller, ProbeController, StringComparison.Ordinal))
+        var offenders = EndpointInventory.All()
+            .Where(r => !string.Equals(r.Controller, EndpointInventory.ProbeController, StringComparison.Ordinal))
             .Where(r => !r.Route.StartsWith("api/", StringComparison.Ordinal))
             .Select(r => $"{r.Controller}.{r.Action} -> '{r.Route}'")
             .OrderBy(r => r, StringComparer.Ordinal)
@@ -35,45 +48,70 @@ public class ApiRouteConventionTests
     [Fact]
     public void OnlyTheHealthProbe_LivesOutsideApiPrefix()
     {
-        var controllersOutsideApi = EnumerateRoutes()
+        var controllersOutsideApi = EndpointInventory.All()
             .Where(r => !r.Route.StartsWith("api/", StringComparison.Ordinal))
             .Select(r => r.Controller)
             .Distinct()
             .OrderBy(c => c, StringComparer.Ordinal)
             .ToList();
 
-        Assert.Equal([ProbeController], controllersOutsideApi);
+        Assert.Equal([EndpointInventory.ProbeController], controllersOutsideApi);
     }
 
-    private static IEnumerable<(string Controller, string Action, string Route)> EnumerateRoutes()
+    /// <summary>
+    /// Backdoor de teste não pode ser publicado. Um controller de conveniência para teste
+    /// manual (existiu o /api/test-auth) vira endpoint de produção — e um endpoint que concede
+    /// acesso por role sem nenhuma regra de negócio é superfície de ataque gratuita.
+    /// Contrato de teste vive em tests/Ciclo.Api.Tests, nunca na API.
+    /// </summary>
+    [Fact]
+    public void NoTestOrDebugBackdoor_IsPublished()
     {
-        var controllers = typeof(Program).Assembly
+        var backdoorControllers = typeof(Program).Assembly
             .GetTypes()
-            .Where(t => !t.IsAbstract && typeof(ControllerBase).IsAssignableFrom(t));
+            .Where(t => !t.IsAbstract && typeof(ControllerBase).IsAssignableFrom(t))
+            .Where(t => t.Name.Contains("Test", StringComparison.OrdinalIgnoreCase)
+                     || t.Name.Contains("Debug", StringComparison.OrdinalIgnoreCase))
+            .Select(t => t.FullName)
+            .OrderBy(n => n, StringComparer.Ordinal)
+            .ToList();
 
-        foreach (var controller in controllers)
-        {
-            var name = controller.Name.EndsWith("Controller", StringComparison.Ordinal)
-                ? controller.Name[..^"Controller".Length]
-                : controller.Name;
+        Assert.True(backdoorControllers.Count == 0,
+            $"Controllers de teste/debug publicados na API: {string.Join("; ", backdoorControllers)}. " +
+            "Mova o contrato para tests/Ciclo.Api.Tests.");
 
-            var controllerRoute = controller.GetCustomAttribute<RouteAttribute>()?.Template;
+        var backdoorRoutes = EndpointInventory.All()
+            .Where(r => r.Route.Contains("test", StringComparison.OrdinalIgnoreCase)
+                     || r.Route.Contains("debug", StringComparison.OrdinalIgnoreCase))
+            .Select(r => $"{r.Controller}.{r.Action} -> '{r.Route}'")
+            .OrderBy(r => r, StringComparer.Ordinal)
+            .ToList();
 
-            var actions = controller
-                .GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
-                .Where(m => m.GetCustomAttributes<HttpMethodAttribute>().Any());
+        Assert.True(backdoorRoutes.Count == 0,
+            $"Rotas de teste/debug publicadas: {string.Join("; ", backdoorRoutes)}.");
+    }
 
-            foreach (var action in actions)
-            {
-                foreach (var http in action.GetCustomAttributes<HttpMethodAttribute>())
-                {
-                    var parts = new[] { controllerRoute, http.Template }
-                        .Where(p => !string.IsNullOrEmpty(p))
-                        .Select(p => p!.Replace("[controller]", name, StringComparison.OrdinalIgnoreCase));
+    /// <summary>
+    /// O fluxo OAuth do Google foi removido por decisão explícita registrada em
+    /// management/cross-session/plano-correcoes.md (item C8). Ele existia quebrado e no pior
+    /// lugar possível: ligava a conta Google a um usuário já existente pelo e-mail, sem validar
+    /// que o e-mail era verificado e sem filtrar tenant — ou seja, portava tomada de conta.
+    /// Também mandava dados para um SPA cuja rota de destino não existe.
+    ///
+    /// O botão continua no frontend, sem fluxo por trás. Reintroduzir o fluxo é decisão
+    /// consciente: exige implementar a validação de e-mail/tenant e remover este contrato.
+    /// </summary>
+    [Fact]
+    public void NoGoogleOAuthEndpoint_IsPublished()
+    {
+        var googleRoutes = EndpointInventory.All()
+            .Where(r => r.Route.Contains("google", StringComparison.OrdinalIgnoreCase))
+            .Select(r => $"{r.Controller}.{r.Action} -> '{r.Route}'")
+            .OrderBy(r => r, StringComparer.Ordinal)
+            .ToList();
 
-                    yield return (name, action.Name, string.Join('/', parts));
-                }
-            }
-        }
+        Assert.True(googleRoutes.Count == 0,
+            $"Fluxo OAuth do Google publicado novamente: {string.Join("; ", googleRoutes)}. " +
+            "Ele foi removido por portar tomada de conta — ver plano-correcoes.md, item C8.");
     }
 }

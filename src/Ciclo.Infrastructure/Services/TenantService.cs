@@ -59,13 +59,9 @@ public class TenantService : ITenantService
         if (string.IsNullOrWhiteSpace(schoolName))
             throw new AuthException("school_name_required", 400);
 
-        // Email do administrador deve ser único globalmente, pois o login resolve
-        // o usuário por email (sem tenant). Evita ambiguidade entre tenants.
-        var emailTaken = await _dbContext.Users
-            .IgnoreQueryFilters()
-            .AnyAsync(u => u.Email == request.AdminEmail);
-        if (emailTaken)
-            throw new AuthException("email_already_registered", 409);
+        // O e-mail é a chave de login: única globalmente — mesma regra do cadastro de responsável
+        // (ver EmailUniqueness, que é o dono da regra).
+        await EmailUniqueness.EnsureAvailableAsync(_dbContext, request.AdminEmail);
 
         var slug = await GenerateUniqueSlugAsync(schoolName);
 

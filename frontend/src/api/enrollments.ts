@@ -16,8 +16,16 @@ export async function getEnrollment(id: string): Promise<Enrollment> {
   return res.data;
 }
 
+export async function submitEnrollment(id: string): Promise<void> {
+  await api.post(`/api/enrollments/${id}/submit`);
+}
+
 export async function approveEnrollment(id: string): Promise<void> {
   await api.post(`/api/enrollments/${id}/approve`);
+}
+
+export async function cancelEnrollment(id: string): Promise<void> {
+  await api.post(`/api/enrollments/${id}/cancel`);
 }
 
 export async function rejectEnrollment(id: string, motivo: string): Promise<void> {

@@ -1,0 +1,9 @@
+root = true
+
+# Migrations do EF são código GERADO. Aplicar analisadores de estilo/qualidade a elas faz cada
+# `dotnet ef migrations add` quebrar o build (o CA1861 dispara nas listas de colunas), e o custo é
+# recorrente sem benefício: ninguém edita migration à mão. Marcar como gerado é o mecanismo
+# documentado para o analisador ignorar o arquivo — e vale para as migrations futuras, não só para
+# a atual.
+[**/Migrations/*.cs]
+generated_code = true

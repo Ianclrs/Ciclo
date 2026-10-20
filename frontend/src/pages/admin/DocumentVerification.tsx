@@ -41,16 +41,27 @@ export default function DocumentVerification() {
   const [reloadKey, setReloadKey] = useState(0);
   const [verify, setVerify] = useState<{ id: string; approved: boolean } | null>(null);
   const [motivo, setMotivo] = useState('');
+  // Duas visões sobre a mesma tela: o que aguarda verificação e o que vai vencer. Sem a segunda,
+  // o alerta de vencimento da V7 não aparecia em lugar nenhum (A6).
+  const [view, setView] = useState<'pending' | 'expiring'>('pending');
 
   useEffect(() => {
     let cancelled = false;
 
     (async () => {
       try {
-        const res = await api.getPendingDocuments({ page, pageSize: PAGE_SIZE });
-        if (cancelled) return;
-        setDocs(res.items);
-        setTotal(res.total);
+        if (view === 'expiring') {
+          // Lista simples: o contrato deste endpoint não é paginado.
+          const expiring = await api.getExpiringDocuments();
+          if (cancelled) return;
+          setDocs(expiring);
+          setTotal(expiring.length);
+        } else {
+          const res = await api.getPendingDocuments({ page, pageSize: PAGE_SIZE });
+          if (cancelled) return;
+          setDocs(res.items);
+          setTotal(res.total);
+        }
         setFailed(false);
       } catch {
         if (cancelled) return;
@@ -63,7 +74,7 @@ export default function DocumentVerification() {
     return () => {
       cancelled = true;
     };
-  }, [page, reloadKey]);
+  }, [page, reloadKey, view]);
 
   const changePage = (nextPage: number) => {
     setLoading(true);
@@ -177,17 +188,23 @@ export default function DocumentVerification() {
           >
             <Download size={16} />
           </button>
-          <Button variant="ghost" size="sm" onClick={() => openVerify(doc, true)}>
-            Aprovar
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-red-600 hover:bg-red-50"
-            onClick={() => openVerify(doc, false)}
-          >
-            Rejeitar
-          </Button>
+          {/* Verificar só faz sentido para documento pendente: na visão de vencimento eles já
+              estão aprovados. */}
+          {view === 'pending' && (
+            <>
+              <Button variant="ghost" size="sm" onClick={() => openVerify(doc, true)}>
+                Aprovar
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-red-600 hover:bg-red-50"
+                onClick={() => openVerify(doc, false)}
+              >
+                Rejeitar
+              </Button>
+            </>
+          )}
         </div>
       ),
     },
@@ -197,7 +214,35 @@ export default function DocumentVerification() {
     <div>
       <div className="mb-6">
         <h2 className="text-2xl font-bold text-gray-900">Documentos</h2>
-        <p className="text-sm text-gray-500 mt-1">Documentos aguardando verificação.</p>
+        <p className="text-sm text-gray-500 mt-1">
+          {view === 'pending'
+            ? 'Documentos aguardando verificação.'
+            : 'Documentos aprovados que vencem nos próximos 30 dias.'}
+        </p>
+        <div className="flex gap-2 mt-3">
+          <Button
+            variant={view === 'pending' ? 'primary' : 'ghost'}
+            size="sm"
+            onClick={() => {
+              setPage(1);
+              setLoading(true);
+              setView('pending');
+            }}
+          >
+            Pendentes
+          </Button>
+          <Button
+            variant={view === 'expiring' ? 'primary' : 'ghost'}
+            size="sm"
+            onClick={() => {
+              setPage(1);
+              setLoading(true);
+              setView('expiring');
+            }}
+          >
+            A vencer
+          </Button>
+        </div>
       </div>
 
       <Card>
@@ -209,7 +254,9 @@ export default function DocumentVerification() {
           emptyMessage={
             failed
               ? 'Não foi possível carregar os documentos. Tente novamente.'
-              : 'Nenhum documento aguardando verificação.'
+              : view === 'pending'
+                ? 'Nenhum documento aguardando verificação.'
+                : 'Nenhum documento vence nos próximos 30 dias.'
           }
         />
 

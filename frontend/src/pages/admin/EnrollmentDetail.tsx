@@ -15,6 +15,8 @@ export default function EnrollmentDetail() {
   const [enrollment, setEnrollment] = useState<Enrollment | null>(null);
   const [showReject, setShowReject] = useState(false);
   const [motivo, setMotivo] = useState('');
+  const carried = enrollment?.carriedDocuments ?? [];
+  const missing = enrollment?.missingDocumentTypes ?? [];
 
   useEffect(() => {
     if (id) api.getEnrollment(id).then(setEnrollment).catch(() => toast.error('Erro.'));
@@ -47,6 +49,47 @@ export default function EnrollmentDetail() {
             <div className="flex justify-between"><dt className="text-gray-500">Data:</dt><dd>{new Date(enrollment.createdAt).toLocaleDateString()}</dd></div>
             {enrollment.approvedAt && <div className="flex justify-between"><dt className="text-gray-500">Aprovada em:</dt><dd>{new Date(enrollment.approvedAt).toLocaleDateString()}</dd></div>}
           </dl>
+        </Card>
+        {/* A4 passou a devolver a situação documental no detalhe; sem esta exibição o dado não
+            chegava ao usuário — e é ele que explica POR QUE a matrícula está em documentação
+            pendente ou por que a aprovação será recusada. */}
+        <Card title="Situação documental">
+          {missing.length > 0 ? (
+            <div className="mb-4">
+              <p className="text-sm font-medium text-amber-700">Documentos obrigatórios pendentes</p>
+              <ul className="mt-1 space-y-1">
+                {missing.map((nome) => (
+                  <li key={nome} className="text-sm text-amber-700">• {nome}</li>
+                ))}
+              </ul>
+            </div>
+          ) : (
+            <p className="text-sm text-green-700 mb-4">Documentação obrigatória em dia.</p>
+          )}
+
+          {carried.length > 0 && (
+            <>
+              <p className="text-sm font-medium text-gray-700">Documentos do aluno</p>
+              <ul className="mt-1 space-y-1">
+                {carried.map((doc) => (
+                  <li key={doc.documentId} className="flex justify-between gap-3 text-sm">
+                    <span className="text-gray-700">{doc.documentType}</span>
+                    <span className={doc.isExpired ? 'text-red-600' : 'text-gray-500'}>
+                      {doc.isExpired
+                        ? 'vencido — precisa reenviar'
+                        : doc.dataValidade
+                          ? `válido até ${new Date(doc.dataValidade).toLocaleDateString()}`
+                          : 'sem validade'}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+
+          {carried.length === 0 && missing.length === 0 && (
+            <p className="text-sm text-gray-500">Nenhum documento registrado para este aluno.</p>
+          )}
         </Card>
         {enrollment.status === 'Pendente' && (
           <Card title="Ações">

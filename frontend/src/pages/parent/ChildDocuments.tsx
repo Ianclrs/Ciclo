@@ -112,6 +112,11 @@ export default function ChildDocuments() {
                 <div>
                   <p className="text-sm font-medium">{d.nomeArquivo}</p>
                   <p className="text-xs text-gray-500">{d.documentTypeName} • {new Date(d.createdAt).toLocaleDateString()}</p>
+                  {/* A7: o motivo já vinha no DTO e não era exibido — sem ele o responsável sabe que
+                      o documento foi recusado, mas não o que corrigir para reenviar. */}
+                  {d.motivoRejeicao && (
+                    <p className="text-xs text-red-600 mt-1">Motivo da rejeição: {d.motivoRejeicao}</p>
+                  )}
                 </div>
                 <StatusBadge status={d.status} variant={d.status === 'Aprovado' ? 'success' : d.status === 'Pendente' ? 'warning' : 'danger'} />
               </li>

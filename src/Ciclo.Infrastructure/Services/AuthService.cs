@@ -17,7 +17,6 @@ public interface IAuthService
     Task RevokeTokenAsync(string refreshToken);
     Task<string?> ForgotPasswordAsync(string email);
     Task ResetPasswordAsync(ResetPasswordRequest request);
-    Task<User?> FindByEmailAsync(string email);
     Task<AuthResponse> GenerateAuthResponseForUser(User user);
 }
 
@@ -50,12 +49,8 @@ public class AuthService : IAuthService
         if (tenant == null)
             throw new AuthException("invalid_tenant", 400);
 
-        // Check email uniqueness within tenant
-        var existingUser = await _dbContext.Users
-            .IgnoreQueryFilters()
-            .FirstOrDefaultAsync(u => u.TenantId == request.TenantId && u.Email == request.Email);
-        if (existingUser != null)
-            throw new AuthException("email_already_registered", 409);
+        // O e-mail é a chave de login: precisa ser único globalmente, não só neste tenant.
+        await EmailUniqueness.EnsureAvailableAsync(_dbContext, request.Email);
 
         var user = new User
         {
@@ -178,7 +173,9 @@ public class AuthService : IAuthService
 
         var token = await _userManager.GeneratePasswordResetTokenAsync(user);
 #pragma warning disable CA1848, CA1873
-        _logger.LogInformation("Password reset token for {Email}: {Token}", email, token);
+        // O token NÃO entra no log: é credencial de redefinição de senha — quem lê o log assume
+        // a conta. Registra-se apenas o usuário afetado.
+        _logger.LogInformation("Password reset token generated for user {UserId}", user.Id);
 #pragma warning restore CA1848, CA1873
 
         return token;
@@ -214,12 +211,6 @@ public class AuthService : IAuthService
 #pragma warning restore CA1848, CA1873
     }
 
-    public async Task<User?> FindByEmailAsync(string email)
-    {
-        return await _dbContext.Users
-            .IgnoreQueryFilters()
-            .FirstOrDefaultAsync(u => u.Email == email);
-    }
 
     public Task<AuthResponse> GenerateAuthResponseForUser(User user)
     {

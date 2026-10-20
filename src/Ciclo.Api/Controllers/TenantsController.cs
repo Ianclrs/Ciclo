@@ -1,4 +1,7 @@
+using Ciclo.Api.RateLimiting;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Ciclo.Infrastructure.Contracts;
 using Ciclo.Infrastructure.Services;
 
@@ -17,6 +20,8 @@ public class TenantsController : ControllerBase
 
     /// <summary>Registra uma nova escola (tenant) e o usuário administrador.</summary>
     [HttpPost("register")]
+    [AllowAnonymous]
+    [EnableRateLimiting(RateLimitPolicies.SchoolRegistration)]
     public async Task<IActionResult> Register([FromBody] RegisterSchoolRequest request)
     {
         try

@@ -25,10 +25,12 @@ public class TenantMiddleware
             {
                 if (requireAuth)
                 {
-                    context.Response.StatusCode = StatusCodes.Status401Unauthorized;
-                    context.Response.ContentType = "application/json";
-                    await context.Response.WriteAsync(
-                        "{\"error\":\"tenant_not_resolved\",\"message\":\"Tenant context could not be resolved from the current request.\"}");
+                    // Mesmo formato canônico da API — ver ProblemResponse.
+                    await ProblemResponse.WriteAsync(
+                        context,
+                        StatusCodes.Status401Unauthorized,
+                        "tenant_not_resolved",
+                        "Tenant context could not be resolved from the current request.");
                     return;
                 }
             }

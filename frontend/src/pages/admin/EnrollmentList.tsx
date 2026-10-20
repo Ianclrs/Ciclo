@@ -11,11 +11,17 @@ import { Input } from '../../components/Input';
 import { Select } from '../../components/Select';
 import { Table } from '../../components/Table';
 import * as api from '../../api/enrollments';
+import {
+  ENROLLMENT_STATUSES,
+  actionLabel,
+  actionRequiresReason,
+  actionsFor,
+  statusVariant,
+  type EnrollmentAction,
+} from '../../domain/enrollmentStatus';
 import type { Enrollment, EnrollmentPeriod } from '../../types';
 
 const PAGE_SIZE = 10;
-
-const STATUS_OPTIONS = ['Pendente', 'Aprovado', 'Rejeitado'];
 
 interface Query {
   page: number;
@@ -24,13 +30,6 @@ interface Query {
 }
 
 const INITIAL_QUERY: Query = { page: 1, periodId: '', status: '' };
-
-function statusVariant(status: string) {
-  if (status === 'Aprovado') return 'success';
-  if (status === 'Pendente') return 'warning';
-  if (status === 'Rejeitado') return 'danger';
-  return 'info';
-}
 
 export default function EnrollmentList() {
   const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
@@ -99,13 +98,37 @@ export default function EnrollmentList() {
     setReloadKey((key) => key + 1);
   };
 
-  const handleApprove = async (id: string) => {
+  const ACTION_DONE: Record<EnrollmentAction, string> = {
+    submit: 'Matrícula enviada.',
+    approve: 'Matrícula aprovada.',
+    cancel: 'Matrícula cancelada.',
+    reject: 'Matrícula rejeitada.',
+  };
+
+  const ACTION_FAILED: Record<EnrollmentAction, string> = {
+    submit: 'Não foi possível enviar a matrícula.',
+    approve: 'Não foi possível aprovar a matrícula.',
+    cancel: 'Não foi possível cancelar a matrícula.',
+    reject: 'Não foi possível rejeitar a matrícula.',
+  };
+
+  const runAction = async (id: string, action: EnrollmentAction) => {
+    // Rejeitar exige motivo (10 a 500 caracteres): abre o modal em vez de agir direto.
+    if (actionRequiresReason(action)) {
+      setMotivo('');
+      setRejectId(id);
+      return;
+    }
+
     try {
-      await api.approveEnrollment(id);
-      toast.success('Matrícula aprovada.');
+      if (action === 'submit') await api.submitEnrollment(id);
+      else if (action === 'approve') await api.approveEnrollment(id);
+      else await api.cancelEnrollment(id);
+
+      toast.success(ACTION_DONE[action]);
       refresh();
     } catch {
-      toast.error('Não foi possível aprovar a matrícula.');
+      toast.error(ACTION_FAILED[action]);
     }
   };
 
@@ -156,25 +179,30 @@ export default function EnrollmentList() {
     {
       header: '',
       className: 'text-right',
-      accessor: (enrollment: Enrollment) =>
-        enrollment.status === 'Pendente' ? (
+      // As ações vêm do estado da matrícula, não de um `if` na tela: quem sabe quais transições
+      // são válidas é a máquina de estados (espelhada em domain/enrollmentStatus.ts).
+      accessor: (enrollment: Enrollment) => {
+        const actions = actionsFor(enrollment.status);
+        if (actions.length === 0) return null;
+
+        return (
           <div className="flex justify-end gap-1">
-            <Button variant="ghost" size="sm" onClick={() => handleApprove(enrollment.id)}>
-              Aprovar
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-red-600 hover:bg-red-50"
-              onClick={() => {
-                setMotivo('');
-                setRejectId(enrollment.id);
-              }}
-            >
-              Rejeitar
-            </Button>
+            {actions.map((action) => (
+              <Button
+                key={action}
+                variant="ghost"
+                size="sm"
+                className={
+                  action === 'reject' || action === 'cancel' ? 'text-red-600 hover:bg-red-50' : ''
+                }
+                onClick={() => runAction(enrollment.id, action)}
+              >
+                {actionLabel(action)}
+              </Button>
+            ))}
           </div>
-        ) : null,
+        );
+      },
     },
   ];
 
@@ -210,7 +238,7 @@ export default function EnrollmentList() {
             onChange={(event) => applyQuery({ ...query, page: 1, status: event.target.value })}
           >
             <option value="">Todos os status</option>
-            {STATUS_OPTIONS.map((status) => (
+            {ENROLLMENT_STATUSES.map((status) => (
               <option key={status} value={status}>
                 {status}
               </option>
