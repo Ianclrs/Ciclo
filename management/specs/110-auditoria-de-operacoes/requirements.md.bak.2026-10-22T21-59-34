@@ -1,0 +1,340 @@
+---
+name: auditoria-de-operacoes
+status: created
+determinism: D
+references: [V11]
+---
+
+# Spec 110: Auditoria de Operações — Requirements
+
+## Determinism Classification
+
+**Class:** D — Deterministic
+
+A trilha de auditoria é um registro de fatos: para cada operação sensível existe uma entrada com ator, tenant, ação, alvo, valores antes/depois, origem e correlação. O resultado esperado é verificável de forma determinística a partir da entrada (chamada de serviço ou requisição HTTP) e do estado observável do projeto (linhas persistidas, resposta da API, arquivo CSV gerado). Não há conteúdo produzido por modelo generativo, nem schema probabilístico, nem alteração de fluxo do pipeline SDD. As únicas grandezas variáveis são o instante do evento e o identificador de correlação — ambos injetados de forma controlada nos testes (o purgador recebe `utcNow` explícito; a correlação é resolvida por função pura). Por isso a classe é D e a verificação é por asserção direta sobre o estado persistido e sobre a resposta HTTP.
+
+## Value Delivery
+
+V11 — Auditoria de Operações: "Trilha de auditoria imutável por tenant para toda operação sensível: aprovar, rejeitar ou cancelar matrícula; verificar documento; revogar sessão; alterar papel de usuário. Cada evento registra ator, tenant, ação, alvo, valores antes/depois, origem (IP e user-agent) e identificador de correlação. A consulta é restrita a Admin, com retenção configurável e exportação. É a base para reverter decisões com responsabilidade e para responder a auditorias escolares."
+
+Entrega desta spec: entidade `AuditEvent` tenant-scoped, escrita transversal nas operações sensíveis existentes, imutabilidade em duas camadas, consulta e exportação restritas a Admin, política de retenção configurável, migration e testes. A instrumentação da alteração de papel de usuário pertence à Spec 120 (que cria essa operação); esta spec entrega a porta de escrita e o vocabulário que a Spec 120 reutiliza.
+
+## Functional Requirements
+
+### FR-001: Entidade de auditoria e modelo de persistência
+
+**What:** O sistema MUST persistir cada evento de auditoria em uma entidade `AuditEvent`, com os campos: `Id` (`Guid`, chave), `TenantId` (`Guid`, obrigatório), `OccurredAt` (`DateTime`, UTC, default `now()` no banco), `ActorUserId` (`Guid?`), `ActorRole` (`string?`, máximo 32), `Action` (`string`, máximo 64, obrigatório), `TargetType` (`string`, máximo 32, obrigatório), `TargetId` (`Guid`, obrigatório), `BeforeJson` (`string?`, coluna `jsonb`), `AfterJson` (`string?`, coluna `jsonb`), `IpAddress` (`string?`, máximo 64), `UserAgent` (`string?`, máximo 512), `CorrelationId` (`string?`, máximo 64). A entidade MUST implementar `ITenantScoped` e MUST NOT declarar chave estrangeira para `User` (o evento sobrevive à remoção do usuário). O `AppDbContext` MUST expor `DbSet<AuditEvent> AuditEvents` e configurar três índices: `(TenantId, OccurredAt)`, `(TenantId, Action, OccurredAt)` e `(TenantId, TargetType, TargetId)`.
+**Why:** É o substrato de V11. Sem os campos de origem e de valores antes/depois, o registro não responde "quem fez o quê, quando, de onde e o que mudou" — que é exatamente o que uma auditoria escolar exige. A ausência de FK para `User` preserva a prova mesmo após desligamento de um funcionário.
+**Acceptance Criteria:**
+- [ ] A entidade de auditoria existe no domínio. [verify: file-exists `src/Ciclo.Core/Entities/AuditEvent.cs`]
+- [ ] A entidade é tenant-scoped. [verify: grep-present `ITenantScoped`]
+- [ ] O contexto de dados expõe o conjunto de auditoria. [verify: grep-present `AuditEvents`]
+- [ ] Os campos JSON são persistidos como `jsonb`. [verify: grep-present `jsonb`]
+- [ ] A configuração do modelo declara o índice por alvo. [verify: grep-present `e.TargetType`]
+**Failure modes:**
+- `Action` ou `TargetType` vazios: a escrita é rejeitada antes da persistência (validação no `AuditTrail`), a operação de negócio falha e nada é gravado.
+- `TenantId` não resolvido: `TenantNotResolvedException` é lançada; nenhuma linha é gravada.
+- `OccurredAt` informado com `Kind` diferente de UTC: o valor é normalizado para UTC antes da persistência.
+
+### FR-002: Imutabilidade append-only em duas camadas
+
+**What:** Eventos de auditoria MUST ser imutáveis. O sistema MUST impedir alteração e remoção por três meios complementares: (a) não existir endpoint de escrita, alteração ou remoção de eventos; (b) o `AppDbContext` MUST lançar `AuditImmutabilityException` quando houver entrada de `AuditEvent` em estado `Modified`, e quando houver entrada em estado `Deleted` cujo `OccurredAt` seja posterior a `DateTime.UtcNow - AuditSettings.MinimumRetentionDays`; (c) a migration MUST criar, em PostgreSQL, a função `audit_events_append_only_guard` e os gatilhos `audit_events_no_update` e `audit_events_no_delete` sobre a tabela `"AuditEvents"`, bloqueando `UPDATE` de qualquer linha e `DELETE` de linhas dentro do piso de imutabilidade de 90 dias.
+**Why:** "Trilha de auditoria imutável" é o núcleo de V11. Sem a camada de aplicação, um erro de código apaga evidência; sem a camada de banco, qualquer acesso SQL direto apaga evidência. As duas camadas usam a MESMA regra de piso para não divergirem: eventos recentes não podem ser removidos nem pelo expurgo de retenção, porque a retenção mínima configurável é igual ao piso.
+**Acceptance Criteria:**
+- [ ] A exceção de imutabilidade existe no domínio. [verify: file-exists `src/Ciclo.Core/Exceptions/AuditImmutabilityException.cs`]
+- [ ] O contexto de dados aplica a guarda de imutabilidade. [verify: grep-present `AuditImmutabilityException`]
+- [ ] A migration contém a função de guarda append-only. [verify: grep-present `audit_events_append_only_guard`]
+- [ ] A migration contém o gatilho de bloqueio de UPDATE. [verify: grep-present `audit_events_no_update`]
+- [ ] A migration contém o gatilho de bloqueio de DELETE. [verify: grep-present `audit_events_no_delete`]
+- [ ] O controlador de auditoria não expõe operação de remoção. [verify: grep-absent `HttpDelete` `src/Ciclo.Api/Controllers/AuditController.cs`]
+- [ ] O controlador de auditoria não expõe operação de alteração. [verify: grep-absent `HttpPut` `src/Ciclo.Api/Controllers/AuditController.cs`]
+**Failure modes:**
+- Alteração de evento já persistido: `AuditImmutabilityException` com código `audit_events_are_append_only`; a transação não é confirmada.
+- Remoção de evento dentro do piso: `AuditImmutabilityException` com código `audit_events_within_the_retention_floor_cannot_be_deleted`.
+- `UPDATE`/`DELETE` via SQL direto em evento recente: PostgreSQL levanta exceção e a transação é revertida.
+- Remoção de evento mais antigo que o piso (expurgo de retenção): permitida nas duas camadas.
+
+### FR-003: Porta de escrita transacional e contexto do ator
+
+**What:** O sistema MUST expor a porta `IAuditTrail` com o método `void Record(AuditEntry entry)`, onde `AuditEntry` é um registro imutável com `Action`, `TargetType`, `TargetId`, `Before` e `After` (os dois últimos como `object?`). A implementação MUST: validar `Action` e `TargetType` não vazios; exigir `ITenantContext.IsResolved`; serializar `Before` e `After` em JSON camelCase com omissão de nulos; rejeitar payload serializado com mais de 8192 caracteres; e adicionar a entidade ao `AppDbContext` corrente SEM chamar `SaveChangesAsync`, de modo que o evento seja confirmado na mesma transação da operação de negócio. O ator MUST ser lido da porta `IAuditActor` (`UserId`, `Role`, `IpAddress`, `UserAgent`, `CorrelationId`).
+**Why:** A atomicidade é a diferença entre "a matrícula foi aprovada e existe prova" e "a matrícula foi aprovada e a prova se perdeu". Usar a mesma unidade de trabalho garante que uma falha de auditoria impeça a operação — fail-closed, coerente com as regras de integridade do projeto.
+**Acceptance Criteria:**
+- [ ] A porta de escrita existe no domínio. [verify: file-exists `src/Ciclo.Core/Interfaces/IAuditTrail.cs`]
+- [ ] O contrato do ator existe no domínio. [verify: file-exists `src/Ciclo.Core/Interfaces/IAuditActor.cs`]
+- [ ] O registro de entrada de auditoria existe no domínio. [verify: file-exists `src/Ciclo.Core/Auditing/AuditEntry.cs`]
+- [ ] A implementação adiciona o evento sem confirmar a transação. [verify: file-exists `src/Ciclo.Infrastructure/Auditing/AuditTrail.cs`]
+- [ ] A implementação exige tenant resolvido. [verify: grep-present `TenantNotResolvedException`]
+- [ ] O limite de payload é uma constante nomeada. [verify: grep-present `MaxPayloadCharacters`]
+**Failure modes:**
+- `Action` ou `TargetType` vazios: `ArgumentException`; a operação de negócio falha.
+- Tenant não resolvido: `TenantNotResolvedException`; nada é persistido.
+- Payload acima de 8192 caracteres: `InvalidOperationException` com o tamanho observado; nada é persistido.
+- Serialização de objeto com ciclo de referência: a exceção do serializador propaga e a operação falha (não há captura silenciosa).
+
+### FR-004: Captura de origem e correlação na borda HTTP
+
+**What:** O sistema MUST capturar, por requisição, o ator e a origem em um serviço scoped (`AuditActor`) preenchido por `AuditContextMiddleware`, posicionado depois de `UseAuthentication` e de `TenantMiddleware` e antes de `UseAuthorization`. O middleware MUST preencher: `UserId` a partir de `ClaimTypes.NameIdentifier` (somente se `Guid.TryParse`); `Role` a partir do claim `ClaimTypes.Role` ou do claim `role`; `IpAddress` a partir de `HttpContext.Connection.RemoteIpAddress` (NUNCA de cabeçalhos `X-Forwarded-For` ou equivalentes); `UserAgent` a partir do cabeçalho `User-Agent`, truncado em 512 caracteres; e `CorrelationId` resolvido por `AuditCorrelation.Resolve`, que aceita o cabeçalho `X-Correlation-Id` somente quando ele casa com `^[A-Za-z0-9._:-]{8,64}$` e, caso contrário, usa `HttpContext.TraceIdentifier` truncado em 64 caracteres. O middleware MUST ecoar o identificador resolvido no cabeçalho de resposta `X-Correlation-Id`.
+**Why:** IP e user-agent são a origem que a auditoria escolar precisa; correlação é o que liga o relato do usuário ao registro. O IP vem do socket de propósito: confiar em cabeçalho de proxy permite forjar a origem do evento, o que anula o valor probatório. A validação do cabeçalho de correlação impede que texto arbitrário do cliente entre no registro.
+**Acceptance Criteria:**
+- [ ] O resolvedor de correlação existe no domínio. [verify: file-exists `src/Ciclo.Core/Auditing/AuditCorrelation.cs`]
+- [ ] O serviço de ator existe na infraestrutura. [verify: file-exists `src/Ciclo.Infrastructure/Auditing/AuditActor.cs`]
+- [ ] O middleware de captura existe na API. [verify: file-exists `src/Ciclo.Api/Middleware/AuditContextMiddleware.cs`]
+- [ ] O middleware é registrado no pipeline. [verify: grep-present `AuditContextMiddleware`]
+- [ ] O IP é lido da conexão, não de cabeçalho encaminhado. [verify: grep-absent `X-Forwarded-For` `src/Ciclo.Api/Middleware/AuditContextMiddleware.cs`]
+- [ ] O identificador de correlação é ecoado na resposta. [verify: grep-present `X-Correlation-Id`]
+**Failure modes:**
+- Requisição anônima: `UserId` e `Role` ficam nulos; a captura não falha.
+- Claim de usuário não parseável como `Guid`: `UserId` fica nulo (não lança).
+- Cabeçalho `X-Correlation-Id` inválido, vazio ou longo demais: usa-se `TraceIdentifier`.
+- `User-Agent` ausente: `UserAgent` fica nulo; acima de 512 caracteres é truncado.
+- Ausência de IP remoto (transporte sem socket): `IpAddress` fica nulo.
+
+### FR-005: Auditoria de decisões de matrícula
+
+**What:** `EnrollmentService` MUST registrar exatamente um evento por decisão efetivada: `enrollment.approved` em `ApproveAsync`, `enrollment.rejected` em `RejectAsync` e `enrollment.cancelled` em `CancelAsync`. O alvo MUST ser `("Enrollment", enrollmentId)`. `Before` MUST conter o status anterior; `After` MUST conter o status novo e, quando aplicável, `MotivoRejeicao` (rejeição) e `ApprovedAt` (aprovação). O evento MUST ser registrado antes do `SaveChangesAsync` existente, na mesma transação. Operações que falham na validação (transição inválida, documentação pendente, motivo inválido, matrícula inexistente) MUST NOT registrar evento.
+**Why:** Aprovar, rejeitar e cancelar matrícula são as decisões de maior consequência da escola — definem vaga, turma e situação do aluno. É a base para reverter decisões com responsabilidade (V11).
+**Acceptance Criteria:**
+- [ ] A aprovação registra o evento correspondente. [verify: project-validation]
+- [ ] A rejeição registra o motivo no evento. [verify: project-validation]
+- [ ] O cancelamento registra o evento correspondente. [verify: project-validation]
+- [ ] O serviço de matrícula recebe a porta de auditoria por injeção. [verify: grep-present `IAuditTrail`]
+- [ ] A transição de status é registrada com valor anterior e novo. [verify: project-validation]
+**Failure modes:**
+- Falha na escrita de auditoria: a exceção propaga, o `SaveChangesAsync` não ocorre e a matrícula permanece no status anterior.
+- Transição inválida ou documentação pendente: nenhum evento é registrado e o código de erro existente é preservado.
+- `MotivoRejeicao` ausente: a validação existente falha antes de qualquer escrita.
+
+### FR-006: Auditoria de verificação documental
+
+**What:** `DocumentService.VerifyAsync` MUST registrar exatamente um evento por verificação efetivada: `document.verified` quando `request.Approved` é verdadeiro e `document.rejected` caso contrário. O alvo MUST ser `("Document", documentId)`. `Before` MUST conter `Status` e `DataValidade` anteriores; `After` MUST conter `Status`, `DataValidade` e `MotivoRejeicao` resultantes. O evento MUST ser registrado antes do `SaveChangesAsync` existente, na mesma transação que a notificação de rejeição já existente.
+**Why:** Verificar documento é o ato que libera ou trava matrícula; a trilha responde por que um documento foi recusado e quem o aprovou.
+**Acceptance Criteria:**
+- [ ] A aprovação documental registra o evento correspondente. [verify: project-validation]
+- [ ] A rejeição documental registra o motivo no evento. [verify: project-validation]
+- [ ] O serviço de documentos recebe a porta de auditoria por injeção. [verify: grep-present `IAuditTrail`]
+- [ ] O evento documental carrega validade anterior e resultante. [verify: project-validation]
+**Failure modes:**
+- Documento inexistente: `document_not_found` (404) sem evento.
+- Motivo de rejeição inválido: `motivo_required_10_to_500_chars` (400) sem evento.
+- Falha na auditoria: nenhuma alteração de status é confirmada.
+
+### FR-007: Auditoria de revogação de sessão
+
+**What:** `AuthService.RevokeTokenAsync` MUST registrar um evento `session.revoked` por sessão efetivamente revogada. O alvo MUST ser `("Session", refreshTokenId)`. `Before` MUST conter `RevokedAt` anterior (nulo) e `After` MUST conter o `RevokedAt` gravado e, no ramo de reuso detectado, `Reason = "reuse_detected"`. Quando o token não existe, nenhum evento é registrado. O evento MUST ser registrado antes do `SaveChangesAsync` correspondente.
+**Why:** Revogar sessão é a resposta a suspeita de acesso indevido; sem registro, não se sabe quem encerrou qual sessão nem quando o reuso foi detectado.
+**Acceptance Criteria:**
+- [ ] A revogação simples registra o evento correspondente. [verify: project-validation]
+- [ ] O reuso detectado registra o motivo no evento. [verify: project-validation]
+- [ ] O serviço de autenticação recebe a porta de auditoria por injeção. [verify: grep-present `IAuditTrail`]
+**Failure modes:**
+- Token inexistente: retorno silencioso atual preservado, sem evento.
+- Falha na auditoria: a revogação não é confirmada (fail-closed).
+
+### FR-008: Consulta paginada e filtrada restrita a Admin
+
+**What:** O sistema MUST expor `GET /api/audit-events` no `AuditController`, com `[Authorize(Roles = "Admin")]` no nível da classe e `[Route("api/audit-events")]`. Parâmetros de consulta: `from` (`DateTime?`, default `to - 30 dias`), `to` (`DateTime?`, default agora UTC), `action` (`string?`), `actorUserId` (`Guid?`), `targetType` (`string?`), `targetId` (`Guid?`), `page` (default 1) e `pageSize` (default 50). O retorno MUST ser `PagedResponse<AuditEventDto>` ordenado por `OccurredAt` decrescente e, como desempate, por `Id` decrescente. `page` menor que 1 MUST ser normalizado para 1; `pageSize` menor que 1 para 50 e maior que 200 para 200. Intervalos inválidos MUST retornar 400 com código `invalid_date_range` (quando `to < from`) ou `date_range_too_wide` (quando o intervalo exceder 400 dias). Datas sem `Kind` MUST ser interpretadas como UTC.
+**Why:** A consulta é o produto visível da trilha: é como a escola responde a uma auditoria. A ordenação estável e a paginação limitada evitam varredura sem limite e resultado não reprodutível.
+**Acceptance Criteria:**
+- [ ] O controlador de auditoria existe com rota própria. [verify: file-exists `src/Ciclo.Api/Controllers/AuditController.cs`]
+- [ ] A rota segue a convenção da API. [verify: grep-present `api/audit-events`]
+- [ ] O acesso é restrito a Admin. [verify: grep-present `Authorize(Roles`]
+- [ ] O serviço de consulta existe na infraestrutura. [verify: file-exists `src/Ciclo.Infrastructure/Services/AuditQueryService.cs`]
+- [ ] O contrato de paginação existente é reutilizado. [verify: grep-present `PagedResponse`]
+- [ ] Os filtros e a ordenação são verificados por teste. [verify: project-validation]
+**Failure modes:**
+- `to < from`: 400 `invalid_date_range`.
+- Intervalo maior que 400 dias: 400 `date_range_too_wide`.
+- Usuário Staff ou Parent: 403 pelo pipeline de autorização, sem execução da consulta.
+- `pageSize` acima de 200: normalizado para 200, sem erro.
+
+### FR-009: Exportação CSV restrita a Admin
+
+**What:** O sistema MUST expor `GET /api/audit-events/export` no `AuditController`, restrito a Admin, aceitando os mesmos filtros de FR-008. A resposta MUST ser `text/csv; charset=utf-8` com BOM UTF-8, cabeçalho fixo `OccurredAt,ActorUserId,ActorRole,Action,TargetType,TargetId,CorrelationId,IpAddress,UserAgent,BeforeJson,AfterJson` e linhas ordenadas por `OccurredAt` crescente e `Id` crescente. `OccurredAt` MUST ser formatado como ISO 8601 UTC com precisão de milissegundos. Campos que contenham vírgula, aspas ou quebra de linha MUST ser envolvidos em aspas com aspas internas duplicadas (RFC 4180). Quando o filtro produzir mais de 10000 linhas, a resposta MUST ser 400 com código `export_exceeds_limit` — nunca truncamento silencioso.
+**Why:** Exportar é como a escola entrega evidência a uma auditoria externa. Truncar silenciosamente produziria um documento falso por omissão.
+**Acceptance Criteria:**
+- [ ] A exportação é exposta pelo controlador de auditoria. [verify: grep-present `api/audit-events/export`]
+- [ ] O escritor de CSV existe como componente isolado. [verify: file-exists `src/Ciclo.Infrastructure/Auditing/AuditCsvWriter.cs`]
+- [ ] O limite de exportação é uma constante nomeada. [verify: grep-present `MaxExportRows`]
+- [ ] O escape RFC 4180 é verificado por teste. [verify: project-validation]
+- [ ] A ordenação cronológica crescente é verificada por teste. [verify: project-validation]
+**Failure modes:**
+- Mais de 10000 linhas: 400 `export_exceeds_limit`.
+- Campo com aspas, vírgula ou nova linha: escapado conforme RFC 4180.
+- Nenhum resultado: resposta com apenas o cabeçalho e status 200.
+- Usuário não Admin: 403.
+
+### FR-010: Retenção configurável com piso de imutabilidade e expurgo
+
+**What:** O sistema MUST ler a configuração `Audit:RetentionDays` por `AuditSettings.Read(IConfiguration)`: ausente resulta em 365; valor não inteiro, menor que 90 ou maior que 3650 MUST lançar `InvalidOperationException` na inicialização (fail-closed). O sistema MUST expor `AuditRetentionPurger.PurgeAsync(DateTime utcNow, CancellationToken)` que remove eventos com `OccurredAt < utcNow - RetentionDays`, em lotes de 5000, ignorando o filtro global de tenant (operação transversal), repetindo até que o lote venha incompleto, e retornando o total removido. O sistema MUST hospedar `AuditRetentionService` como `BackgroundService` que executa o expurgo a cada 24 horas, criando um escopo por execução; falhas são registradas como erro e não derrubam o host; cancelamento do host propaga. O serviço hospedado MUST NOT ser registrado no ambiente `Testing`.
+**Why:** Retenção configurável é requisito explícito de V11 e também obrigação de minimização de dados. O piso de 90 dias é o que torna a imutabilidade uma garantia real: sem ele, configurar retenção para 1 dia apagaria a prova que a auditoria deveria preservar.
+**Acceptance Criteria:**
+- [ ] A configuração de retenção existe e valida o piso. [verify: file-exists `src/Ciclo.Infrastructure/Auditing/AuditSettings.cs`]
+- [ ] O piso de imutabilidade é uma constante nomeada. [verify: grep-present `MinimumRetentionDays`]
+- [ ] O purgador recebe o instante como parâmetro explícito. [verify: grep-present `PurgeAsync`]
+- [ ] O serviço hospedado de expurgo existe. [verify: file-exists `src/Ciclo.Infrastructure/Auditing/AuditRetentionService.cs`]
+- [ ] O expurgo remove apenas eventos fora da retenção. [verify: project-validation]
+- [ ] O expurgo ignora o filtro de tenant por ser operação transversal. [verify: grep-present `IgnoreQueryFilters`]
+- [ ] A configuração inválida impede a inicialização. [verify: project-validation]
+**Failure modes:**
+- `Audit:RetentionDays` ausente: assume 365.
+- Valor 30: inicialização falha com mensagem que informa o piso de 90.
+- Valor não numérico: inicialização falha.
+- Nenhum evento elegível: `PurgeAsync` retorna 0 sem erro.
+- Falha de banco durante o expurgo: erro registrado; o host continua e a próxima execução tenta novamente.
+
+### FR-011: Isolamento por tenant em escrita e leitura
+
+**What:** A escrita MUST gravar `TenantId` do contexto resolvido. A leitura MUST aplicar o filtro global de tenant já existente para entidades `ITenantScoped`, de modo que um Admin do tenant A nunca receba evento do tenant B. O expurgo de retenção é a única operação autorizada a atravessar tenants, e o faz de forma explícita com `IgnoreQueryFilters()`.
+**Why:** A trilha contém decisões e IPs de uma escola; vazamento entre tenants é violação de isolamento (multi-tenancy é invariante do projeto, ADR-002).
+**Acceptance Criteria:**
+- [ ] O evento é gravado com o tenant do contexto. [verify: project-validation]
+- [ ] A consulta não retorna eventos de outro tenant. [verify: project-validation]
+- [ ] O atravessamento de tenant existe apenas no expurgo. [verify: grep-present `IgnoreQueryFilters`]
+**Failure modes:**
+- Tenant não resolvido na escrita: `TenantNotResolvedException`; nada é gravado.
+- Consulta com tenant não resolvido: `TenantNotResolvedException` (fail-closed), nunca resultado vazio silencioso.
+
+### FR-012: Migração e consistência do modelo
+
+**What:** O sistema MUST conter a migration `AddAuditEvents`, gerada a partir do modelo (não escrita à mão), criando a tabela `"AuditEvents"`, seus índices e a função/gatilhos de FR-002. O snapshot do modelo MUST ser atualizado de forma que `HasPendingModelChanges()` retorne `false`. A migration MUST ser aplicável em PostgreSQL e seu `Down` MUST remover gatilhos, função e tabela.
+**Why:** O projeto passou a ter um dono único de schema (Spec 110 depende do baseline da Spec A1). Migration escrita à mão sem snapshot foi a causa de divergência já registrada; repetir o erro aqui reintroduziria a classe de falha.
+**Acceptance Criteria:**
+- [ ] A migration de auditoria existe. [verify: grep-present `AddAuditEvents`]
+- [ ] A migration declara os gatilhos de imutabilidade. [verify: grep-present `audit_events_append_only_guard`]
+- [ ] O snapshot do modelo está atualizado. [verify: file-exists `src/Ciclo.Infrastructure/Migrations/AppDbContextModelSnapshot.cs`]
+- [ ] O modelo não diverge do histórico de migrations. [verify: project-validation]
+**Failure modes:**
+- Modelo alterado sem migration: o teste de histórico falha com mensagem acionável.
+- Migration aplicada sobre banco com a tabela já existente: falha explícita de DDL; não há `IF NOT EXISTS` que mascare divergência.
+
+### FR-013: Registro da decisão de retenção e da base legal
+
+**What:** A decisão de retenção e sua base legal MUST ser registrada em `management/adr.md` como ADR-004, contendo: prazo padrão de 365 dias; faixa permitida de 90 a 3650 dias; piso de imutabilidade de 90 dias; finalidade (defesa da escola em auditorias e responsabilização por decisões administrativas); e base legal (LGPD, Art. 7º, incisos II e IX, e Art. 16, com minimização e prazo determinado). O `design.md` desta spec MUST referenciar ADR-004 como autoridade da decisão.
+**Why:** V11 exige que a decisão seja registrada. Sem ela, o prazo seria um número arbitrário no código e o próximo agente não saberia por que ele existe nem qual limite não pode ser violado.
+**Acceptance Criteria:**
+- [ ] A decisão está registrada no repositório de ADRs. [verify: grep-present `ADR-004`]
+- [ ] O design referencia a decisão. [verify: grep-present `ADR-004`]
+- [ ] O prazo padrão está declarado como constante. [verify: grep-present `DefaultRetentionDays`]
+**Failure modes:**
+- ADR ausente: a decisão fica sem autoridade documental e o valor de retenção fica sem justificativa rastreável.
+
+## Non-Functional Requirements
+
+### NFR-001: Desempenho de consulta e de escrita
+
+**What:** A consulta MUST usar os índices declarados e `AsNoTracking()`; MUST NOT carregar entidades relacionadas (o DTO é projetado diretamente). A escrita MUST adicionar uma única entidade à unidade de trabalho, sem consultas adicionais. Exportação MUST ser limitada a 10000 linhas.
+**Acceptance Criteria:**
+- [ ] A consulta é somente leitura e sem rastreamento. [verify: grep-present `AsNoTracking`]
+- [ ] A exportação tem limite explícito. [verify: grep-present `MaxExportRows`]
+- [ ] O comportamento de filtro e paginação é medido por teste. [verify: project-validation]
+
+### NFR-002: Segurança e privacidade do evento
+
+**What:** O evento MUST NOT conter segredos, tokens, senhas ou hash de senha em `Before`/`After`. Os snapshots MUST ser construídos explicitamente pelos serviços, nunca por serialização de entidade com navegações. O IP MUST vir do socket. O `User-Agent` e a correlação MUST ser truncados e validados antes da persistência. O endpoint MUST ser Admin-only e tenant-scoped.
+**Acceptance Criteria:**
+- [ ] Nenhuma credencial é lida pelo componente de auditoria. [verify: grep-absent `Password` `src/Ciclo.Infrastructure/Auditing/`]
+- [ ] Nenhum cabeçalho de proxy é usado como origem. [verify: grep-absent `X-Forwarded-For` `src/Ciclo.Api/Middleware/AuditContextMiddleware.cs`]
+- [ ] A consulta e a exportação são restritas a Admin. [verify: grep-present `Authorize(Roles`]
+- [ ] A correlação é validada antes do uso. [verify: grep-present `AuditCorrelation`]
+
+### NFR-003: Atomicidade e fail-closed
+
+**What:** Uma falha ao registrar auditoria MUST impedir a confirmação da operação de negócio. Nenhuma exceção de auditoria pode ser capturada e descartada. O evento e a mudança de estado MUST ser confirmados pelo mesmo `SaveChangesAsync`.
+**Acceptance Criteria:**
+- [ ] A operação falha quando a auditoria falha. [verify: project-validation]
+- [ ] A porta de escrita não captura exceções. [verify: grep-absent `catch` `src/Ciclo.Infrastructure/Auditing/AuditTrail.cs`]
+
+### NFR-004: Vocabulário único e manutenibilidade
+
+**What:** Os nomes de ação e de tipo de alvo MUST existir em um único arquivo de constantes (`AuditActions`, `AuditTargetTypes`); nenhum literal de ação pode aparecer nos serviços.
+**Acceptance Criteria:**
+- [ ] O vocabulário de ações existe em um único arquivo. [verify: file-exists `src/Ciclo.Core/Auditing/AuditActions.cs`]
+- [ ] O vocabulário de tipos de alvo existe em um único arquivo. [verify: file-exists `src/Ciclo.Core/Auditing/AuditTargetTypes.cs`]
+- [ ] Nenhum literal de ação é usado nos serviços. [verify: grep-absent `enrollment.approved` `src/Ciclo.Infrastructure/Services/`]
+
+### NFR-005: Determinismo e testabilidade
+
+**What:** O purgador MUST receber o instante por parâmetro. A resolução de correlação MUST ser função pura. Os testes MUST usar contexto derivado com tenant fixo e banco InMemory de nome único, conforme a armadilha de cache de modelo já registrada no projeto.
+**Acceptance Criteria:**
+- [ ] O purgador recebe o instante explicitamente. [verify: grep-present `PurgeAsync`]
+- [ ] A resolução de correlação é uma função pura testável. [verify: grep-present `AuditCorrelation.Resolve`]
+- [ ] A suíte completa passa com os novos testes. [verify: project-validation]
+
+### NFR-006: Configuração fail-closed
+
+**What:** Configuração de retenção inválida MUST impedir a inicialização, com mensagem que informe a faixa permitida. Ausência usa o padrão documentado. O serviço hospedado MUST NOT ser registrado no ambiente `Testing`.
+**Acceptance Criteria:**
+- [ ] A leitura da configuração valida a faixa. [verify: grep-present `AuditSettings.Read`]
+- [ ] O registro do serviço hospedado exclui o ambiente de teste. [verify: grep-present `IsEnvironment`]
+- [ ] A falha de configuração é coberta por teste. [verify: project-validation]
+
+## Constraints
+
+- O filtro global de tenant existente MUST ser preservado para todas as entidades `ITenantScoped`. [verify: grep-present `ITenantScoped`]
+- O formato canônico de erro MUST continuar sendo o ProblemDetails escrito por `ProblemResponse`. [verify: grep-present `ProblemResponse`]
+- O contrato de paginação existente MUST ser reutilizado sem alteração. [verify: grep-present `PagedResponse`]
+- Toda rota nova MUST declarar o prefixo `api/`. [verify: grep-present `api/audit-events`]
+- O `AppDbContext` MUST NOT ganhar interceptores de EF Core; a guarda de imutabilidade vive nas substituições existentes de `SaveChangesAsync`. [verify: grep-absent `IInterceptor` `src/Ciclo.Infrastructure/`]
+- A porta `IAuditTrail` MUST NOT expor operação de leitura ou de remoção. [verify: grep-absent `Delete` `src/Ciclo.Core/Interfaces/IAuditTrail.cs`]
+- O piso de imutabilidade MUST ser 90 dias nas duas camadas, sem valores divergentes. [verify: grep-present `MinimumRetentionDays`]
+- A entidade de auditoria MUST NOT declarar navegação para usuário. [verify: grep-absent `User Actor` `src/Ciclo.Core/Entities/AuditEvent.cs`]
+- Full project validation passes [verify: project-validation]
+
+## Edge Cases & Error States
+
+- **Requisição anônima que dispara operação sensível:** não ocorre em produção porque as rotas exigem autenticação; se ocorrer, o evento é gravado com `ActorUserId` nulo e a operação segue (o ator desconhecido é um fato registrado, não um erro).
+- **Tenant não resolvido:** `TenantNotResolvedException`; nada é persistido.
+- **Falha do serializador de snapshot:** exceção propaga; operação não é confirmada.
+- **Snapshot acima de 8192 caracteres:** erro explícito; operação não é confirmada.
+- **`User-Agent` com 5000 caracteres:** truncado em 512.
+- **`X-Correlation-Id` com caracteres inválidos:** descartado; usa-se `TraceIdentifier`.
+- **Duas operações no mesmo milissegundo:** ordenação por `Id` como desempate garante resultado estável.
+- **Evento exatamente no limite do piso (90 dias):** considerado dentro do piso; remoção bloqueada.
+- **Expurgo com mais de 5000 eventos elegíveis:** processa em lotes até esgotar.
+- **Expurgo concorrente com consulta:** consulta lê o estado confirmado; não há bloqueio de leitura.
+- **Exportação sem resultados:** 200 com apenas o cabeçalho.
+- **Exportação acima de 10000 linhas:** 400 `export_exceeds_limit`; nenhum arquivo parcial é enviado.
+- **Intervalo de datas invertido:** 400 `invalid_date_range`.
+- **Intervalo maior que 400 dias:** 400 `date_range_too_wide`.
+- **`pageSize` zero ou negativo:** normalizado para 50.
+- **Admin de outro tenant:** resultado vazio (filtro global), sem erro.
+- **Remoção de evento antigo por código de aplicação:** permitida apenas se estiver fora do piso; caso contrário, `AuditImmutabilityException`.
+- **Atualização de qualquer evento:** sempre bloqueada, em qualquer idade.
+
+## Anti-Scope
+
+- Nenhuma tela de auditoria no frontend é criada; a entrega é exclusivamente de API. [verify: file-absent `frontend/src/pages/admin/AuditLog.tsx`]
+- Nenhum endpoint de alteração de evento é criado. [verify: grep-absent `HttpPut` `src/Ciclo.Api/Controllers/AuditController.cs`]
+- Nenhum endpoint de remoção de evento é criado. [verify: grep-absent `HttpDelete` `src/Ciclo.Api/Controllers/AuditController.cs`]
+- Nenhum interceptor de EF Core é introduzido. [verify: grep-absent `IInterceptor` `src/Ciclo.Infrastructure/`]
+- Nenhum cabeçalho de proxy é tratado como origem confiável. [verify: grep-absent `X-Forwarded-For` `src/Ciclo.Api/Middleware/AuditContextMiddleware.cs`]
+- Nenhum evento de alteração de papel de usuário é emitido por esta spec; a operação pertence à Spec 120. [verify: grep-absent `user.role_changed` `src/`]
+- Nenhum evento de submissão de matrícula é emitido; submissão não é decisão. [verify: grep-absent `AuditActions.EnrollmentSubmitted` `src/`]
+- Nenhuma propagação de correlação para ProblemDetails é implementada; pertence à Spec 130. [verify: grep-absent `CorrelationId` `src/Ciclo.Api/Middleware/ProblemResponse.cs`]
+- Nenhuma política de retenção por tipo de evento é implementada; há um único prazo por instalação. [verify: grep-absent `RetentionDaysByAction` `src/`]
+
+## Dependencies
+
+- **Spec 20 (multi-tenant):** `ITenantContext`, `TenantMiddleware`, filtro global por `TenantId`.
+- **Spec 30 (auth):** JWT com claims `NameIdentifier`, `role` e `tenant_id`; endpoint `POST /api/auth/revoke` autenticado.
+- **Spec 50 (enrollment):** `EnrollmentService.ApproveAsync`, `RejectAsync`, `CancelAsync` e a máquina de estados.
+- **Spec 60 (reenrollment):** usa o mesmo fluxo único de matrícula; herda a auditoria sem código adicional.
+- **Spec 70 (documents):** `DocumentService.VerifyAsync` e as notificações de rejeição.
+- **Spec A1 (schema com dono único):** baseline `InitialCreate`, snapshot do modelo e receita de geração de migration registrada em `management/cross-session/plano-correcoes.md` §1.
+- **Spec 120 (futura):** consumirá `IAuditTrail` para emitir `user.role_changed` ao implementar alteração de papel e desativação.
+- **PostgreSQL 16:** exigido para os gatilhos de imutabilidade (a suíte padrão usa InMemory e não executa DDL).
+
+## Out of Scope
+
+- Interface de consulta no frontend (lista, filtros e botão de exportação).
+- Instrumentação de alteração de papel, desativação e reativação de usuário (Spec 120).
+- Instrumentação de criação de matrícula, submissão, cadastro de aluno e upload de documento.
+- Propagação do identificador de correlação para logs estruturados e ProblemDetails (Spec 130).
+- Política de retenção diferenciada por tipo de evento ou por tenant.
+- Exportação para armazenamento externo, assinatura digital ou formato PDF.
+- Requisições de titular de dados (acesso, correção, eliminação) e anonimização (Spec 210).
+- Suspensão de expurgo por "legal hold".
+- Auditoria de leituras (quem consultou o quê).
+
+<!-- lineage -->
+- Spec 110 criada a partir da linha `planned` do roadmap (V11) em 2026-10-22.

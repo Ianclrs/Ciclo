@@ -295,3 +295,31 @@ Legenda de status: `[ ]` pendente · `[~]` em andamento · `[x]` concluído · `
 - **Um teste pode passar sem proteger nada — e só o controle negativo revela** (descoberto no C9). Escrevi um teste que descartava o `DbContext` logo após a chamada e exigia que os e-mails já tivessem sido entregues ao dispatcher; parecia cobrir o fire-and-forget. Ao **reintroduzir a falha**, ele **passou**: com o provider InMemory a consulta completa inline, então a task não sobrevive à requisição e a diferença fica invisível. O defeito só aparece com provider real (I/O de verdade). **Regra:** quando a propriedade depende do provider/timing, o guarda tem de ser **estrutural** (aqui, o construtor não pode receber `IEmailSender`) — e todo teste novo deveria ser submetido a controle negativo antes de ser considerado proteção. Sem isso, ele é falso conforto.
 - **Páginas que fazem várias chamadas simultâneas** disparam a corrida do refresh (A9) — cuidado ao validar telas manualmente antes de corrigir A9.
 - **Segredos**: `appsettings*.json` **não** contém mais segredos (C1). `Jwt:Secret` e `FileStorage:EncryptionKey` vivem em **user-secrets** (`%APPDATA%\Microsoft\UserSecrets\8dd359ab-…\secrets.json`) no dev, e em `Jwt__Secret`/`FileStorage__EncryptionKey` nos outros ambientes. O `docker compose` exige `JWT_SECRET`/`ENCRYPTION_KEY` no `.env` (não versionado). A `FileStorage:EncryptionKey` preservada e o `DB_PASSWORD` do `appsettings.Development.json` **foram públicos** num deploy anterior — tratar como comprometidos (rotação pendente de decisão).
+
+---
+
+## 9. Specs de melhoria planejadas (2026-10-22)
+
+Registradas no roadmap pelo tool canônico (`roadmap-plan-commit`), com status `planned` e value blocks V11–V21 em `vision.md`. As pastas em `management/specs/` ainda **não** existem: serão criadas por `/spec-new <N>`.
+
+| # | Spec | V | Depende de | Absorve do plano |
+|---|---|---|---|---|
+| 110 | auditoria-de-operacoes | V11 | 20, 30 | exigência de auditoria do M12 |
+| 120 | ciclo-de-vida-de-identidade | V12 | 30 | M11, B3, B4 |
+| 130 | observabilidade-operacional | V13 | 10 | — |
+| 140 | comunicacao-proativa | V14 | 80, 130 | decisão §6-3 (canal de e-mail) |
+| 150 | estrutura-academica-e-desempenho | V15 | 40, 50 | placeholder de notas (V9) |
+| 160 | rematricula-em-lote | V16 | 50, 60, 110, 150 | promessa de renovação da V6 |
+| 170 | armazenamento-de-documentos | V17 | 70 | parte de M6/M7 |
+| 180 | qualidade-automatizada | V18 | 10–170 | T1, M8 |
+| 190 | experiencia-i18n-e-acessibilidade | V19 | 100 | parte de A8/A10 |
+| 200 | configuracao-e-limites-por-tenant | V20 | 20 | — |
+| 210 | privacidade-lgpd | V21 | 110, 120 | — |
+
+**Regra de autoridade única:** ao criar cada spec, retirar do plano os itens absorvidos (coluna acima). Enquanto a spec não existir, o item do plano continua sendo a autoridade de execução.
+
+**Ordem de execução sugerida:** 110 → 120 → 130 → 180 → 140 → 150 → 160 → 170 → 190 → 200 → 210. O 180 entra cedo para que os demais sejam validados por CI em vez de execução manual.
+
+**Pendência documental (D2 parcial, bloqueada):** `management/roadmap.md` é protegido contra escrita por LLM. A tabela de status ainda define `audited` como "Feature is live" e cita `/spec-verify` (removido). A correção exige uma operação do pipeline SDD (`updateSpecStatus`/equivalente), não `edit`.
+
+**Estado de git:** as 11 linhas do roadmap e os 88 acréscimos em `vision.md` estão **não commitados** (nenhuma autorização de commit foi dada).
