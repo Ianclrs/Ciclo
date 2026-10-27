@@ -100,7 +100,7 @@ public sealed class EnrollmentListFilterTests
         await DocumentTestData.AddEnrollmentAsync(
             db, tenantId, student.Id, period.Id, EnrollmentStatus.Aprovado);
 
-        return (db, tenantId, new EnrollmentService(db));
+        return (db, tenantId, new EnrollmentService(db, NoopAuditTrail.Instance));
     }
 
     [Theory]

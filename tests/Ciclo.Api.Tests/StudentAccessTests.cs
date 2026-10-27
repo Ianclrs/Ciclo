@@ -70,7 +70,7 @@ public sealed class StudentAccessTests
         var f = await CreateAsync(linked: false);
         await using var _ = f.Db;
 
-        var service = new DocumentService(f.Db, new NoopStorage(), new NoopNotifications(), NullLogger<DocumentService>.Instance);
+        var service = new DocumentService(f.Db, new NoopStorage(), new NoopNotifications(), NullLogger<DocumentService>.Instance, NoopAuditTrail.Instance);
 
         await Assert.ThrowsAsync<AccessDeniedException>(
             () => service.GetStudentDocumentsAsync(
@@ -84,7 +84,7 @@ public sealed class StudentAccessTests
         await using var _ = f.Db;
 
         await Assert.ThrowsAsync<AccessDeniedException>(
-            () => new EnrollmentService(f.Db).GetEnrollmentByIdAsync(
+            () => new EnrollmentService(f.Db, NoopAuditTrail.Instance).GetEnrollmentByIdAsync(
                 f.Enrollment.Id, f.TenantId, f.ParentId, UserRole.Parent));
     }
 
@@ -112,9 +112,9 @@ public sealed class StudentAccessTests
             .GetByIdAsync(f.Student.Id, f.TenantId, f.ParentId, UserRole.Parent);
         var history = await new StudentService(f.Db)
             .GetEnrollmentHistoryAsync(f.Student.Id, f.TenantId, f.ParentId, UserRole.Parent);
-        var documents = await new DocumentService(f.Db, new NoopStorage(), new NoopNotifications(), NullLogger<DocumentService>.Instance)
+        var documents = await new DocumentService(f.Db, new NoopStorage(), new NoopNotifications(), NullLogger<DocumentService>.Instance, NoopAuditTrail.Instance)
             .GetStudentDocumentsAsync(f.Student.Id, f.TenantId, f.ParentId, UserRole.Parent, 1, 20);
-        var enrollment = await new EnrollmentService(f.Db)
+        var enrollment = await new EnrollmentService(f.Db, NoopAuditTrail.Instance)
             .GetEnrollmentByIdAsync(f.Enrollment.Id, f.TenantId, f.ParentId, UserRole.Parent);
         var list = await new StudentService(f.Db)
             .GetAllAsync(null, null, null, 1, 20, f.TenantId, f.ParentId, UserRole.Parent);

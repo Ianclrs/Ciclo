@@ -66,7 +66,7 @@ public sealed class AccessPolicyTests
         var enrollment = await DocumentTestData.AddEnrollmentAsync(
             db, tenantId, student.Id, period.Id, EnrollmentStatus.Pendente);
 
-        var service = new EnrollmentService(db);
+        var service = new EnrollmentService(db, NoopAuditTrail.Instance);
 
         await Assert.ThrowsAsync<ForbiddenException>(
             () => service.ApproveAsync(enrollment.Id, tenantId, Guid.NewGuid(), UserRole.Parent));
@@ -86,7 +86,7 @@ public sealed class AccessPolicyTests
         var document = await DocumentTestData.AddDocumentAsync(
             db, tenantId, student.Id, type.Id, DocumentStatus.Pendente);
 
-        var service = new DocumentService(db, new NoopStorage(), new NoopNotifications(), NullLogger<DocumentService>.Instance);
+        var service = new DocumentService(db, new NoopStorage(), new NoopNotifications(), NullLogger<DocumentService>.Instance, NoopAuditTrail.Instance);
 
         await Assert.ThrowsAsync<ForbiddenException>(
             () => service.VerifyAsync(

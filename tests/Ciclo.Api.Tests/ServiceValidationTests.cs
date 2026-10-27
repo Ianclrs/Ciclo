@@ -138,7 +138,7 @@ public sealed class DocumentValidationTests
         var (db, tenantId) = DocumentTestData.CreateContext();
         var student = await DocumentTestData.AddStudentAsync(db, tenantId);
         var type = await DocumentTestData.AddDocumentTypeAsync(db, tenantId, "RG");
-        var service = new DocumentService(db, new NoopStorage(), new NoopNotifications(), NullLogger<DocumentService>.Instance);
+        var service = new DocumentService(db, new NoopStorage(), new NoopNotifications(), NullLogger<DocumentService>.Instance, NoopAuditTrail.Instance);
 
         return (db, tenantId, service, student.Id, type.Id, Guid.NewGuid());
     }
@@ -222,7 +222,7 @@ public sealed class PaginationTests
         var (db, tenantId) = DocumentTestData.CreateContext();
         await using var _ = db;
 
-        var service = new DocumentService(db, new NoopStorage(), new NoopNotifications(), NullLogger<DocumentService>.Instance);
+        var service = new DocumentService(db, new NoopStorage(), new NoopNotifications(), NullLogger<DocumentService>.Instance, NoopAuditTrail.Instance);
         var result = await service.GetPendingAsync(tenantId, 0, 0);
 
         Assert.Equal(1, result.Page);

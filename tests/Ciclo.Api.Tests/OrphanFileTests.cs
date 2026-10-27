@@ -66,7 +66,7 @@ public sealed class OrphanFileTests
 
         var storage = new NoopStorage();
         var service = new DocumentService(
-            db, storage, new NoopNotifications(), NullLogger<DocumentService>.Instance);
+            db, storage, new NoopNotifications(), NullLogger<DocumentService>.Instance, NoopAuditTrail.Instance);
 
         db.FailNextSave = true;
         using var stream = new MemoryStream("%PDF-1.7"u8.ToArray());
@@ -98,7 +98,7 @@ public sealed class OrphanFileTests
 
         var storage = new NoopStorage();
         var service = new DocumentService(
-            db, storage, new NoopNotifications(), NullLogger<DocumentService>.Instance);
+            db, storage, new NoopNotifications(), NullLogger<DocumentService>.Instance, NoopAuditTrail.Instance);
 
         using var stream = new MemoryStream("%PDF-1.7"u8.ToArray());
         var document = await service.UploadAsync(

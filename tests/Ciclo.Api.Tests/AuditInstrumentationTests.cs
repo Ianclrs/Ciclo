@@ -115,7 +115,7 @@ public sealed class AuditInstrumentationTests
         var enrollment = fixture.AddEnrollment(EnrollmentStatus.Pendente);
         var service = new EnrollmentService(fixture.Db, fixture.Trail);
 
-        await service.ApproveAsync(enrollment.Id, TestTenantId);
+        await service.ApproveAsync(enrollment.Id, TestTenantId, Guid.NewGuid(), UserRole.Admin);
 
         var audit = Assert.Single(await fixture.Db.AuditEvents.ToListAsync());
         Assert.Equal(AuditActions.EnrollmentApproved, audit.Action);
@@ -133,7 +133,7 @@ public sealed class AuditInstrumentationTests
         var enrollment = fixture.AddEnrollment(EnrollmentStatus.Pendente);
         var service = new EnrollmentService(fixture.Db, fixture.Trail);
 
-        await service.RejectAsync(enrollment.Id, new RejectEnrollmentRequest("documento ilegivel"), TestTenantId);
+        await service.RejectAsync(enrollment.Id, new RejectEnrollmentRequest("documento ilegivel"), TestTenantId, Guid.NewGuid(), UserRole.Admin);
 
         var audit = Assert.Single(await fixture.Db.AuditEvents.ToListAsync());
         Assert.Equal(AuditActions.EnrollmentRejected, audit.Action);
@@ -147,7 +147,7 @@ public sealed class AuditInstrumentationTests
         var enrollment = fixture.AddEnrollment(EnrollmentStatus.Pendente);
         var service = new EnrollmentService(fixture.Db, fixture.Trail);
 
-        await service.CancelAsync(enrollment.Id, TestTenantId);
+        await service.CancelAsync(enrollment.Id, TestTenantId, Guid.NewGuid(), UserRole.Admin);
 
         var audit = Assert.Single(await fixture.Db.AuditEvents.ToListAsync());
         Assert.Equal(AuditActions.EnrollmentCancelled, audit.Action);
@@ -171,7 +171,7 @@ public sealed class AuditInstrumentationTests
 
         var service = new EnrollmentService(fixture.Db, fixture.Trail);
 
-        await Assert.ThrowsAsync<EnrollmentException>(() => service.ApproveAsync(enrollment.Id, TestTenantId));
+        await Assert.ThrowsAsync<EnrollmentException>(() => service.ApproveAsync(enrollment.Id, TestTenantId, Guid.NewGuid(), UserRole.Admin));
         Assert.Empty(await fixture.Db.AuditEvents.ToListAsync());
     }
 
@@ -182,7 +182,7 @@ public sealed class AuditInstrumentationTests
         var document = AddDocument(fixture);
         var service = CreateDocumentService(fixture);
 
-        await service.VerifyAsync(document.Id, new VerifyDocumentRequest(true, null), TestTenantId);
+        await service.VerifyAsync(document.Id, new VerifyDocumentRequest(true, null), TestTenantId, UserRole.Admin);
 
         var audit = Assert.Single(await fixture.Db.AuditEvents.ToListAsync());
         Assert.Equal(AuditActions.DocumentVerified, audit.Action);
@@ -200,7 +200,7 @@ public sealed class AuditInstrumentationTests
         var service = CreateDocumentService(fixture);
 
         await service.VerifyAsync(
-            document.Id, new VerifyDocumentRequest(false, "documento vencido"), TestTenantId);
+            document.Id, new VerifyDocumentRequest(false, "documento vencido"), TestTenantId, UserRole.Admin);
 
         var audit = Assert.Single(await fixture.Db.AuditEvents.ToListAsync());
         Assert.Equal(AuditActions.DocumentRejected, audit.Action);
@@ -215,7 +215,7 @@ public sealed class AuditInstrumentationTests
         var service = CreateDocumentService(fixture);
 
         await Assert.ThrowsAsync<DocumentException>(() => service.VerifyAsync(
-            document.Id, new VerifyDocumentRequest(false, "curto"), TestTenantId));
+            document.Id, new VerifyDocumentRequest(false, "curto"), TestTenantId, UserRole.Admin));
 
         Assert.Empty(await fixture.Db.AuditEvents.ToListAsync());
     }
@@ -276,7 +276,7 @@ public sealed class AuditInstrumentationTests
         var service = CreateDocumentService(fixture, failingTrail);
 
         await Assert.ThrowsAsync<TenantNotResolvedException>(() => service.VerifyAsync(
-            document.Id, new VerifyDocumentRequest(false, "documento vencido"), TestTenantId));
+            document.Id, new VerifyDocumentRequest(false, "documento vencido"), TestTenantId, UserRole.Admin));
 
         fixture.Db.ChangeTracker.Clear();
         var stored = await fixture.Db.Documents.SingleAsync(d => d.Id == document.Id);
@@ -322,7 +322,7 @@ public sealed class AuditInstrumentationTests
         notification
             .Setup(n => n.SendByStudentAsync(
                 It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<NotificationType>(),
-                It.IsAny<Guid?>(), It.IsAny<Guid>()))
+                It.IsAny<Guid?>(), It.IsAny<Guid>(), It.IsAny<UserRole>()))
             // O NotificationService real grava internamente (SaveChangesAsync no fim do envio).
             // O dublê reproduz essa gravação; sem isso o risco de atomicidade da rejeição fica
             // invisível para o teste.
@@ -336,6 +336,7 @@ public sealed class AuditInstrumentationTests
             fixture.Db,
             new Mock<IFileStorage>().Object,
             notification.Object,
+            NullLogger<DocumentService>.Instance,
             trail);
     }
 }

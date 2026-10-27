@@ -31,9 +31,9 @@ public sealed class EnrollmentJourneyTests
         var period = await DocumentTestData.AddPeriodAsync(db, tenantId, DateTime.UtcNow.Year + 1);
         var type = await DocumentTestData.AddDocumentTypeAsync(db, tenantId, "Certidão", isRequired: true);
 
-        var enrollments = new EnrollmentService(db);
+        var enrollments = new EnrollmentService(db, NoopAuditTrail.Instance);
         var documents = new DocumentService(
-            db, new NoopStorage(), new NoopNotifications(), NullLogger<DocumentService>.Instance);
+            db, new NoopStorage(), new NoopNotifications(), NullLogger<DocumentService>.Instance, NoopAuditTrail.Instance);
         var actor = Guid.NewGuid();
 
         // 1. matrícula em rascunho
@@ -73,7 +73,7 @@ public sealed class EnrollmentJourneyTests
         var period = await DocumentTestData.AddPeriodAsync(db, tenantId, DateTime.UtcNow.Year + 1);
         await DocumentTestData.AddDocumentTypeAsync(db, tenantId, "Certidão", isRequired: true);
 
-        var enrollments = new EnrollmentService(db);
+        var enrollments = new EnrollmentService(db, NoopAuditTrail.Instance);
         var enrollment = await enrollments.CreateEnrollmentAsync(
             new CreateEnrollmentRequest(student.Id, period.Id), tenantId, UserRole.Admin);
 
@@ -114,7 +114,7 @@ public sealed class ParentServiceTests
         await db.SaveChangesAsync();
 
         var documents = new DocumentService(
-            db, new NoopStorage(), new NoopNotifications(), NullLogger<DocumentService>.Instance);
+            db, new NoopStorage(), new NoopNotifications(), NullLogger<DocumentService>.Instance, NoopAuditTrail.Instance);
 
         return new Fixture(db, tenantId, student, new ParentService(db, documents), linkedParent);
     }
