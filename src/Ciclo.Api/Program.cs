@@ -5,8 +5,10 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Serilog;
 using Ciclo.Core.Entities;
+using Ciclo.Core.Interfaces;
 using Ciclo.Infrastructure;
 using Ciclo.Infrastructure.Auth;
+using Ciclo.Infrastructure.Auditing;
 using Ciclo.Infrastructure.Data;
 using Ciclo.Infrastructure.Services;
 using Ciclo.Infrastructure.Storage;
@@ -34,6 +36,19 @@ try
     builder.Services.AddEndpointsApiExplorer();
     builder.Services.AddSwaggerGen();
     builder.Services.AddInfrastructure(builder.Configuration);
+
+    // Auditoria (Spec 110) — configuração fail-closed e porta de escrita transversal.
+    builder.Services.AddSingleton(AuditSettings.Read(builder.Configuration));
+    builder.Services.AddScoped<AuditActor>();
+    builder.Services.AddScoped<IAuditActor>(sp => sp.GetRequiredService<AuditActor>());
+    builder.Services.AddScoped<IAuditTrail, AuditTrail>();
+    builder.Services.AddScoped<IAuditQueryService, AuditQueryService>();
+    builder.Services.AddScoped<AuditRetentionPurger>();
+
+    if (!builder.Environment.IsEnvironment("Testing"))
+    {
+        builder.Services.AddHostedService<AuditRetentionService>();
+    }
 
     // Multi-tenancy (Spec 20)
     builder.Services.AddScoped<TenantContext>();
@@ -150,6 +165,7 @@ try
     // Auth pipeline (Spec 30)
     app.UseAuthentication();
     app.UseMiddleware<TenantMiddleware>();     // Spec 20 — tenant resolution from JWT
+    app.UseMiddleware<AuditContextMiddleware>(); // Spec 110 — ator, origem e correlação
     app.UseAuthorization();
 
     app.MapControllers();

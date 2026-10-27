@@ -69,7 +69,7 @@ API do portal dos pais: dashboard com resumo dos filhos, visualização de desem
 **Delivered by:** Spec 90 (parent-portal)
 
 ### V10: Frontend Application (React + PWA)
-SPA React 19 + Vite 6 + Tailwind CSS 4 com suporte PWA (Workbox). Telas separadas para Admin/Staff (dashboard, gestão de alunos, matrículas, documentos, notificações) e Pais (dashboard dos filhos, documentos, notificações). Install prompt para mobile. Offline-first com cache strategy.
+SPA React 19 + Vite 8 + Tailwind CSS 4 com suporte PWA (Workbox). Telas separadas para Admin/Staff (dashboard, gestão de alunos, matrículas, documentos, notificações) e Pais (dashboard dos filhos, documentos, notificações). Install prompt para mobile. Offline-first com cache strategy.
 
 **Delivered by:** Spec 100 (frontend)
 

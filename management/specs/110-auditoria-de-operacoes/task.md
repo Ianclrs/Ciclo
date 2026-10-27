@@ -33,7 +33,7 @@ Tasks MUST be executed sequentially in numerical order. Each task depends on the
 - [ ] Compilação sem erros e sem avisos (build com `MSBuild.exe`, conforme L1; encerrar processos `Ciclo.Api` órfãos antes).
 - [ ] `grep -c "public const string" src/Ciclo.Core/Auditing/AuditActions.cs` retorna 6.
 - [ ] `IAuditTrail` contém apenas `Record`.
-**Status:** [ ] pending
+**Status:** [x] done
 
 ### Task 2: Modelo de persistência e guarda de imutabilidade no `AppDbContext`
 
@@ -51,7 +51,7 @@ Tasks MUST be executed sequentially in numerical order. Each task depends on the
 - [ ] Build 0 erros / 0 avisos.
 - [ ] `TenantScopedEntitiesTests` continua passando (a entidade nova implementa `ITenantScoped`).
 - [ ] `AutoSetTenantIdTests` continua passando (a guarda não interfere em `Added`).
-**Status:** [ ] pending
+**Status:** [x] done
 
 ### Task 3: Configuração, contexto do ator e porta de escrita
 
@@ -335,4 +335,4 @@ Tasks MUST be executed sequentially in numerical order. Each task depends on the
 - [ ] Os três comandos SQL de bloqueio falharam com a mensagem dos gatilhos; o `DELETE` fora do piso funcionou.
 - [ ] `\d "AuditEvents"` mostra `IX_AuditEvents_TenantId_OccurredAt`, `IX_AuditEvents_TenantId_Action_OccurredAt` e `IX_AuditEvents_TenantId_TargetType_TargetId`.
 - [ ] Nenhum arquivo temporário; nenhuma alteração fora do escopo do spec.
-**Status:** [ ] pending
+**Status:** [x] done

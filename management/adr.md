@@ -67,3 +67,28 @@ This file records architecture decisions that affect the project. Each ADR descr
 - Refresh token rotation prevents long-term token theft.
 - Google OAuth onboarding is frictionless for parents.
 - SPA must handle token refresh transparently via Axios interceptors.
+
+---
+
+## ADR-004: Retenção e Imutabilidade da Trilha de Auditoria
+
+**Status:** Accepted (Spec 110)
+
+**Context**
+
+A trilha de auditoria responde "quem fez o quê, quando e de onde" para operações sensíveis — aprovar, rejeitar ou cancelar matrícula, verificar documento e revogar sessão. Um registro que pode ser editado ou apagado não serve como prova, e um registro mantido para sempre conflita com o direito de eliminação da LGPD.
+
+**Decision**
+
+- **Imutabilidade em duas camadas, com a mesma regra:** `AppDbContext.GuardAuditImmutability` bloqueia `Modified` e `Deleted` dentro do piso; no PostgreSQL, a função `audit_events_append_only_guard` com os gatilhos `audit_events_no_update` e `audit_events_no_delete` bloqueia `UPDATE` e `DELETE` dentro do piso. A duplicação é intencional: a aplicação falha antes de ir ao banco e o banco protege contra qualquer cliente que não passe pela aplicação.
+- **Piso de imutabilidade: 90 dias.** Nenhum evento pode ser alterado em nenhuma hipótese; nenhum evento pode ser removido antes de 90 dias.
+- **Retenção configurável: 365 dias por padrão**, faixa válida de 90 a 3650 dias (`Audit:RetentionDays`). Valor inválido impede a inicialização (fail-closed).
+- **Expurgo** por `AuditRetentionPurger`, em lotes de 5000, atravessando tenants de forma explícita (`IgnoreQueryFilters`), executado a cada 24 horas por `AuditRetentionService`.
+- **Consulta e exportação restritas a Admin** (`GET /api/audit-events` e `GET /api/audit-events/export`), exportação limitada a 10000 linhas — acima disso a resposta é 400 `export_exceeds_limit`, nunca truncamento silencioso.
+
+**Consequences**
+
+- Eventos antigos (fora do piso) podem ser expurgados pela política de retenção; eventos dentro do piso não podem ser apagados nem pela aplicação nem por SQL direto.
+- Corrigir um evento exige uma nova operação e uma nova entrada na trilha, não uma edição — o histórico permanece fiel.
+- A base legal registrada é a LGPD Art. 7º, II e IX (cumprimento de obrigação legal e legítimo interesse) e Art. 16 (conservação pelo tempo necessário à finalidade).
+- Alterar o piso de 90 dias ou o default de retenção exige nova decisão registrada e uma spec de evolução: a spec 110 está finalizada.

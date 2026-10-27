@@ -1,6 +1,8 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Ciclo.Core.Auditing;
+using Ciclo.Core.Interfaces;
 using Ciclo.Infrastructure.Contracts;
 using Ciclo.Core.Entities;
 using Ciclo.Infrastructure.Auth;
@@ -27,19 +29,22 @@ public class AuthService : IAuthService
     private readonly AppDbContext _dbContext;
     private readonly ITenantContext _tenantContext;
     private readonly ILogger<AuthService> _logger;
+    private readonly IAuditTrail _audit;
 
     public AuthService(
         UserManager<User> userManager,
         IJwtTokenGenerator tokenGenerator,
         AppDbContext dbContext,
         ITenantContext tenantContext,
-        ILogger<AuthService> logger)
+        ILogger<AuthService> logger,
+        IAuditTrail audit)
     {
         _userManager = userManager;
         _tokenGenerator = tokenGenerator;
         _dbContext = dbContext;
         _tenantContext = tenantContext;
         _logger = logger;
+        _audit = audit;
     }
 
     public async Task<AuthResponse> RegisterAsync(RegisterRequest request)
@@ -143,6 +148,20 @@ public class AuthService : IAuthService
         if (storedToken == null)
             return;
 
+        // O logout é anônimo (cookie de refresh): se o JWT não estiver presente, o tenant não foi
+        // resolvido na borda. A trilha exige tenant resolvido, então resolvemos pelo dono do token.
+        if (!_tenantContext.IsResolved)
+        {
+            var owner = await _dbContext.Users
+                .IgnoreQueryFilters()
+                .Where(u => u.Id == storedToken.UserId)
+                .Select(u => new { u.TenantId })
+                .FirstOrDefaultAsync();
+
+            if (owner is not null)
+                _tenantContext.SetTenant(owner.TenantId);
+        }
+
         if (storedToken.IsRevoked)
         {
 #pragma warning disable CA1848, CA1873
@@ -152,14 +171,31 @@ public class AuthService : IAuthService
                 .Where(rt => rt.UserId == storedToken.UserId && rt.RevokedAt == null)
                 .ToListAsync();
 
+            var revokedAt = DateTime.UtcNow;
             foreach (var t in allTokens)
-                t.RevokedAt = DateTime.UtcNow;
+            {
+                t.RevokedAt = revokedAt;
+                _audit.Record(new AuditEntry(
+                    AuditActions.SessionRevoked,
+                    AuditTargetTypes.Session,
+                    t.Id,
+                    new { RevokedAt = (DateTime?)null },
+                    new { RevokedAt = t.RevokedAt, Reason = "reuse_detected" }));
+            }
 
             await _dbContext.SaveChangesAsync();
             return;
         }
 
         storedToken.RevokedAt = DateTime.UtcNow;
+
+        _audit.Record(new AuditEntry(
+            AuditActions.SessionRevoked,
+            AuditTargetTypes.Session,
+            storedToken.Id,
+            new { RevokedAt = (DateTime?)null },
+            new { RevokedAt = storedToken.RevokedAt }));
+
         await _dbContext.SaveChangesAsync();
     }
 

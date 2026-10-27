@@ -16,14 +16,15 @@ O **Ciclo** centraliza e automatiza o ciclo de vida acadêmico dos alunos: matr�
 | # | Funcionalidade | Descrição |
 |---|---------------|-----------|
 | 1 | **Multi-Tenant** | Cada colégio tem seu ambiente isolado via `TenantId`. Dados nunca vazam entre tenants. |
-| 2 | **Autenticação** | Login com email/senha ou Google. JWT access tokens (15min) + refresh tokens (7 dias). |
+| 2 | **Autenticação** | Login com email/senha. JWT access tokens (15min) + refresh tokens (7 dias). O fluxo Google foi removido do backend (item C8 do plano de correções). |
 | 3 | **Gestão de Alunos** | CRUD completo com dados pessoais, contatos, filiação e informações acadêmicas. |
 | 4 | **Matrícula** | Workflow completo: abertura de período, inscrição, checklist de documentos, aprovação. |
 | 5 | **Rematrícula** | Renovação com reaproveitamento de documentos validados e alertas de vencimento. |
 | 6 | **Documentos** | Upload, categorização, verificação pela secretaria, tracking de validade. |
-| 7 | **Notificações** | In-app + email para documentos pendentes, comunicados e lembretes. |
+| 7 | **Notificações** | In-app para documentos pendentes, comunicados e lembretes; envio por e-mail enfileirado com sender de console (provedor real pendente). |
 | 8 | **Portal dos Pais** | Dashboard dos filhos, desempenho, inbox de notificações e upload de documentos. |
 | 9 | **PWA Mobile** | Aplicativo progressivo instalável no celular (iOS/Android) com suporte offline. |
+| 10 | **Auditoria** | Trilha imutável por escola de aprovações, rejeições, cancelamentos e revogações de sessão, com consulta e exportação CSV restritas ao Admin. |
 
 ---
 

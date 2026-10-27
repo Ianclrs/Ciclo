@@ -1,5 +1,7 @@
 using Microsoft.EntityFrameworkCore;
+using Ciclo.Core.Auditing;
 using Ciclo.Core.Entities;
+using Ciclo.Core.Interfaces;
 using Ciclo.Infrastructure.Contracts;
 using Ciclo.Infrastructure.Data;
 using Ciclo.Infrastructure.Storage;
@@ -28,6 +30,7 @@ public class DocumentService : IDocumentService
     private readonly AppDbContext _db;
     private readonly IFileStorage _storage;
     private readonly INotificationService _notificationService;
+    private readonly IAuditTrail _audit;
 
     private static readonly HashSet<string> AllowedExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -36,11 +39,12 @@ public class DocumentService : IDocumentService
 
     private const long MaxFileSize = 10 * 1024 * 1024; // 10 MB
 
-    public DocumentService(AppDbContext db, IFileStorage storage, INotificationService notificationService)
+    public DocumentService(AppDbContext db, IFileStorage storage, INotificationService notificationService, IAuditTrail audit)
     {
         _db = db;
         _storage = storage;
         _notificationService = notificationService;
+        _audit = audit;
     }
 
     // ── Documents ──────────────────────────────────────────────────
@@ -175,6 +179,9 @@ public class DocumentService : IDocumentService
         if (doc is null)
             throw new DocumentException("document_not_found", 404);
 
+        var previousStatus = doc.Status.ToString();
+        var previousValidity = doc.DataValidade;
+
         if (request.Approved)
         {
             doc.Status = DocumentStatus.Aprovado;
@@ -194,6 +201,16 @@ public class DocumentService : IDocumentService
             doc.Status = DocumentStatus.Rejeitado;
             doc.MotivoRejeicao = request.MotivoRejeicao;
         }
+
+        // O evento entra no change tracker ANTES de qualquer SaveChanges: SendByStudentAsync grava
+        // internamente (notificação), então registrar depois dele deixaria o status de rejeição
+        // persistido sem auditoria caso a gravação da trilha falhasse (FR-003).
+        _audit.Record(new AuditEntry(
+            request.Approved ? AuditActions.DocumentVerified : AuditActions.DocumentRejected,
+            AuditTargetTypes.Document,
+            doc.Id,
+            new { Status = previousStatus, DataValidade = previousValidity },
+            new { Status = doc.Status.ToString(), DataValidade = doc.DataValidade, MotivoRejeicao = doc.MotivoRejeicao }));
 
         // FR-008: Auto-notification on document rejection (before SaveChanges = same transaction)
         if (!request.Approved)

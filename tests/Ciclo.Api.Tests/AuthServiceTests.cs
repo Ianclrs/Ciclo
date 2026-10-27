@@ -6,6 +6,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Moq;
 using Ciclo.Core.Entities;
+using Ciclo.Core.Interfaces;
 using Ciclo.Infrastructure.Auth;
 using Ciclo.Infrastructure.Contracts;
 using Ciclo.Infrastructure.Data;
@@ -79,6 +80,7 @@ public sealed class AuthServiceTests : IDisposable
         configMock.Setup(c => c["Jwt:Audience"]).Returns("Test");
 
         services.AddScoped<IJwtTokenGenerator>(_ => _tokenGeneratorMock);
+        services.AddScoped<IAuditTrail>(_ => NoopAuditTrail.Instance);
         services.AddScoped<IAuthService, AuthService>();
         services.AddSingleton<ILogger<AuthService>>(_logger);
         services.AddSingleton(configMock.Object);

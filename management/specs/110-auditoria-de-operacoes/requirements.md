@@ -123,7 +123,7 @@ Entrega desta spec: entidade `AuditEvent` tenant-scoped, escrita transversal nas
 **What:** `AuthService.RevokeTokenAsync` MUST registrar um evento `session.revoked` por sessão efetivamente revogada. O alvo MUST ser `("Session", refreshTokenId)`. `Before` MUST conter `RevokedAt` anterior (nulo) e `After` MUST conter o `RevokedAt` gravado e, no ramo de reuso detectado, `Reason = "reuse_detected"`. Quando o token não existe, nenhum evento é registrado. O evento MUST ser registrado antes do `SaveChangesAsync` correspondente.
 **Why:** Revogar sessão é a resposta a suspeita de acesso indevido; sem registro, não se sabe quem encerrou qual sessão nem quando o reuso foi detectado.
 **Acceptance Criteria:**
-- [ ] A revogação simples registra o evento correspondente. [verify: project-validation]
+- [ ] A revogação de um token ativo registra exatamente um evento `session.revoked` com `TargetType = "Session"`, `TargetId` igual ao id do refresh token e `After.RevokedAt` igual ao `RevokedAt` persistido. [verify: project-validation]
 - [ ] O reuso detectado registra o motivo no evento. [verify: project-validation]
 - [ ] O serviço de autenticação recebe a porta de auditoria por injeção. [verify: grep-present `IAuditTrail`]
 **Failure modes:**

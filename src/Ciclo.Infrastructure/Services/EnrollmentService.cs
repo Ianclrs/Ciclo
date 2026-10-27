@@ -1,5 +1,7 @@
 using Microsoft.EntityFrameworkCore;
+using Ciclo.Core.Auditing;
 using Ciclo.Core.Entities;
+using Ciclo.Core.Interfaces;
 using Ciclo.Infrastructure.Contracts;
 using Ciclo.Infrastructure.Data;
 
@@ -27,10 +29,12 @@ public interface IEnrollmentService
 public class EnrollmentService : IEnrollmentService
 {
     private readonly AppDbContext _db;
+    private readonly IAuditTrail _audit;
 
-    public EnrollmentService(AppDbContext db)
+    public EnrollmentService(AppDbContext db, IAuditTrail audit)
     {
         _db = db;
+        _audit = audit;
     }
 
     // ── State Machine ──────────────────────────────────────────────
@@ -338,12 +342,20 @@ public class EnrollmentService : IEnrollmentService
         if (compliance.HasMissingRequiredDocuments)
             throw new EnrollmentException("pending_required_documents", 400);
 
+        var previousStatus = enrollment.Status.ToString();
         enrollment.Status = EnrollmentStatus.Aprovado;
         enrollment.ApprovedAt = DateTime.UtcNow;
 
         // Side effect: update student
         enrollment.Student.Status = StudentStatus.Ativo;
         enrollment.Student.AnoLetivo = enrollment.Period.AnoLetivo;
+
+        _audit.Record(new AuditEntry(
+            AuditActions.EnrollmentApproved,
+            AuditTargetTypes.Enrollment,
+            enrollment.Id,
+            new { Status = previousStatus },
+            new { Status = enrollment.Status.ToString(), ApprovedAt = enrollment.ApprovedAt }));
 
         await _db.SaveChangesAsync();
         return MapToDto(enrollment);
@@ -364,8 +376,16 @@ public class EnrollmentService : IEnrollmentService
         if (string.IsNullOrWhiteSpace(request.Motivo) || request.Motivo.Length < 10 || request.Motivo.Length > 500)
             throw new EnrollmentException("motivo_required_10_to_500_chars", 400);
 
+        var previousStatus = enrollment.Status.ToString();
         enrollment.Status = EnrollmentStatus.Rejeitado;
         enrollment.MotivoRejeicao = request.Motivo;
+
+        _audit.Record(new AuditEntry(
+            AuditActions.EnrollmentRejected,
+            AuditTargetTypes.Enrollment,
+            enrollment.Id,
+            new { Status = previousStatus },
+            new { Status = enrollment.Status.ToString(), MotivoRejeicao = request.Motivo }));
 
         await _db.SaveChangesAsync();
     }
@@ -385,7 +405,15 @@ public class EnrollmentService : IEnrollmentService
         if (!CanTransition(enrollment.Status, EnrollmentStatus.Cancelado))
             throw InvalidTransition(enrollment.Status, EnrollmentStatus.Cancelado);
 
+        var previousStatus = enrollment.Status.ToString();
         enrollment.Status = EnrollmentStatus.Cancelado;
+
+        _audit.Record(new AuditEntry(
+            AuditActions.EnrollmentCancelled,
+            AuditTargetTypes.Enrollment,
+            enrollment.Id,
+            new { Status = previousStatus },
+            new { Status = enrollment.Status.ToString() }));
 
         await _db.SaveChangesAsync();
     }

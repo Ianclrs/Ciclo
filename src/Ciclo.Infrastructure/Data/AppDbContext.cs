@@ -3,7 +3,9 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Ciclo.Core.Entities;
+using Ciclo.Core.Exceptions;
 using Ciclo.Core.Interfaces;
+using Ciclo.Infrastructure.Auditing;
 using Ciclo.Infrastructure.Tenancy;
 
 namespace Ciclo.Infrastructure.Data;
@@ -28,6 +30,7 @@ public class AppDbContext : IdentityDbContext<User, IdentityRole<Guid>, Guid>
     public DbSet<Document> Documents { get; set; } = null!;
     public DbSet<Notification> Notifications { get; set; } = null!;
     public DbSet<UserNotification> UserNotifications { get; set; } = null!;
+    public DbSet<AuditEvent> AuditEvents { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -277,6 +280,30 @@ public class AppDbContext : IdentityDbContext<User, IdentityRole<Guid>, Guid>
             entity.ToTable("Roles");
         });
 
+        // AuditEvent configuration (Spec 110)
+        builder.Entity<AuditEvent>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Action).HasMaxLength(64).IsRequired();
+            entity.Property(e => e.TargetType).HasMaxLength(32).IsRequired();
+            entity.Property(e => e.ActorRole).HasMaxLength(32);
+            entity.Property(e => e.IpAddress).HasMaxLength(64);
+            entity.Property(e => e.UserAgent).HasMaxLength(512);
+            entity.Property(e => e.CorrelationId).HasMaxLength(64);
+            entity.Property(e => e.BeforeJson).HasColumnType("jsonb");
+            entity.Property(e => e.AfterJson).HasColumnType("jsonb");
+            entity.Property(e => e.OccurredAt).HasDefaultValueSql("now()");
+
+            entity.HasIndex(e => new { e.TenantId, e.OccurredAt });
+            entity.HasIndex(e => new { e.TenantId, e.Action, e.OccurredAt });
+            entity.HasIndex(e => new { e.TenantId, e.TargetType, e.TargetId });
+
+            entity.HasOne<Tenant>()
+                .WithMany()
+                .HasForeignKey(e => e.TenantId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
         // Apply global query filter to all ITenantScoped entities
         foreach (var entityType in builder.Model.GetEntityTypes())
         {
@@ -296,6 +323,7 @@ public class AppDbContext : IdentityDbContext<User, IdentityRole<Guid>, Guid>
     public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
         AutoSetTenantId();
+        GuardAuditImmutability();
         return base.SaveChangesAsync(cancellationToken);
     }
 
@@ -303,7 +331,24 @@ public class AppDbContext : IdentityDbContext<User, IdentityRole<Guid>, Guid>
         CancellationToken cancellationToken = default)
     {
         AutoSetTenantId();
+        GuardAuditImmutability();
         return base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+    }
+
+    private void GuardAuditImmutability()
+    {
+        foreach (var entry in ChangeTracker.Entries<AuditEvent>())
+        {
+            if (entry.State == EntityState.Modified)
+                throw new AuditImmutabilityException("audit_events_are_append_only");
+
+            if (entry.State == EntityState.Deleted &&
+                entry.Entity.OccurredAt > DateTime.UtcNow.AddDays(-AuditSettings.MinimumRetentionDays))
+            {
+                throw new AuditImmutabilityException(
+                    "audit_events_within_the_retention_floor_cannot_be_deleted");
+            }
+        }
     }
 
     private void AutoSetTenantId()

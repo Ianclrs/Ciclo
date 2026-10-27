@@ -29,7 +29,7 @@
 | 80 | Notification System | audited | V8 |
 | 90 | Parent Portal API | audited | V9 |
 | 100 | Frontend Application (React + PWA) | audited | V10 |
-| 110 | auditoria-de-operacoes | created | V11 |
+| 110 | auditoria-de-operacoes | verified | V11 |
 | 120 | ciclo-de-vida-de-identidade | planned | V12 |
 | 130 | observabilidade-operacional | planned | V13 |
 | 140 | comunicacao-proativa | planned | V14 |
