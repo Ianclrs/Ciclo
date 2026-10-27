@@ -152,6 +152,7 @@ try
     // documento. LocalFileStorage usa a mesma validação (FileStorageKey.Parse).
     _ = FileStorageKey.Parse(builder.Configuration[FileStorageKey.ConfigurationKey]);
     builder.Services.AddScoped<IFileStorage, LocalFileStorage>();
+    builder.Services.AddScoped<StorageKeyRotation>();
     builder.Services.AddScoped<IDocumentService, DocumentService>();
 
     // Email (Spec 80)
@@ -234,6 +235,29 @@ try
                 $"The database schema is out of date: {pending.Count} pending migration(s) "
                 + $"({string.Join(", ", pending)}). Run 'dotnet ef database update' before starting the API.");
         }
+    }
+
+    // ── Manutenção: rotação da chave de armazenamento ────────────────────────────
+    // Uso: dotnet run --project src/Ciclo.Api -- --rotate-storage-key
+    // Re-encripta todos os documentos com a chave ATUAL e encerra (não sobe o servidor).
+    // O procedimento completo está no README, seção "Rotação de segredos".
+    if (args.Contains("--rotate-storage-key"))
+    {
+        using var rotationScope = app.Services.CreateScope();
+        var rotation = rotationScope.ServiceProvider.GetRequiredService<StorageKeyRotation>();
+        var rotationLogger = rotationScope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+        var result = await rotation.RotateAsync();
+
+#pragma warning disable CA1848, CA1873
+        rotationLogger.LogInformation(
+            "Storage key rotation finished: {Rotated} re-encrypted, {Missing} missing, {Failed} failed.",
+            result.Rotated, result.MissingFiles, result.Failed);
+#pragma warning restore CA1848, CA1873
+
+        // Exit code não-zero quando algo ficou para trás: um script de operação não pode
+        // interpretar uma rotação parcial como sucesso.
+        Environment.ExitCode = result.Failed > 0 ? 1 : 0;
+        return;
     }
 
     app.Run();

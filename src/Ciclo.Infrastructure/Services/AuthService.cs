@@ -361,14 +361,14 @@ public class AuthService : IAuthService
             RefreshToken: refreshToken.Token,
             User: new UserDto(
                 user.Id, user.Email ?? string.Empty, user.Name, user.Role.ToString(), user.TenantId,
-                user.EmailConfirmed));
+                user.EmailConfirmed, user.IsActive));
     }
 
     // ── M11: gestão de usuários ─────────────────────────────────────
 
     private static UserDto ToDto(User user) => new(
         user.Id, user.Email ?? string.Empty, user.Name, user.Role.ToString(), user.TenantId,
-        user.EmailConfirmed);
+        user.EmailConfirmed, user.IsActive);
 
     public async Task<List<UserDto>> ListUsersAsync(Guid tenantId, UserRole actorRole)
     {
@@ -380,7 +380,7 @@ public class AuthService : IAuthService
             .Where(u => u.TenantId == tenantId)
             .OrderBy(u => u.Name)
             .Select(u => new UserDto(
-                u.Id, u.Email ?? string.Empty, u.Name, u.Role.ToString(), u.TenantId, u.EmailConfirmed))
+                u.Id, u.Email ?? string.Empty, u.Name, u.Role.ToString(), u.TenantId, u.EmailConfirmed, u.IsActive))
             .ToListAsync();
     }
 

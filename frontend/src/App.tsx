@@ -5,7 +5,8 @@ import { ProtectedRoute } from './components/ProtectedRoute';
 import { SplashGate } from './components/SplashGate';
 import { Sidebar } from './components/Sidebar';
 import DocumentTitle from './components/DocumentTitle';
-import { LayoutDashboard, Users, FileText, Bell, GraduationCap } from 'lucide-react';
+import { LayoutDashboard, Users, FileText, Bell, GraduationCap, UserCog } from 'lucide-react';
+import { useAuth } from './hooks/useAuth';
 import LoginPage from './pages/LoginPage';
 import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import RegisterPage from './pages/RegisterPage';
@@ -19,6 +20,7 @@ import EnrollmentDetail from './pages/admin/EnrollmentDetail';
 import DocumentVerification from './pages/admin/DocumentVerification';
 import NotificationList from './pages/admin/NotificationList';
 import NotificationCreate from './pages/admin/NotificationCreate';
+import UserManagement from './pages/admin/UserManagement';
 import ParentDashboard from './pages/parent/ParentDashboard';
 import ChildDetail from './pages/parent/ChildDetail';
 import ChildDocuments from './pages/parent/ChildDocuments';
@@ -38,8 +40,13 @@ const parentItems = [
 ];
 
 function AdminLayout() {
+  const { user } = useAuth();
+  const items = user?.role === 'Admin'
+    ? [...adminItems, { label: 'Usuários', path: '/admin/users', icon: <UserCog size={20} />, color: 'violet' as const }]
+    : adminItems;
+
   return (
-    <Sidebar items={adminItems} title="Admin" showLogo>
+    <Sidebar items={items} title="Admin" showLogo>
       <Routes>
           <Route index element={<AdminDashboard />} />
           <Route path="students" element={<StudentList />} />
@@ -51,6 +58,7 @@ function AdminLayout() {
           <Route path="documents" element={<DocumentVerification />} />
           <Route path="notifications" element={<NotificationList />} />
           <Route path="notifications/create" element={<NotificationCreate />} />
+          <Route path="users" element={<UserManagement />} />
         </Routes>
     </Sidebar>
   );

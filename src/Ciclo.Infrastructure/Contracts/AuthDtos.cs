@@ -18,7 +18,7 @@ public record AuthResponse(string AccessToken, string RefreshToken, UserDto User
 /// sem precisar de outro endpoint só para isso.
 /// </summary>
 public record UserDto(
-    Guid Id, string Email, string Name, string Role, Guid TenantId, bool EmailConfirmed);
+    Guid Id, string Email, string Name, string Role, Guid TenantId, bool EmailConfirmed, bool IsActive);
 
 public record ForgotPasswordRequest(string Email);
 public record ResetPasswordRequest(string Email, string Token, string NewPassword);

@@ -9,11 +9,12 @@ import { Button } from '../../components/Button';
 import { Pagination } from '../../components/Pagination';
 import { Modal } from '../../components/Modal';
 import { Input } from '../../components/Input';
+import { Select } from '../../components/Select';
 import { Table } from '../../components/Table';
 import * as api from '../../api/documents';
 import { apiErrorMessage } from '../../api/errors';
 import { motivoValidationError } from '../../domain/validation';
-import type { Document } from '../../types';
+import type { Document, DocumentType } from '../../types';
 
 const PAGE_SIZE = 10;
 
@@ -43,9 +44,13 @@ export default function DocumentVerification() {
   const [verify, setVerify] = useState<{ id: string; approved: boolean } | null>(null);
   const [motivo, setMotivo] = useState('');
   const motivoError = motivo === '' ? null : motivoValidationError(motivo);
-  // Duas visões sobre a mesma tela: o que aguarda verificação e o que vai vencer. Sem a segunda,
-  // o alerta de vencimento da V7 não aparecia em lugar nenhum (A6).
-  const [view, setView] = useState<'pending' | 'expiring'>('pending');
+  // A6b: a visão "Todos" substitui a antiga "Pendentes" — status virou filtro. "A vencer"
+  // continua separada porque tem semântica de data, não de status.
+  const [view, setView] = useState<'all' | 'expiring'>('all');
+  const [status, setStatus] = useState('');
+  const [documentTypeId, setDocumentTypeId] = useState('');
+  const [search, setSearch] = useState('');
+  const [types, setTypes] = useState<DocumentType[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -59,7 +64,13 @@ export default function DocumentVerification() {
           setDocs(expiring);
           setTotal(expiring.length);
         } else {
-          const res = await api.getPendingDocuments({ page, pageSize: PAGE_SIZE });
+          const res = await api.getDocuments({
+            status: status || undefined,
+            documentTypeId: documentTypeId || undefined,
+            search: search.trim() || undefined,
+            page,
+            pageSize: PAGE_SIZE,
+          });
           if (cancelled) return;
           setDocs(res.items);
           setTotal(res.total);
@@ -76,11 +87,25 @@ export default function DocumentVerification() {
     return () => {
       cancelled = true;
     };
-  }, [page, reloadKey, view]);
+  }, [page, reloadKey, view, status, documentTypeId, search]);
+
+  // Tipos alimentam o filtro; falha aqui não impede a lista, por isso vira aviso.
+  useEffect(() => {
+    api
+      .getDocumentTypes()
+      .then(setTypes)
+      .catch((err) => toast.error(apiErrorMessage(err, 'Não foi possível carregar os tipos.')));
+  }, []);
 
   const changePage = (nextPage: number) => {
     setLoading(true);
     setPage(nextPage);
+  };
+
+  const switchView = (next: 'all' | 'expiring') => {
+    setPage(1);
+    setLoading(true);
+    setView(next);
   };
 
   const refresh = () => {
@@ -127,7 +152,21 @@ export default function DocumentVerification() {
     }
   };
 
-  // Sem coluna de status: esta listagem só contém documentos pendentes.
+  // Na visão filtrável o status é informação; em "A vencer" todos são aprovados e a coluna
+  // só repetiria a mesma palavra.
+  const statusColumn = {
+    header: 'Status',
+    className: 'text-center',
+    accessor: (doc: Document) => (
+      <Badge
+        className={uniformBadgeClass}
+        variant={doc.status === 'Aprovado' ? 'success' : doc.status === 'Rejeitado' ? 'danger' : 'warning'}
+      >
+        {doc.status}
+      </Badge>
+    ),
+  };
+
   const columns = [
     {
       header: 'Arquivo',
@@ -164,6 +203,7 @@ export default function DocumentVerification() {
       className: 'text-center',
       accessor: (doc: Document) => <Badge className={uniformBadgeClass}>{doc.documentTypeName}</Badge>,
     },
+    ...(view === 'all' ? [statusColumn] : []),
     {
       header: 'Validade',
       className: 'text-center',
@@ -183,9 +223,8 @@ export default function DocumentVerification() {
           >
             <Download size={16} />
           </button>
-          {/* Verificar só faz sentido para documento pendente: na visão de vencimento eles já
-              estão aprovados. */}
-          {view === 'pending' && (
+          {/* Aprovar/rejeitar só para documento pendente. */}
+          {doc.status === 'Pendente' && (
             <>
               <Button variant="ghost" size="sm" onClick={() => openVerify(doc, true)}>
                 Aprovar
@@ -210,34 +249,70 @@ export default function DocumentVerification() {
       <div className="mb-6">
         <h2 className="text-2xl font-bold text-gray-900">Documentos</h2>
         <p className="text-sm text-gray-500 mt-1">
-          {view === 'pending'
-            ? 'Documentos aguardando verificação.'
+          {view === 'all'
+            ? 'Documentos de todos os alunos, com filtros.'
             : 'Documentos aprovados que vencem nos próximos 30 dias.'}
         </p>
         <div className="flex gap-2 mt-3">
           <Button
-            variant={view === 'pending' ? 'primary' : 'ghost'}
+            variant={view === 'all' ? 'primary' : 'ghost'}
             size="sm"
-            onClick={() => {
-              setPage(1);
-              setLoading(true);
-              setView('pending');
-            }}
+            onClick={() => switchView('all')}
           >
-            Pendentes
+            Todos
           </Button>
           <Button
             variant={view === 'expiring' ? 'primary' : 'ghost'}
             size="sm"
-            onClick={() => {
-              setPage(1);
-              setLoading(true);
-              setView('expiring');
-            }}
+            onClick={() => switchView('expiring')}
           >
             A vencer
           </Button>
         </div>
+
+        {view === 'all' && (
+          <div className="mt-3 flex flex-wrap items-end gap-3">
+            <Input
+              label="Aluno"
+              placeholder="Buscar por nome"
+              value={search}
+              onChange={(event) => {
+                setPage(1);
+                setLoading(true);
+                setSearch(event.target.value);
+              }}
+              className="max-w-xs"
+            />
+            <Select
+              label="Tipo"
+              value={documentTypeId}
+              onChange={(event) => {
+                setPage(1);
+                setLoading(true);
+                setDocumentTypeId(event.target.value);
+              }}
+            >
+              <option value="">Todos os tipos</option>
+              {types.map((type) => (
+                <option key={type.id} value={type.id}>{type.nome}</option>
+              ))}
+            </Select>
+            <Select
+              label="Status"
+              value={status}
+              onChange={(event) => {
+                setPage(1);
+                setLoading(true);
+                setStatus(event.target.value);
+              }}
+            >
+              <option value="">Todos os status</option>
+              <option value="Pendente">Pendente</option>
+              <option value="Aprovado">Aprovado</option>
+              <option value="Rejeitado">Rejeitado</option>
+            </Select>
+          </div>
+        )}
       </div>
 
       <Card>
@@ -249,8 +324,8 @@ export default function DocumentVerification() {
           emptyMessage={
             failed
               ? 'Não foi possível carregar os documentos. Tente novamente.'
-              : view === 'pending'
-                ? 'Nenhum documento aguardando verificação.'
+              : view === 'all'
+                ? 'Nenhum documento encontrado com esses filtros.'
                 : 'Nenhum documento vence nos próximos 30 dias.'
           }
         />

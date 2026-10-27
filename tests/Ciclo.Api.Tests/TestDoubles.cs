@@ -26,6 +26,8 @@ internal sealed class NoopStorage : IFileStorage
         Deleted.Add(filePath);
         return Task.CompletedTask;
     }
+
+    public Task ReencryptAsync(string filePath) => Task.CompletedTask;
 }
 
 internal sealed class NoopNotifications : INotificationService

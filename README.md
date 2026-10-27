@@ -181,6 +181,40 @@ A API precisa estar publicada em **HTTPS** e alcançável pela internet — o re
 
 O endpoint `/health` fica **fora** de `/api` de propósito — é probe de infraestrutura, e pode ser usado como health check do host da API.
 
+### Rotação de segredos
+
+Três segredos exigem rotação periódica: `Jwt:Secret`, a senha do banco e
+`FileStorage:EncryptionKey`. Os dois primeiros são troca direta; a **chave de arquivos precisa
+re-encriptar o que já existe**, senão todos os documentos ficam ilegíveis.
+
+**1. JWT e senha do banco** — gere o novo valor, publique o segredo no ambiente e reinicie.
+Tokens emitidos com o segredo antigo deixam de valer (todos precisam entrar de novo).
+
+**2. Chave de armazenamento (exige re-encriptação):**
+
+```bash
+# 1) gere a chave nova (32 bytes em Base64)
+openssl rand -base64 32
+
+# 2) configure: a NOVA em EncryptionKey, a ANTIGA em PreviousEncryptionKeys
+dotnet user-secrets set "FileStorage:EncryptionKey" "<nova>" --project src/Ciclo.Api
+dotnet user-secrets set "FileStorage:PreviousEncryptionKeys:0" "<antiga>" --project src/Ciclo.Api
+
+# 3) re-encripte todos os documentos (idempotente; exit != 0 se algo falhar)
+dotnet run --project src/Ciclo.Api -- --rotate-storage-key
+
+# 4) só depois de "0 failed", remova a chave antiga
+dotnet user-secrets remove "FileStorage:PreviousEncryptionKeys:0" --project src/Ciclo.Api
+```
+
+Enquanto a chave antiga estiver no keyring, a leitura continua funcionando nos dois sentidos —
+é o que permite rotacionar sem janela de indisponibilidade. O comando cobre **todos os tenants**
+e relata arquivos ausentes (registros órfãos) separadamente de falhas de decifração.
+
+> Se um arquivo falhar com "No configured storage key could decrypt this file", a chave antiga
+> não está no keyring ou o arquivo foi criptografado com uma chave anterior a ela. Não remova o
+> keyring antes de resolver: sem a chave correta, o conteúdo é irrecuperável.
+
 ---
 
 ## Estrutura de Diretórios

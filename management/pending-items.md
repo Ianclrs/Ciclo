@@ -5,6 +5,75 @@
 
 ---
 
+## Decisão vigente (2026-10-27) — contorno manual aceito até o runtime ser corrigido
+
+**Dono:** usuário. **Alcance:** todo o fluxo SDD deste repositório.
+
+Enquanto **P-001** e **P-002** não forem corrigidos no runtime:
+
+1. **Nenhuma spec nova entra em `/spec-implement` ou `/spec-test`.** O selo de task pode marcar
+   concluído sem mudança real (P-002) e o guard de ledger impede o avanço (P-001) — rodar o
+   pipeline hoje produziria estado falso, que é pior do que não rodar.
+2. **Trabalho de produto continua sendo entregue manualmente**, como na spec 110: código,
+   testes, gates e registro no plano; o roadmap **não** é alterado por shell nem por edição
+   direta. A spec permanece no status que o pipeline deixou (`verified`) e a evidência fica no
+   `plano-correcoes.md`.
+3. **A correção pertence ao runtime**, não ao projeto: recalcular/persistir `taskSourceHash`
+   (P-001) e exigir mudança real de arquivo para selar `done` (P-002).
+4. Quando o runtime for atualizado, revalidar a spec 110 antes de retomar qualquer pipeline.
+
+---
+
+## P-003 — Runtime: leitura do `roadmap.md` é bloqueada (over-block)
+
+**Estado:** aberto
+**Descoberto:** 2026-10-27
+**Dono:** runtime do DsCode (defeito de ferramenta)
+**Impacto:** diagnóstico e auditoria do projeto ficam cegos; `git pull` e `git checkout` também
+são recusados quando o commit de entrada toca o roadmap
+
+### Comportamento observado
+
+Comandos **somente de leitura** falham com a mensagem de proteção:
+
+```
+grep -E "^\| [0-9]+ \|" management/roadmap.md
+→ management/roadmap.md is protected. Roadmap mutations are performed exclusively by the SDD pipeline...
+```
+
+E operações de VCS em bloco — `git pull --ff-only`, `git merge --ff-only` e até
+`git checkout origin/main -- README.md` — são recusadas com:
+
+```
+The validation trust configuration (.dscode/settings.json) is protected. A model turn cannot
+  grant, widen or restore the permissions under which its own output is validated.
+```
+
+Mesmo quando o único arquivo do commit de entrada que o agente não pode escrever é uma linha do
+roadmap (foi o caso da integração da spec 110: `110: created → verified`).
+
+### Por que isso é defeito, e não proteção
+
+A regra existente (“roadmap só muda pelo pipeline”) está correta e foi respeitada. O excesso é
+bloquear a **leitura** e impedir que o usuário autorize a integração de um commit legítimo por
+outro caminho. Um guarda que impede trabalho legítimo deixa de proteger e passa a obstruir —
+exatamente o critério de KISS do contrato do repositório.
+
+### Ação recomendada
+
+- permitir leitura de artefatos protegidos (o bloqueio deve valer para escrita);
+- oferecer uma via explícita para o dono autorizar operações de VCS que tragam mudanças de
+  artefato geradas pelo próprio pipeline (ex.: aceitar o arquivo vindo de `origin` como
+  autoridade, sem escrita pelo modelo);
+- manter o bloqueio de escrita direta como está.
+
+### O que NÃO fazer
+
+- Não ler o roadmap por caminhos alternativos para contornar o guarda.
+- Não editar o roadmap para “casar” com o estado local.
+
+---
+
 ## P-001 — Runtime: guard `task-ledger-divergence` é insatisfazível (bloqueia a spec 110)
 
 **Estado:** aberto

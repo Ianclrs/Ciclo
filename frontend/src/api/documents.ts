@@ -9,6 +9,23 @@ export async function getPendingDocuments(params: {
   return res.data;
 }
 
+/** A6b: listagem global filtrável por status, aluno, tipo e nome do aluno. */
+export interface DocumentFilters {
+  status?: string;
+  studentId?: string;
+  documentTypeId?: string;
+  search?: string;
+  page?: number;
+  pageSize?: number;
+}
+
+export async function getDocuments(
+  params: DocumentFilters,
+): Promise<PagedResponse<Document>> {
+  const res = await api.get('/api/documents', { params });
+  return res.data;
+}
+
 export async function getStudentDocuments(studentId: string, params: {
   page?: number;
   pageSize?: number;

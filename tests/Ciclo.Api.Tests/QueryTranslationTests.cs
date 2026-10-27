@@ -74,4 +74,24 @@ public sealed class QueryTranslationTests
         Assert.Contains("lower(", sql, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("WHERE", sql, StringComparison.OrdinalIgnoreCase);
     }
+
+    /// <summary>
+    /// A6b: a busca de documento filtra pelo nome do ALUNO (join). A prova é necessária porque a
+    /// expressão é outra — `document.Student.Nome.ToLower().Contains(...)` — e um join mal
+    /// traduzido falharia só em produção.
+    /// </summary>
+    [Fact]
+    public void DocumentStudentNameSearch_TranslatesToLowerAndLike()
+    {
+        using var db = CreateProbe();
+        var term = "ana";
+
+        var sql = db.Documents
+            .WhereStudentNameContains(term)
+            .ToQueryString();
+
+        Assert.Contains("lower(", sql, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("LIKE", sql, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("JOIN", sql, StringComparison.OrdinalIgnoreCase);
+    }
 }

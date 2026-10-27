@@ -4,6 +4,21 @@ export interface User {
   email: string;
   role: 'Admin' | 'Staff' | 'Parent';
   tenantId: string;
+  /** M11: presente em /auth/me e na gestão de usuários. */
+  emailConfirmed?: boolean;
+}
+
+export type ManagedRole = 'Admin' | 'Staff' | 'Parent';
+
+/** Usuário como a tela de gestão recebe (M11). */
+export interface ManagedUser {
+  id: string;
+  email: string;
+  name: string;
+  role: ManagedRole;
+  tenantId: string;
+  emailConfirmed: boolean;
+  isActive: boolean;
 }
 
 export interface Student {

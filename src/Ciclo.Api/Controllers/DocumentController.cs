@@ -105,6 +105,34 @@ public class DocumentController : ControllerBase
         }
     }
 
+    /// <summary>
+    /// A6b: listagem global com filtros por status, aluno, tipo e nome do aluno.
+    /// `pending` e `expiring` continuam existindo porque têm semântica própria (fila de
+    /// verificação e janela de vencimento); esta rota é a visão filtrável.
+    /// </summary>
+    [HttpGet("documents")]
+    [Authorize(Roles = AccessPolicy.Roles.DocumentStaffRead)]
+    public async Task<IActionResult> GetDocuments(
+        [FromQuery] string? status,
+        [FromQuery] Guid? studentId,
+        [FromQuery] Guid? documentTypeId,
+        [FromQuery] string? search,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 20)
+    {
+        try
+        {
+            var tenantId = GetTenantId();
+            var filter = new DocumentFilter(status, studentId, documentTypeId, search);
+            var result = await _service.GetDocumentsAsync(filter, tenantId, page, pageSize);
+            return Ok(result);
+        }
+        catch (DocumentException ex)
+        {
+            return ProblemResponse.FromCode(ex.Message, ex.StatusCode);
+        }
+    }
+
     /// <summary>FR-006: List pending documents.</summary>
     [HttpGet("documents/pending")]
     [Authorize(Roles = AccessPolicy.Roles.DocumentStaffRead)]

@@ -663,6 +663,19 @@ public sealed class AuthServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task ListUsers_ExposesActiveStateAndConfirmation()
+    {
+        var admin = await CreateAdminAsync("list-admin@test.com");
+
+        var list = await _authService.ListUsersAsync(TestConstants.TenantId, UserRole.Admin);
+
+        var found = Assert.Single(list, user => user.Id == admin.Id);
+        Assert.True(found.IsActive);
+        Assert.True(found.EmailConfirmed);
+        Assert.Equal("Admin", found.Role);
+    }
+
+    [Fact]
     public async Task ConfirmEmailAsync_WithTokenFromResend_ConfirmsTheAccount()
     {
         await _authService.RegisterAsync(

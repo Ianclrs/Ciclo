@@ -15,12 +15,17 @@ public class LocalFileStorage : IFileStorage
     private static readonly byte[] Magic = "CICLOENC"u8.ToArray();
 
     private readonly string _rootPath;
-    private readonly byte[] _encryptionKey;
+    private readonly byte[][] _encryptionKeys;
 
     public LocalFileStorage(IOptions<FileStorageOptions> options)
     {
         _rootPath = Path.GetFullPath(options.Value.RootPath);
-        _encryptionKey = FileStorageKey.Parse(options.Value.EncryptionKey);
+
+        // Rotação (runbook no README): a chave ATUAL cifra; as ANTERIORES só decifram.
+        // A lista é validada com o mesmo fail-closed da chave principal — uma chave antiga
+        // malformada impediria a leitura de documentos e deve falhar no startup, não no download.
+        var previous = options.Value.PreviousEncryptionKeys ?? [];
+        _encryptionKeys = [FileStorageKey.Parse(options.Value.EncryptionKey), .. previous.Select(FileStorageKey.Parse)];
     }
 
     public async Task<string> SaveAsync(Guid tenantId, Guid studentId, string fileName, Stream content)
@@ -67,6 +72,31 @@ public class LocalFileStorage : IFileStorage
         return Task.CompletedTask;
     }
 
+    public async Task ReencryptAsync(string filePath)
+    {
+        var fullPath = ResolvePath(filePath);
+
+        if (!File.Exists(fullPath))
+            throw new FileNotFoundException("File not found.", fullPath);
+
+        var bytes = await File.ReadAllBytesAsync(fullPath);
+        var plain = IsEncrypted(bytes) ? Decrypt(bytes) : bytes;
+        var reencrypted = Encrypt(plain);
+
+        // Grava ao lado e move por cima: uma falha no meio não deixa o documento truncado.
+        var tempPath = fullPath + ".rotate.tmp";
+        try
+        {
+            await File.WriteAllBytesAsync(tempPath, reencrypted);
+            File.Move(tempPath, fullPath, overwrite: true);
+        }
+        finally
+        {
+            if (File.Exists(tempPath))
+                File.Delete(tempPath);
+        }
+    }
+
     private byte[] Encrypt(byte[] plaintext)
     {
         var ciphertext = new byte[plaintext.Length];
@@ -75,7 +105,7 @@ public class LocalFileStorage : IFileStorage
 
         RandomNumberGenerator.Fill(nonce);
 
-        using var aes = new AesGcm(_encryptionKey, TagSize);
+        using var aes = new AesGcm(_encryptionKeys[0], TagSize);
         aes.Encrypt(nonce, plaintext, ciphertext, tag);
 
         // Formato do arquivo: [Magic(8)][Nonce(12)][Tag(16)][Ciphertext]
@@ -94,12 +124,27 @@ public class LocalFileStorage : IFileStorage
         var tag = data.AsSpan(Magic.Length + NonceSize, TagSize);
         var ciphertext = data.AsSpan(Magic.Length + NonceSize + TagSize);
 
-        var plaintext = new byte[ciphertext.Length];
+        // Tenta a chave atual e depois cada anterior. A tag GCM é a prova: uma chave errada
+        // falha na autenticação, então não há como decifrar com a chave errada por engano.
+        foreach (var key in _encryptionKeys)
+        {
+            var plaintext = new byte[ciphertext.Length];
+            try
+            {
+                using var aes = new AesGcm(key, TagSize);
+                aes.Decrypt(nonce, ciphertext, tag, plaintext);
+                return plaintext;
+            }
+            catch (AuthenticationTagMismatchException)
+            {
+                // Chave errada para este arquivo: tenta a próxima.
+            }
+        }
 
-        using var aes = new AesGcm(_encryptionKey, TagSize);
-        aes.Decrypt(nonce, ciphertext, tag, plaintext);
-
-        return plaintext;
+        throw new CryptographicException(
+            "No configured storage key could decrypt this file. "
+            + "If a key was rotated, keep the previous key in FileStorage:PreviousEncryptionKeys "
+            + "until every document has been re-encrypted (--rotate-storage-key).");
     }
 
     private static bool IsEncrypted(byte[] data)
@@ -133,4 +178,10 @@ public class FileStorageOptions
     public const string SectionName = "FileStorage";
     public string RootPath { get; set; } = "uploads";
     public string? EncryptionKey { get; set; }
+
+    /// <summary>
+    /// Chaves anteriores (Base64), aceitas SOMENTE para leitura durante a rotação.
+    /// Remova-as depois de rodar a re-encriptação de todos os documentos.
+    /// </summary>
+    public string[] PreviousEncryptionKeys { get; set; } = [];
 }

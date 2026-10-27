@@ -18,6 +18,7 @@ public interface IDocumentService
     Task<(Stream Stream, string ContentType, string FileName)> DownloadAsync(Guid documentId, Guid tenantId, Guid userId, UserRole role);
     Task VerifyAsync(Guid documentId, VerifyDocumentRequest request, Guid tenantId, UserRole role);
     Task<PagedResponse<DocumentDto>> GetPendingAsync(Guid tenantId, int page, int pageSize);
+    Task<PagedResponse<DocumentDto>> GetDocumentsAsync(DocumentFilter filter, Guid tenantId, int page, int pageSize);
     Task<List<DocumentDto>> GetExpiringAsync(Guid tenantId, int days);
 
     // Document Types
@@ -159,9 +160,7 @@ public class DocumentService : IDocumentService
             .OrderByDescending(d => d.CreatedAt)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
-            .Select(d => new DocumentDto(
-                d.Id, d.StudentId, d.Student.Nome, d.DocumentTypeId, d.DocumentType.Nome,
-                d.NomeArquivo, d.Status.ToString(), d.DataValidade, d.MotivoRejeicao, d.CreatedAt))
+            .Select(DocumentQueries.ToDto)
             .ToListAsync();
 
         return new PagedResponse<DocumentDto>(docs, total, page, pageSize);
@@ -264,13 +263,51 @@ public class DocumentService : IDocumentService
             .OrderBy(d => d.CreatedAt)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
-            .Select(d => new DocumentDto(
-                d.Id, d.StudentId, d.Student.Nome, d.DocumentTypeId, d.DocumentType.Nome,
-                d.NomeArquivo, d.Status.ToString(), d.DataValidade, d.MotivoRejeicao, d.CreatedAt,
-                d.Student.Foto))
+            .Select(DocumentQueries.ToDto)
             .ToListAsync();
 
         return new PagedResponse<DocumentDto>(docs, total, page, pageSize);
+    }
+
+    public async Task<PagedResponse<DocumentDto>> GetDocumentsAsync(
+        DocumentFilter filter, Guid tenantId, int page, int pageSize)
+    {
+        (page, pageSize) = Pagination.Normalize(page, pageSize);
+
+        var query = _db.Documents
+            .Include(d => d.DocumentType)
+            .Include(d => d.Student)
+            .AsQueryable();
+
+        if (!string.IsNullOrWhiteSpace(filter.Status))
+        {
+            // Mesma regra do M5: filtro inválido não vira "todos" em silêncio.
+            if (!Enum.TryParse<DocumentStatus>(filter.Status.Trim(), ignoreCase: true, out var status)
+                || !Enum.IsDefined(status))
+                throw new DocumentException("status_invalid", 400);
+
+            query = query.Where(d => d.Status == status);
+        }
+
+        if (filter.StudentId is { } studentId)
+            query = query.Where(d => d.StudentId == studentId);
+
+        if (filter.DocumentTypeId is { } documentTypeId)
+            query = query.Where(d => d.DocumentTypeId == documentTypeId);
+
+        if (!string.IsNullOrWhiteSpace(filter.Search))
+            query = query.WhereStudentNameContains(filter.Search.Trim().ToLowerInvariant());
+
+        var total = await query.CountAsync();
+
+        var documents = await query
+            .OrderByDescending(d => d.CreatedAt)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Select(DocumentQueries.ToDto)
+            .ToListAsync();
+
+        return new PagedResponse<DocumentDto>(documents, total, page, pageSize);
     }
 
     public async Task<List<DocumentDto>> GetExpiringAsync(Guid tenantId, int days)
@@ -288,9 +325,7 @@ public class DocumentService : IDocumentService
                 && d.DataValidade != null
                 && d.DataValidade <= cutoff)
             .OrderBy(d => d.DataValidade)
-            .Select(d => new DocumentDto(
-                d.Id, d.StudentId, d.Student.Nome, d.DocumentTypeId, d.DocumentType.Nome,
-                d.NomeArquivo, d.Status.ToString(), d.DataValidade, d.MotivoRejeicao, d.CreatedAt))
+            .Select(DocumentQueries.ToDto)
             .ToListAsync();
 
         return docs;
