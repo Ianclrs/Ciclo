@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { createSingleFlight } from './singleFlight';
 
 let accessToken: string | null = null;
 
@@ -23,6 +24,27 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+// Uma única renovação em voo: o refresh rotaciona o token no servidor, então
+// renovações paralelas fariam os perdedores usarem um token já revogado (A9).
+const refreshAccessToken = createSingleFlight(async () => {
+  const res = await axios.post(`${api.defaults.baseURL}/api/auth/refresh`, {}, { withCredentials: true });
+  const token = res.data.accessToken as string;
+  setAccessToken(token);
+  return token;
+});
+
+// Falhas concorrentes compartilham a mesma sessão encerrada: um único redirect.
+let sessionExpiredHandled = false;
+
+function handleSessionExpired(): void {
+  setAccessToken(null);
+  if (sessionExpiredHandled) {
+    return;
+  }
+  sessionExpiredHandled = true;
+  window.location.href = '/login';
+}
+
 api.interceptors.response.use(
   (res) => res,
   async (error) => {
@@ -40,14 +62,11 @@ api.interceptors.response.use(
     if (error.response?.status === 401 && !original._retry) {
       original._retry = true;
       try {
-        const res = await axios.post(`${api.defaults.baseURL}/api/auth/refresh`, {}, { withCredentials: true });
-        const newToken = res.data.accessToken as string;
-        setAccessToken(newToken);
+        const newToken = await refreshAccessToken();
         original.headers.Authorization = `Bearer ${newToken}`;
         return api(original);
       } catch {
-        setAccessToken(null);
-        window.location.href = '/login';
+        handleSessionExpired();
         return Promise.reject(error);
       }
     }

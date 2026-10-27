@@ -55,7 +55,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = async () => {
-    try { await authApi.logout(); } catch { /* ignore */ }
+    // Best-effort: falha ao revogar no servidor não pode impedir a saída local
+    // (o token expira sozinho). Não é carregamento de dados — nada fica "vazio".
+    try { await authApi.logout(); } catch { /* revogação remota best-effort */ }
     setAccessToken(null);
     setUser(null);
   };

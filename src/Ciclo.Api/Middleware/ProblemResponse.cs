@@ -21,6 +21,31 @@ internal static class ProblemResponse
     /// </summary>
     internal const string CodeExtension = "code";
 
+    /// <summary>
+    /// Resposta de erro de domínio a partir do código da exceção (M3).
+    ///
+    /// Antes, cada controller montava <c>Problem(title: ex.Message, statusCode: ...)</c> — 43
+    /// pontos repetindo o mesmo formato e nenhum deles expondo o <c>code</c> de contrato. Agora
+    /// existe um lugar: controller que lança exceção de domínio responde por aqui.
+    ///
+    /// O <c>title</c> repete o código de propósito: o texto para humanos é resolvido no cliente
+    /// (`apiErrorMessage`), então a redação pode mudar sem quebrar o contrato, e o contrato não
+    /// depende de cada chamador lembrar de preencher dois campos.
+    /// </summary>
+    internal static IActionResult FromCode(string code, int status)
+    {
+        var problem = new ProblemDetails
+        {
+            Status = status,
+            Title = code
+        };
+        problem.Extensions[CodeExtension] = code;
+
+        var result = new ObjectResult(problem) { StatusCode = status };
+        result.ContentTypes.Add(ContentType);
+        return result;
+    }
+
     internal static Task WriteAsync(HttpContext context, int status, string code, string title)
     {
         var problem = new ProblemDetails

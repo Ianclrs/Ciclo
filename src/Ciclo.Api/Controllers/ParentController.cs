@@ -3,13 +3,16 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Ciclo.Core.Entities;
 using Ciclo.Infrastructure.Contracts;
+using Ciclo.Infrastructure.Security;
 using Ciclo.Infrastructure.Services;
+
+using Ciclo.Api.Middleware;
 
 namespace Ciclo.Api.Controllers;
 
 [ApiController]
 [Route("api/parent")]
-[Authorize(Roles = "Parent")]
+[Authorize(Roles = AccessPolicy.Roles.ParentOnly)]
 public class ParentController : ControllerBase
 {
     private readonly IParentService _service;
@@ -68,7 +71,7 @@ public class ParentController : ControllerBase
         try
         {
             if (file is null || file.Length == 0)
-                return BadRequest(new { error = "file_required" });
+                return ProblemResponse.FromCode("file_required", 400);
 
             var (userId, _) = GetUserInfo();
             var tenantId = GetTenantId();
@@ -78,7 +81,7 @@ public class ParentController : ControllerBase
         }
         catch (DocumentException ex)
         {
-            return Problem(title: ex.Message, statusCode: ex.StatusCode);
+            return ProblemResponse.FromCode(ex.Message, ex.StatusCode);
         }
     }
 

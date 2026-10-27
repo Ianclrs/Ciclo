@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import axios from 'axios';
 import { Eye, EyeOff } from 'lucide-react';
+import { apiErrorCode, apiErrorMessage } from '../api/errors';
 import { useAuth } from '../hooks/useAuth';
 import { setAccessToken } from '../api/client';
 import { Button } from '../components/Button';
@@ -45,15 +45,16 @@ export default function LoginPage() {
       await login(email, password);
       toast.success('Login realizado!');
     } catch (err) {
-      const title =
-        axios.isAxiosError(err) && typeof err.response?.data?.title === 'string'
-          ? err.response.data.title
-          : '';
-      if (title === 'account_locked_30min') {
-        toast.error('Muitas tentativas de login. Tente novamente em 30 minutos.');
-      } else {
-        toast.error('Email ou senha incorretos.');
-      }
+      // Sem resposta da API não é "senha errada": é falha de conexão.
+      const offline = apiErrorCode(err) === null;
+      toast.error(
+        apiErrorMessage(
+          err,
+          offline
+            ? 'Não foi possível conectar ao servidor. Verifique sua conexão.'
+            : 'E-mail ou senha incorretos.',
+        ),
+      );
     } finally {
       setLoading(false);
     }
@@ -109,6 +110,12 @@ export default function LoginPage() {
             className={buttonClass('secondary', 'md', 'mt-4 w-full !bg-white !text-stone-700 border border-stone-300 hover:!bg-gray-50 shadow-sm hover:shadow-md')}
           >
             Cadastrar meu colégio
+          </Link>
+          <Link
+            to="/register/parent"
+            className="mt-2 block text-center text-sm text-stone-600 hover:text-stone-800 transition-colors"
+          >
+            Sou responsável e quero criar minha conta
           </Link>
           <div className="relative my-6">
             <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-stone-300" /></div>

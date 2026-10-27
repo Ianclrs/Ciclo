@@ -1,0 +1,70 @@
+name: CI
+
+# M8 — o repositório não tinha CI: build, testes e lint só rodavam à mão.
+# Este workflow é o portão mínimo do PR. O contorno do restore quebrado (L1) é LOCAL desta
+# máquina — no runner o NuGet é íntegro, então `dotnet restore` roda normalmente aqui.
+#
+# Configuração = Debug (padrão) de propósito: é a mesma que os gates locais executam, então
+# cada comando abaixo tem prova real nesta máquina. `-c Release` não é validável aqui — o
+# mesmo defeito do NuGet reaparece como NETSDK1060 ao reler os assets (L1).
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Backend (.NET 10)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+          cache: true
+          cache-dependency-path: '**/*.csproj'
+
+      - name: Restore
+        run: dotnet restore Ciclo.sln
+
+      - name: Build
+        run: dotnet build Ciclo.sln --no-restore
+
+      - name: Test
+        run: dotnet test tests/Ciclo.Api.Tests --no-build --logger "console;verbosity=normal"
+
+  frontend:
+    name: Frontend (Node 24)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build

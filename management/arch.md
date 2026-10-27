@@ -3,9 +3,9 @@
 ## 1. Technical Architecture
 
 - **Stack:** C# .NET 10 (ASP.NET Core Web API), Entity Framework Core 10, PostgreSQL 16
-- **Frontend:** React 19, Vite 6, Tailwind CSS 4, PWA (Workbox)
+- **Frontend:** React 19, Vite 8, Tailwind CSS 4, PWA (Workbox)
 - **Database:** PostgreSQL 16 — schema-per-tenant via EF Core global query filters
-- **Auth:** ASP.NET Core Identity + JWT Bearer tokens + Google OAuth 2.0 (OpenID Connect)
+- **Auth:** ASP.NET Core Identity + JWT Bearer tokens (Google OAuth removido no C8)
 - **Deployment:** Docker Compose (local dev), Docker Swarm or AWS ECS (production)
 - **Platform:** Web (SPA) + PWA for mobile (iOS/Android)
 
@@ -34,12 +34,12 @@
 | Concern | Implementation |
 |---|---|
 | Multi-Tenancy | Middleware + EF Core Global Query Filter (`TenantId`) |
-| Auth | JWT (access + refresh tokens), Google OAuth via OpenID Connect |
+| Auth | JWT (access + refresh), ASP.NET Core Identity — Google OAuth removido no C8 |
 | Logging | Serilog → Console + File |
 | Validation | FluentValidation |
 | API Docs | Swagger / OpenAPI |
-| Error Handling | Global exception middleware + ProblemDetails (RFC 9457) |
-| Background Jobs | Hangfire or Quartz.NET (for notifications) |
+| Error Handling | Global exception middleware + ProblemDetails (RFC 9457) com `code` estável (M3) |
+| Background Jobs | **Nenhum agendador.** O e-mail usa `ChannelEmailDispatcher` (fila em memória, canal inerte — `ConsoleEmailSender`); Hangfire/Quartz não existem |
 | File Storage | Local disk (dev) / S3-compatible (prod) |
 
 ### API Route Convention

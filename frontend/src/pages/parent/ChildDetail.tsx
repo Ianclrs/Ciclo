@@ -6,14 +6,43 @@ import { StudentAvatar } from '../../components/StudentAvatar';
 import { Button } from '../../components/Button';
 import { ArrowLeft, FileText } from 'lucide-react';
 import * as api from '../../api/parent';
+import { apiErrorMessage } from '../../api/errors';
+import { LoadError } from '../../components/LoadError';
+import { formatDate } from '../../utils/format';
 import type { ChildDetail } from '../../types';
 
 export default function ChildDetail() {
   const { id } = useParams();
   const [child, setChild] = useState<ChildDetail | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
   const [tab, setTab] = useState<'info' | 'docs' | 'grades'>('info');
 
-  useEffect(() => { if (id) api.getChildDetail(id).then(setChild).catch(() => {}); }, [id]);
+  useEffect(() => {
+    if (!id) return;
+    let active = true;
+    api
+      .getChildDetail(id)
+      .then((data) => {
+        if (!active) return;
+        setChild(data); setError(null);
+      })
+      .catch((err) => {
+        if (!active) return;
+        setError(apiErrorMessage(err, 'Não foi possível carregar os dados do aluno.'));
+      });
+    return () => { active = false; };
+  }, [id, reloadKey]);
+
+  if (error) {
+    return (
+      <div>
+        <Link to="/parent" className="flex items-center gap-1 text-sm text-gray-500 mb-4"><ArrowLeft size={16} /> Voltar</Link>
+        <LoadError message={error} onRetry={() => setReloadKey((k) => k + 1)} />
+      </div>
+    );
+  }
+
   if (!child) return <p>Carregando...</p>;
 
   return (
@@ -58,7 +87,7 @@ export default function ChildDetail() {
             <ul className="divide-y text-sm">
               {child.documents.map((d) => (
                 <li key={d.id} className="py-3 flex items-center justify-between">
-                  <div><p className="font-medium">{d.nomeArquivo}</p><p className="text-xs text-gray-500">{d.documentTypeName} • {new Date(d.createdAt).toLocaleDateString()}</p></div>
+                  <div><p className="font-medium">{d.nomeArquivo}</p><p className="text-xs text-gray-500">{d.documentTypeName} • {formatDate(d.createdAt)}</p></div>
                   <StatusBadge status={d.status} variant={d.status === 'Aprovado' ? 'success' : d.status === 'Pendente' ? 'warning' : 'danger'} />
                 </li>
               ))}

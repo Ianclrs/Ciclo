@@ -1,7 +1,11 @@
+using System.Linq.Expressions;
 using Microsoft.EntityFrameworkCore;
 using Ciclo.Core.Entities;
+using Ciclo.Core.Validation;
 using Ciclo.Infrastructure.Contracts;
 using Ciclo.Infrastructure.Data;
+using Ciclo.Infrastructure.Security;
+using Ciclo.Infrastructure.Storage;
 
 namespace Ciclo.Infrastructure.Services;
 
@@ -9,11 +13,11 @@ public interface IStudentService
 {
     Task<PagedResponse<StudentDto>> GetAllAsync(string? search, string? turma, string? status, int page, int pageSize, Guid tenantId, Guid userId, UserRole role);
     Task<StudentDto> GetByIdAsync(Guid id, Guid tenantId, Guid userId, UserRole role);
-    Task<StudentDto> CreateAsync(CreateStudentRequest request, Guid tenantId);
-    Task<StudentDto> UpdateAsync(Guid id, UpdateStudentRequest request, Guid tenantId);
-    Task DeleteAsync(Guid id, Guid tenantId);
-    Task LinkParentAsync(Guid studentId, Guid parentId, Guid tenantId);
-    Task UnlinkParentAsync(Guid studentId, Guid parentId, Guid tenantId);
+    Task<StudentDto> CreateAsync(CreateStudentRequest request, Guid tenantId, UserRole role);
+    Task<StudentDto> UpdateAsync(Guid id, UpdateStudentRequest request, Guid tenantId, UserRole role);
+    Task DeleteAsync(Guid id, Guid tenantId, UserRole role);
+    Task LinkParentAsync(Guid studentId, Guid parentId, Guid tenantId, UserRole role);
+    Task UnlinkParentAsync(Guid studentId, Guid parentId, Guid tenantId, UserRole role);
     Task<List<EnrollmentDto>> GetEnrollmentHistoryAsync(Guid studentId, Guid tenantId, Guid userId, UserRole role);
 }
 
@@ -31,35 +35,34 @@ public class StudentService : IStudentService
         Guid tenantId, Guid userId, UserRole role)
     {
         // Normalize pagination
-        if (page < 1) page = 1;
-        if (pageSize > 100) pageSize = 100;
-        if (pageSize < 1) pageSize = 20;
+        (page, pageSize) = Pagination.Normalize(page, pageSize);
 
         IQueryable<Student> query = _db.Students;
 
-        // Parent: only linked students
-        if (role == UserRole.Parent)
-        {
-            query = query.Where(s => s.StudentParents.Any(sp => sp.ParentId == userId));
-        }
+        // B9: a regra de vínculo tem um dono único (StudentAccess).
+        query = query.VisibleTo(userId, role);
 
         // Filters
-        if (!string.IsNullOrWhiteSpace(search))
-        {
-            query = query.Where(s => s.Nome.Contains(search));
-        }
+        var term = string.IsNullOrWhiteSpace(search) ? null : search.Trim().ToLowerInvariant();
+        var normalizedTurma = string.IsNullOrWhiteSpace(turma) ? null : turma.Trim().ToLowerInvariant();
 
-        if (!string.IsNullOrWhiteSpace(turma))
-        {
-            query = query.Where(s => s.Turma == turma);
-        }
+        // As expressões traduzidas ficam em `StudentQueries` (dono único, provado contra Npgsql).
+        if (term is not null)
+            query = query.WhereNameContains(term);
+
+        if (normalizedTurma is not null)
+            query = query.WhereTurma(normalizedTurma);
 
         if (!string.IsNullOrWhiteSpace(status))
         {
-            if (Enum.TryParse<StudentStatus>(status, ignoreCase: true, out var parsedStatus))
-            {
-                query = query.Where(s => s.Status == parsedStatus);
-            }
+            // Filtro inválido não pode ser ignorado em silêncio: devolver a lista inteira faria a
+            // tela mostrar "todos" quando o operador pediu um status que não existe.
+            // TryParse sozinho ainda aceita valor numérico fora do enum ("99"), por isso IsDefined.
+            if (!Enum.TryParse<StudentStatus>(status.Trim(), ignoreCase: true, out var parsedStatus)
+                || !Enum.IsDefined(parsedStatus))
+                throw new StudentException("status_invalid", 400);
+
+            query = query.Where(s => s.Status == parsedStatus);
         }
 
         var total = await query.CountAsync();
@@ -68,23 +71,7 @@ public class StudentService : IStudentService
             .OrderBy(s => s.Nome)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
-            .Select(s => new StudentDto(
-                s.Id,
-                s.Nome,
-                s.DataNascimento,
-                s.Cpf,
-                s.Turma,
-                s.AnoLetivo,
-                s.Status.ToString(),
-                s.Observacoes,
-                s.Foto,
-                s.CreatedAt,
-                s.StudentParents.Select(sp => new ParentLinkDto(
-                    sp.ParentId,
-                    sp.Parent.Name,
-                    sp.Parent.Email ?? string.Empty
-                )).ToList()
-            ))
+            .Select(ToDto)
             .ToListAsync();
 
         return new PagedResponse<StudentDto>(students, total, page, pageSize);
@@ -92,34 +79,29 @@ public class StudentService : IStudentService
 
     public async Task<StudentDto> GetByIdAsync(Guid id, Guid tenantId, Guid userId, UserRole role)
     {
-        var student = await _db.Students
-            .Include(s => s.StudentParents)
-            .ThenInclude(sp => sp.Parent)
-            .FirstOrDefaultAsync(s => s.Id == id);
+        await StudentAccess.EnsureLinkedAsync(_db, id, userId, role);
+
+        var student = await ProjectAsync(id);
 
         if (student is null)
             throw new StudentException("student_not_found", 404);
 
-        // Parent: must be linked
-        if (role == UserRole.Parent)
-        {
-            if (!student.StudentParents.Any(sp => sp.ParentId == userId))
-                throw new StudentException("not_linked_to_student", 403);
-        }
-
-        return MapToDto(student);
+        return student;
     }
 
-    public async Task<StudentDto> CreateAsync(CreateStudentRequest request, Guid tenantId)
+    public async Task<StudentDto> CreateAsync(CreateStudentRequest request, Guid tenantId, UserRole role)
     {
+        AccessPolicy.Require(AccessPolicy.Roles.StudentWrite, role);
+
         ValidateFields(request.Nome, request.DataNascimento, request.Turma, request.AnoLetivo);
         ValidateFoto(request.Foto);
+        var cpf = NormalizeOptionalCpf(request.Cpf);
 
         // CPF duplicate check
-        if (!string.IsNullOrWhiteSpace(request.Cpf))
+        if (cpf is not null)
         {
             var cpfExists = await _db.Students
-                .AnyAsync(s => s.Cpf == request.Cpf);
+                .AnyAsync(s => s.Cpf == cpf);
             if (cpfExists)
                 throw new StudentException("cpf_already_exists", 409);
         }
@@ -130,7 +112,7 @@ public class StudentService : IStudentService
             TenantId = tenantId,
             Nome = request.Nome,
             DataNascimento = request.DataNascimento,
-            Cpf = request.Cpf,
+            Cpf = cpf,
             Turma = request.Turma,
             AnoLetivo = request.AnoLetivo,
             Status = StudentStatus.Ativo,
@@ -143,11 +125,14 @@ public class StudentService : IStudentService
         _db.Students.Add(student);
         await _db.SaveChangesAsync();
 
-        return MapToDto(student);
+        return await ProjectAsync(student.Id)
+            ?? throw new StudentException("student_not_found", 404);
     }
 
-    public async Task<StudentDto> UpdateAsync(Guid id, UpdateStudentRequest request, Guid tenantId)
+    public async Task<StudentDto> UpdateAsync(Guid id, UpdateStudentRequest request, Guid tenantId, UserRole role)
     {
+        AccessPolicy.Require(AccessPolicy.Roles.StudentWrite, role);
+
         var student = await _db.Students
             .FirstOrDefaultAsync(s => s.Id == id);
 
@@ -156,19 +141,20 @@ public class StudentService : IStudentService
 
         ValidateFields(request.Nome, request.DataNascimento, request.Turma, request.AnoLetivo);
         ValidateFoto(request.Foto);
+        var cpf = NormalizeOptionalCpf(request.Cpf);
 
         // CPF duplicate check (exclude self)
-        if (!string.IsNullOrWhiteSpace(request.Cpf))
+        if (cpf is not null)
         {
             var cpfExists = await _db.Students
-                .AnyAsync(s => s.Cpf == request.Cpf && s.Id != id);
+                .AnyAsync(s => s.Cpf == cpf && s.Id != id);
             if (cpfExists)
                 throw new StudentException("cpf_already_exists", 409);
         }
 
         student.Nome = request.Nome;
         student.DataNascimento = request.DataNascimento;
-        student.Cpf = request.Cpf;
+        student.Cpf = cpf;
         student.Turma = request.Turma;
         student.AnoLetivo = request.AnoLetivo;
         student.Observacoes = request.Observacoes;
@@ -177,11 +163,14 @@ public class StudentService : IStudentService
 
         await _db.SaveChangesAsync();
 
-        return MapToDto(student);
+        return await ProjectAsync(student.Id)
+            ?? throw new StudentException("student_not_found", 404);
     }
 
-    public async Task DeleteAsync(Guid id, Guid tenantId)
+    public async Task DeleteAsync(Guid id, Guid tenantId, UserRole role)
     {
+        AccessPolicy.Require(AccessPolicy.Roles.StudentDelete, role);
+
         var student = await _db.Students
             .FirstOrDefaultAsync(s => s.Id == id);
 
@@ -204,8 +193,10 @@ public class StudentService : IStudentService
         await _db.SaveChangesAsync();
     }
 
-    public async Task LinkParentAsync(Guid studentId, Guid parentId, Guid tenantId)
+    public async Task LinkParentAsync(Guid studentId, Guid parentId, Guid tenantId, UserRole role)
     {
+        AccessPolicy.Require(AccessPolicy.Roles.StudentWrite, role);
+
         var student = await _db.Students
             .FirstOrDefaultAsync(s => s.Id == studentId);
 
@@ -240,8 +231,10 @@ public class StudentService : IStudentService
         await _db.SaveChangesAsync();
     }
 
-    public async Task UnlinkParentAsync(Guid studentId, Guid parentId, Guid tenantId)
+    public async Task UnlinkParentAsync(Guid studentId, Guid parentId, Guid tenantId, UserRole role)
     {
+        AccessPolicy.Require(AccessPolicy.Roles.StudentWrite, role);
+
         var link = await _db.StudentParents
             .FirstOrDefaultAsync(sp => sp.StudentId == studentId && sp.ParentId == parentId);
 
@@ -254,14 +247,7 @@ public class StudentService : IStudentService
 
     public async Task<List<EnrollmentDto>> GetEnrollmentHistoryAsync(Guid studentId, Guid tenantId, Guid userId, UserRole role)
     {
-        // Parent: must be linked to student
-        if (role == UserRole.Parent)
-        {
-            var isLinked = await _db.StudentParents
-                .AnyAsync(sp => sp.StudentId == studentId && sp.ParentId == userId);
-            if (!isLinked)
-                throw new StudentException("not_linked_to_student", 403);
-        }
+        await StudentAccess.EnsureLinkedAsync(_db, studentId, userId, role);
 
         var enrollments = await _db.Enrollments
             .Include(e => e.Period)
@@ -283,11 +269,16 @@ public class StudentService : IStudentService
         return enrollments;
     }
 
-    /// <summary>Tamanho máximo da foto como data URL (~150 KB de imagem).</summary>
-    private const int MaxFotoLength = 200_000;
+    /// <summary>
+    /// Tamanho máximo da foto como data URL (~150 KB de imagem). Mantido por compatibilidade;
+    /// o limite real é <see cref="ImageDataUrl.MaxLength"/>.
+    /// </summary>
+    private const int MaxFotoLength = ImageDataUrl.MaxLength;
 
     /// <summary>
-    /// A foto chega do cliente como data URL Base64: valida tamanho e formato antes de persistir.
+    /// A foto chega do cliente como data URL Base64: valida tamanho, formato (lista fechada:
+    /// PNG, JPEG ou WebP) e a assinatura do conteúdo. SVG fica de fora — ele executa script
+    /// quando aberto no navegador e o prefixo `data:image/` o aceitava (M6).
     /// </summary>
     private static void ValidateFoto(string? foto)
     {
@@ -295,46 +286,75 @@ public class StudentService : IStudentService
             return;
         if (foto.Length > MaxFotoLength)
             throw new StudentException("foto_too_large", 400);
-        if (!foto.StartsWith("data:image/", StringComparison.Ordinal))
+        if (!ImageDataUrl.IsSupported(foto))
             throw new StudentException("foto_invalid_format", 400);
+    }
+
+    /// <summary>CPF vazio vira nulo; preenchido precisa passar nos dígitos verificadores e é
+    /// gravado só com dígitos, para "123.456.789-09" e "12345678909" não virarem duplicatas.</summary>
+    private static string? NormalizeOptionalCpf(string? cpf)
+    {
+        if (string.IsNullOrWhiteSpace(cpf))
+            return null;
+        if (!Cpf.IsValid(cpf))
+            throw new StudentException("cpf_invalid", 400);
+
+        return Cpf.Normalize(cpf);
     }
 
     private static void ValidateFields(string nome, DateTime dataNascimento, string turma, int anoLetivo)
     {
+        var now = DateTime.UtcNow;
+
         if (string.IsNullOrWhiteSpace(nome))
             throw new StudentException("nome_required", 400);
         if (nome.Length > 200)
             throw new StudentException("nome_too_long", 400);
-        if (dataNascimento >= DateTime.UtcNow)
+        if (dataNascimento >= now)
             throw new StudentException("data_nascimento_must_be_past", 400);
+
+        // Faixa de idade: uma data há 1 mês ou há 200 anos é erro de digitação, não um aluno.
+        // O piso de 2 anos é o mínimo fora da creche; o teto de 120 é o limite humano.
+        if (dataNascimento > now.AddYears(-2))
+            throw new StudentException("data_nascimento_too_recent", 400);
+        if (dataNascimento < now.AddYears(-120))
+            throw new StudentException("data_nascimento_too_old", 400);
+
         if (string.IsNullOrWhiteSpace(turma))
             throw new StudentException("turma_required", 400);
         if (turma.Length > 50)
             throw new StudentException("turma_too_long", 400);
-        if (anoLetivo < 2000)
+
+        // O ano letivo é o corrente ou, no máximo, o seguinte (planejamento). Sem teto, 99999
+        // era aceito e contaminava relatórios e a matrícula.
+        if (anoLetivo < 2000 || anoLetivo > now.Year + 1)
             throw new StudentException("ano_letivo_invalid", 400);
     }
 
-    private static StudentDto MapToDto(Student s)
-    {
-        return new StudentDto(
-            s.Id,
-            s.Nome,
-            s.DataNascimento,
-            s.Cpf,
-            s.Turma,
-            s.AnoLetivo,
-            s.Status.ToString(),
-            s.Observacoes,
-            s.Foto,
-            s.CreatedAt,
-            s.StudentParents.Select(sp => new ParentLinkDto(
-                sp.ParentId,
-                sp.Parent.Name,
-                sp.Parent.Email ?? string.Empty
-            )).ToList()
-        );
-    }
+    /// <summary>
+    /// Projeção única do <see cref="StudentDto"/>. Antes existiam três caminhos — a
+    /// projeção da listagem, os <c>Include</c> do detalhe e um mapeamento em memória —
+    /// e o <c>Update</c> devolvia <c>parents: []</c> porque mapeava uma entidade sem o
+    /// vínculo carregado (M1). Agora todo caminho devolve o mesmo shape.
+    /// </summary>
+    private static readonly Expression<Func<Student, StudentDto>> ToDto = s => new StudentDto(
+        s.Id,
+        s.Nome,
+        s.DataNascimento,
+        s.Cpf,
+        s.Turma,
+        s.AnoLetivo,
+        s.Status.ToString(),
+        s.Observacoes,
+        s.Foto,
+        s.CreatedAt,
+        s.StudentParents.Select(sp => new ParentLinkDto(
+            sp.ParentId,
+            sp.Parent.Name,
+            sp.Parent.Email ?? string.Empty)).ToList());
+
+    private Task<StudentDto?> ProjectAsync(Guid id) =>
+        _db.Students.Where(s => s.Id == id).Select(ToDto).FirstOrDefaultAsync();
 }
 
 public class StudentException : Exception

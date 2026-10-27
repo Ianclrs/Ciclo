@@ -2,26 +2,28 @@ using Microsoft.EntityFrameworkCore;
 using Ciclo.Core.Entities;
 using Ciclo.Infrastructure.Contracts;
 using Ciclo.Infrastructure.Data;
+using Ciclo.Infrastructure.Security;
 
 namespace Ciclo.Infrastructure.Services;
 
 public interface IEnrollmentService
 {
     // Period management
-    Task<PagedResponse<EnrollmentPeriodDto>> GetPeriodsAsync(bool includeInactive, Guid tenantId);
-    Task<EnrollmentPeriodDto> CreatePeriodAsync(CreateEnrollmentPeriodRequest request, Guid tenantId);
-    Task ClosePeriodAsync(Guid periodId, Guid tenantId);
+    Task<List<EnrollmentPeriodDto>> GetPeriodsAsync(bool includeInactive, Guid tenantId);
+    Task<EnrollmentPeriodDto> CreatePeriodAsync(CreateEnrollmentPeriodRequest request, Guid tenantId, UserRole role);
+    Task ClosePeriodAsync(Guid periodId, Guid tenantId, UserRole role);
 
     // Enrollment CRUD
-    Task<EnrollmentDto> CreateEnrollmentAsync(CreateEnrollmentRequest request, Guid tenantId);
+    Task<EnrollmentDto> CreateEnrollmentAsync(CreateEnrollmentRequest request, Guid tenantId, UserRole role);
     Task<PagedResponse<EnrollmentDto>> GetEnrollmentsAsync(string? status, Guid? periodId, int page, int pageSize, Guid tenantId, Guid userId, UserRole role);
     Task<EnrollmentDto> GetEnrollmentByIdAsync(Guid id, Guid tenantId, Guid userId, UserRole role);
 
     // State machine transitions
-    Task<EnrollmentDto> SubmitAsync(Guid enrollmentId, Guid tenantId);
-    Task<EnrollmentDto> ApproveAsync(Guid enrollmentId, Guid tenantId);
-    Task RejectAsync(Guid enrollmentId, RejectEnrollmentRequest request, Guid tenantId);
-    Task CancelAsync(Guid enrollmentId, Guid tenantId);
+    Task<EnrollmentDto> SubmitAsync(Guid enrollmentId, Guid tenantId, Guid userId, UserRole role);
+    Task<EnrollmentDto> ApproveAsync(Guid enrollmentId, Guid tenantId, Guid userId, UserRole role);
+    Task RejectAsync(Guid enrollmentId, RejectEnrollmentRequest request, Guid tenantId, Guid userId, UserRole role);
+    Task CancelAsync(Guid enrollmentId, Guid tenantId, Guid userId, UserRole role);
+    Task<EnrollmentDto> ReopenAsync(Guid enrollmentId, Guid tenantId, Guid userId, UserRole role);
 }
 
 public class EnrollmentService : IEnrollmentService
@@ -58,7 +60,15 @@ public class EnrollmentService : IEnrollmentService
             EnrollmentStatus.Rejeitado,
             EnrollmentStatus.Cancelado
         ],
-        // Rejeitado, Cancelado: terminal (no outgoing transitions)
+        // M12 - reabertura: de um estado terminal so se volta para Pendente, e apenas por
+        // `ReopenAsync` (Admin). Nao existe caminho direto de Aprovado para Cancelado nem de
+        // Rejeitado para Aprovado: reabrir e uma decisao explicita, com autor registrado.
+        // O destino e decidido por `DocumentCompliance` (Pendente ou DocumentacaoPendente), como
+        // no submit: a tabela precisa aceitar os dois ou a reabertura falharia justamente quando
+        // falta documento — o caso em que ela e mais necessaria.
+        [EnrollmentStatus.Aprovado] = [EnrollmentStatus.Pendente, EnrollmentStatus.DocumentacaoPendente],
+        [EnrollmentStatus.Rejeitado] = [EnrollmentStatus.Pendente, EnrollmentStatus.DocumentacaoPendente],
+        [EnrollmentStatus.Cancelado] = [EnrollmentStatus.Pendente, EnrollmentStatus.DocumentacaoPendente],
     };
 
     public static bool CanTransition(EnrollmentStatus from, EnrollmentStatus to)
@@ -75,32 +85,43 @@ public class EnrollmentService : IEnrollmentService
 
     // ── Period Management ──────────────────────────────────────────
 
-    public async Task<PagedResponse<EnrollmentPeriodDto>> GetPeriodsAsync(bool includeInactive, Guid tenantId)
+    /// <summary>
+    /// B1: a resposta NÃO é paginada — e agora diz isso pelo tipo.
+    ///
+    /// Antes o método devolvia <c>PagedResponse</c> sem paginar, com <c>page = 1</c> e
+    /// <c>pageSize = total</c> (0 quando vazio): um envelope falso, que qualquer cliente leria
+    /// como "há páginas" quando não há. O número de períodos por colégio é pequeno e limitado
+    /// pelo calendário — paginar seria complexidade sem uso.
+    /// </summary>
+    public async Task<List<EnrollmentPeriodDto>> GetPeriodsAsync(bool includeInactive, Guid tenantId)
     {
         IQueryable<EnrollmentPeriod> query = _db.EnrollmentPeriods;
 
         if (!includeInactive)
             query = query.Where(p => p.IsActive);
 
-        var total = await query.CountAsync();
-
-        var periods = await query
+        return await query
             .OrderByDescending(p => p.AnoLetivo)
             .Select(p => new EnrollmentPeriodDto(
                 p.Id, p.Nome, p.DataInicio, p.DataFim, p.AnoLetivo, p.IsActive))
             .ToListAsync();
-
-        return new PagedResponse<EnrollmentPeriodDto>(periods, total, 1, total);
     }
 
-    public async Task<EnrollmentPeriodDto> CreatePeriodAsync(CreateEnrollmentPeriodRequest request, Guid tenantId)
+    public async Task<EnrollmentPeriodDto> CreatePeriodAsync(CreateEnrollmentPeriodRequest request, Guid tenantId, UserRole role)
     {
+        AccessPolicy.Require(AccessPolicy.Roles.EnrollmentPeriodManage, role);
+
         if (string.IsNullOrWhiteSpace(request.Nome))
             throw new EnrollmentException("period_name_required", 400);
         if (request.DataFim <= request.DataInicio)
             throw new EnrollmentException("invalid_period_dates", 400);
-        if (request.AnoLetivo < DateTime.UtcNow.Year)
+        var now = DateTime.UtcNow;
+        if (request.AnoLetivo < now.Year)
             throw new EnrollmentException("ano_letivo_must_be_current_or_future", 400);
+
+        // M6: sem teto, um ano absurdo era aceito e virava período "válido".
+        if (request.AnoLetivo > now.Year + 1)
+            throw new EnrollmentException("ano_letivo_invalid", 400);
 
         // Check overlapping active periods in same tenant + year
         var overlap = await _db.EnrollmentPeriods
@@ -126,8 +147,10 @@ public class EnrollmentService : IEnrollmentService
         return new EnrollmentPeriodDto(period.Id, period.Nome, period.DataInicio, period.DataFim, period.AnoLetivo, period.IsActive);
     }
 
-    public async Task ClosePeriodAsync(Guid periodId, Guid tenantId)
+    public async Task ClosePeriodAsync(Guid periodId, Guid tenantId, UserRole role)
     {
+        AccessPolicy.Require(AccessPolicy.Roles.EnrollmentPeriodManage, role);
+
         var period = await _db.EnrollmentPeriods
             .FirstOrDefaultAsync(p => p.Id == periodId);
 
@@ -143,8 +166,10 @@ public class EnrollmentService : IEnrollmentService
 
     // ── Enrollment CRUD ────────────────────────────────────────────
 
-    public async Task<EnrollmentDto> CreateEnrollmentAsync(CreateEnrollmentRequest request, Guid tenantId)
+    public async Task<EnrollmentDto> CreateEnrollmentAsync(CreateEnrollmentRequest request, Guid tenantId, UserRole role)
     {
+        AccessPolicy.Require(AccessPolicy.Roles.EnrollmentWrite, role);
+
         var student = await _db.Students
             .FirstOrDefaultAsync(s => s.Id == request.StudentId);
 
@@ -205,20 +230,24 @@ public class EnrollmentService : IEnrollmentService
         string? status, Guid? periodId, int page, int pageSize,
         Guid tenantId, Guid userId, UserRole role)
     {
-        if (page < 1) page = 1;
-        if (pageSize > 100) pageSize = 100;
-        if (pageSize < 1) pageSize = 20;
+        (page, pageSize) = Pagination.Normalize(page, pageSize);
 
         IQueryable<Enrollment> query = _db.Enrollments;
 
-        // Parent: only see linked children's enrollments
-        if (role == UserRole.Parent)
-        {
-            query = query.Where(e => e.Student.StudentParents.Any(sp => sp.ParentId == userId));
-        }
+        // B9: a regra de vínculo tem um dono único.
+        query = query.VisibleTo(userId, role);
 
-        if (!string.IsNullOrWhiteSpace(status) && Enum.TryParse<EnrollmentStatus>(status, ignoreCase: true, out var parsedStatus))
+        // Filtro inválido não pode ser ignorado em silêncio: devolver a lista inteira faria a tela
+        // mostrar "todas" quando o operador pediu um status que não existe. TryParse sozinho aceita
+        // valor numérico fora do enum ("99"), por isso IsDefined.
+        if (!string.IsNullOrWhiteSpace(status))
+        {
+            if (!Enum.TryParse<EnrollmentStatus>(status.Trim(), ignoreCase: true, out var parsedStatus)
+                || !Enum.IsDefined(parsedStatus))
+                throw new EnrollmentException("status_invalid", 400);
+
             query = query.Where(e => e.Status == parsedStatus);
+        }
 
         if (periodId.HasValue)
             query = query.Where(e => e.EnrollmentPeriodId == periodId.Value);
@@ -256,11 +285,8 @@ public class EnrollmentService : IEnrollmentService
         if (enrollment is null)
             throw new EnrollmentException("enrollment_not_found", 404);
 
-        if (role == UserRole.Parent)
-        {
-            if (!enrollment.Student.StudentParents.Any(sp => sp.ParentId == userId))
-                throw new EnrollmentException("not_linked_to_student", 403);
-        }
+        // B9: a regra de vínculo tem um dono único.
+        await StudentAccess.EnsureLinkedAsync(_db, enrollment.StudentId, userId, role);
 
         // Spec 60 FR-004 / E4 — a visão de documentação vive aqui desde o A4: a API separada de
         // rematrícula foi removida por ser uma segunda superfície sobre a MESMA tabela, e esta é a
@@ -291,8 +317,10 @@ public class EnrollmentService : IEnrollmentService
 
     // ── State Machine Transitions ──────────────────────────────────
 
-    public async Task<EnrollmentDto> SubmitAsync(Guid enrollmentId, Guid tenantId)
+    public async Task<EnrollmentDto> SubmitAsync(Guid enrollmentId, Guid tenantId, Guid userId, UserRole role)
     {
+        AccessPolicy.Require(AccessPolicy.Roles.EnrollmentWrite, role);
+
         var enrollment = await _db.Enrollments
             .Include(e => e.Student)
             .Include(e => e.Period)
@@ -313,14 +341,16 @@ public class EnrollmentService : IEnrollmentService
         if (!CanTransition(enrollment.Status, target))
             throw InvalidTransition(enrollment.Status, target);
 
-        enrollment.Status = target;
+        ApplyStatus(enrollment, target, userId);
 
         await _db.SaveChangesAsync();
         return MapToDto(enrollment);
     }
 
-    public async Task<EnrollmentDto> ApproveAsync(Guid enrollmentId, Guid tenantId)
+    public async Task<EnrollmentDto> ApproveAsync(Guid enrollmentId, Guid tenantId, Guid userId, UserRole role)
     {
+        AccessPolicy.Require(AccessPolicy.Roles.EnrollmentReview, role);
+
         var enrollment = await _db.Enrollments
             .Include(e => e.Student)
             .Include(e => e.Period)
@@ -338,7 +368,7 @@ public class EnrollmentService : IEnrollmentService
         if (compliance.HasMissingRequiredDocuments)
             throw new EnrollmentException("pending_required_documents", 400);
 
-        enrollment.Status = EnrollmentStatus.Aprovado;
+        ApplyStatus(enrollment, EnrollmentStatus.Aprovado, userId);
         enrollment.ApprovedAt = DateTime.UtcNow;
 
         // Side effect: update student
@@ -349,8 +379,10 @@ public class EnrollmentService : IEnrollmentService
         return MapToDto(enrollment);
     }
 
-    public async Task RejectAsync(Guid enrollmentId, RejectEnrollmentRequest request, Guid tenantId)
+    public async Task RejectAsync(Guid enrollmentId, RejectEnrollmentRequest request, Guid tenantId, Guid userId, UserRole role)
     {
+        AccessPolicy.Require(AccessPolicy.Roles.EnrollmentReview, role);
+
         var enrollment = await _db.Enrollments
             .Include(e => e.Student)
             .FirstOrDefaultAsync(e => e.Id == enrollmentId);
@@ -364,14 +396,16 @@ public class EnrollmentService : IEnrollmentService
         if (string.IsNullOrWhiteSpace(request.Motivo) || request.Motivo.Length < 10 || request.Motivo.Length > 500)
             throw new EnrollmentException("motivo_required_10_to_500_chars", 400);
 
-        enrollment.Status = EnrollmentStatus.Rejeitado;
+        ApplyStatus(enrollment, EnrollmentStatus.Rejeitado, userId);
         enrollment.MotivoRejeicao = request.Motivo;
 
         await _db.SaveChangesAsync();
     }
 
-    public async Task CancelAsync(Guid enrollmentId, Guid tenantId)
+    public async Task CancelAsync(Guid enrollmentId, Guid tenantId, Guid userId, UserRole role)
     {
+        AccessPolicy.Require(AccessPolicy.Roles.EnrollmentCancel, role);
+
         var enrollment = await _db.Enrollments
             .Include(e => e.Student)
             .FirstOrDefaultAsync(e => e.Id == enrollmentId);
@@ -385,12 +419,66 @@ public class EnrollmentService : IEnrollmentService
         if (!CanTransition(enrollment.Status, EnrollmentStatus.Cancelado))
             throw InvalidTransition(enrollment.Status, EnrollmentStatus.Cancelado);
 
-        enrollment.Status = EnrollmentStatus.Cancelado;
+        ApplyStatus(enrollment, EnrollmentStatus.Cancelado, userId);
 
         await _db.SaveChangesAsync();
     }
 
+    /// <summary>
+    /// M12 - reabre uma matricula em estado terminal. Decisao de politica: **somente Admin**
+    /// (o controller exige o papel). Staff continua aprovando, rejeitando e cancelando o fluxo
+    /// normal; desfazer uma decisao ja tomada e ato administrativo.
+    ///
+    /// O destino e o mesmo do submit (Pendente ou DocumentacaoPendente) porque quem decide se a
+    /// documentacao esta em dia e `DocumentCompliance`, nao a tela. `ApprovedAt` e
+    /// `MotivoRejeicao` pertencem ao estado anterior e sao limpos — mante-los deixaria uma
+    /// matricula "Pendente" carregando o motivo de uma rejeicao que nao vale mais.
+    /// </summary>
+    public async Task<EnrollmentDto> ReopenAsync(Guid enrollmentId, Guid tenantId, Guid userId, UserRole role)
+    {
+        AccessPolicy.Require(AccessPolicy.Roles.EnrollmentReopen, role);
+
+        var enrollment = await _db.Enrollments
+            .Include(e => e.Student)
+            .Include(e => e.Period)
+            .FirstOrDefaultAsync(e => e.Id == enrollmentId);
+
+        if (enrollment is null)
+            throw new EnrollmentException("enrollment_not_found", 404);
+
+        // Reabrir so faz sentido a partir de um estado terminal; nos demais, o fluxo normal
+        // (submit/approve) ja e o caminho correto.
+        if (enrollment.Status is not (EnrollmentStatus.Aprovado or EnrollmentStatus.Rejeitado or EnrollmentStatus.Cancelado))
+            throw new EnrollmentException("enrollment_not_reopenable", 400);
+
+        var compliance = await DocumentCompliance.EvaluateAsync(_db, enrollment.StudentId);
+        var target = compliance.HasMissingRequiredDocuments
+            ? EnrollmentStatus.DocumentacaoPendente
+            : EnrollmentStatus.Pendente;
+
+        if (!CanTransition(enrollment.Status, target))
+            throw InvalidTransition(enrollment.Status, target);
+
+        ApplyStatus(enrollment, target, userId);
+        enrollment.ApprovedAt = null;
+        enrollment.MotivoRejeicao = null;
+
+        await _db.SaveChangesAsync();
+        return MapToDto(enrollment);
+    }
+
     // ── Helpers ────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Ponto unico de transicao de status (M12). Antes o status era atribuido direto em cinco
+    /// lugares e nao havia registro de quem mudou nem quando.
+    /// </summary>
+    private static void ApplyStatus(Enrollment enrollment, EnrollmentStatus target, Guid userId)
+    {
+        enrollment.Status = target;
+        enrollment.StatusChangedAt = DateTime.UtcNow;
+        enrollment.StatusChangedBy = userId;
+    }
 
     private static EnrollmentException InvalidTransition(EnrollmentStatus from, EnrollmentStatus to)
     {

@@ -25,10 +25,13 @@ public class ApiAuthorizationTests
     [
         "Health",
         "Health/db",
+        "api/auth/confirm-email",
         "api/auth/forgot-password",
         "api/auth/login",
         "api/auth/refresh",
         "api/auth/register",
+        "api/auth/register/parent",
+        "api/auth/resend-confirmation",
         "api/auth/reset-password",
         "api/tenants/register"
     ];

@@ -5,6 +5,7 @@ import { Button } from '../../components/Button';
 import { Input } from '../../components/Input';
 import { Card } from '../../components/Card';
 import * as api from '../../api/notifications';
+import { apiErrorMessage } from '../../api/errors';
 
 type TargetMode = 'users' | 'broadcast' | 'student';
 
@@ -32,7 +33,7 @@ export default function NotificationCreate() {
         toast.success('Notificação criada!');
       }
       navigate('/admin/notifications');
-    } catch { toast.error('Erro ao criar.'); }
+    } catch (err) { toast.error(apiErrorMessage(err, 'Não foi possível criar a notificação.')); }
   };
 
   return (

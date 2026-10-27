@@ -9,6 +9,7 @@ import { LayoutDashboard, Users, FileText, Bell, GraduationCap } from 'lucide-re
 import LoginPage from './pages/LoginPage';
 import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import RegisterPage from './pages/RegisterPage';
+import ParentRegisterPage from './pages/ParentRegisterPage';
 import AdminDashboard from './pages/admin/AdminDashboard';
 import StudentList from './pages/admin/StudentList';
 import StudentForm from './pages/admin/StudentForm';
@@ -78,6 +79,7 @@ export default function App() {
           <Route path="/login" element={<SplashGate><LoginPage /></SplashGate>} />
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />
           <Route path="/register" element={<RegisterPage />} />
+          <Route path="/register/parent" element={<ParentRegisterPage />} />
           <Route path="/auth/google/callback" element={<LoginPage />} />
           <Route path="/admin/*" element={<ProtectedRoute roles={['Admin', 'Staff']}><AdminLayout /></ProtectedRoute>} />
           <Route path="/parent/*" element={<ProtectedRoute roles={['Parent']}><ParentLayout /></ProtectedRoute>} />

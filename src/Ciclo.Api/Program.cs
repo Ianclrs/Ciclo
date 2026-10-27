@@ -69,6 +69,33 @@ try
     .AddJwtBearer(options =>
     {
         options.TokenValidationParameters = jwtSettings.CreateValidationParameters();
+
+        // M3 - sem isto, a recusa do framework de autenticacao sai SEM corpo (401/403 vazios) e o
+        // cliente nao tem codigo nenhum para decidir; o formato canonico passa a valer tambem aqui.
+        options.Events = new JwtBearerEvents
+        {
+            OnChallenge = async context =>
+            {
+                context.HandleResponse();
+                if (context.Response.HasStarted)
+                {
+                    return;
+                }
+
+                await ProblemResponse.WriteAsync(
+                    context.HttpContext, StatusCodes.Status401Unauthorized, "unauthorized", "unauthorized");
+            },
+            OnForbidden = async context =>
+            {
+                if (context.Response.HasStarted)
+                {
+                    return;
+                }
+
+                await ProblemResponse.WriteAsync(
+                    context.HttpContext, StatusCodes.Status403Forbidden, "forbidden", "forbidden");
+            }
+        };
     });
 
     // Google OAuth: fluxo removido por decisão explícita (ver management/cross-session/

@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
-import axios from 'axios';
 import { Download, FileText } from 'lucide-react';
 import { Card } from '../../components/Card';
 import { Badge } from '../../components/Badge';
@@ -12,6 +11,8 @@ import { Modal } from '../../components/Modal';
 import { Input } from '../../components/Input';
 import { Table } from '../../components/Table';
 import * as api from '../../api/documents';
+import { apiErrorMessage } from '../../api/errors';
+import { motivoValidationError } from '../../domain/validation';
 import type { Document } from '../../types';
 
 const PAGE_SIZE = 10;
@@ -41,6 +42,7 @@ export default function DocumentVerification() {
   const [reloadKey, setReloadKey] = useState(0);
   const [verify, setVerify] = useState<{ id: string; approved: boolean } | null>(null);
   const [motivo, setMotivo] = useState('');
+  const motivoError = motivo === '' ? null : motivoValidationError(motivo);
   // Duas visões sobre a mesma tela: o que aguarda verificação e o que vai vencer. Sem a segunda,
   // o alerta de vencimento da V7 não aparecia em lugar nenhum (A6).
   const [view, setView] = useState<'pending' | 'expiring'>('pending');
@@ -103,8 +105,8 @@ export default function DocumentVerification() {
       toast.success(verify.approved ? 'Documento aprovado.' : 'Documento rejeitado.');
       closeVerify();
       refresh();
-    } catch {
-      toast.error('Não foi possível concluir a verificação.');
+    } catch (err) {
+      toast.error(apiErrorMessage(err, 'Não foi possível concluir a verificação.'));
     }
   };
 
@@ -118,17 +120,10 @@ export default function DocumentVerification() {
       document.body.appendChild(anchor);
       anchor.click();
       anchor.remove();
-      URL.revokeObjectURL(url);
+      // B5: revogar no mesmo tick pode cancelar o download em andamento (Firefox).
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch (err) {
-      const title =
-        axios.isAxiosError(err) && typeof err.response?.data?.title === 'string'
-          ? err.response.data.title
-          : '';
-      toast.error(
-        title === 'document_file_not_found'
-          ? 'Arquivo não encontrado no servidor.'
-          : 'Erro ao baixar o documento.',
-      );
+      toast.error(apiErrorMessage(err, 'Erro ao baixar o documento.'));
     }
   };
 
@@ -270,7 +265,7 @@ export default function DocumentVerification() {
         onConfirm={handleVerify}
         confirmLabel={verify?.approved ? 'Aprovar' : 'Rejeitar'}
         confirmVariant={verify?.approved ? 'primary' : 'danger'}
-        confirmDisabled={!verify?.approved && motivo.trim() === ''}
+        confirmDisabled={!verify?.approved && (motivo.trim() === '' || motivoError !== null)}
       >
         {verify?.approved ? (
           <p>Confirmar a aprovação deste documento?</p>
@@ -281,6 +276,7 @@ export default function DocumentVerification() {
             onChange={(event) => setMotivo(event.target.value)}
           />
         )}
+        {!verify?.approved && motivoError && <p className="text-xs text-red-600 mt-1">{motivoError}</p>}
       </Modal>
     </div>
   );

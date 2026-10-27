@@ -13,6 +13,12 @@ public class Enrollment : ITenantScoped
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? ApprovedAt { get; set; }
 
+    // M12 - auditoria da transicao: quem mudou o status e quando. Sem FK para User de
+    // proposito: o registro sobrevive ao desligamento do funcionario (mesmo criterio
+    // adotado pela spec 110 para o historico de operacoes).
+    public DateTime? StatusChangedAt { get; set; }
+    public Guid? StatusChangedBy { get; set; }
+
     // Navigation
     public Student Student { get; set; } = null!;
     public EnrollmentPeriod Period { get; set; } = null!;

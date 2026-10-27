@@ -3,6 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/png" href="/Ciclo_favicon.png" />
+    <!-- B11: manifest ESTÁTICO. O plugin não injeta mais o link (Vite 8), então ele vem daqui;
+         o arquivo é servido de `public/manifest.json` e copiado para o `dist` pelo Vite. -->
+    <link rel="manifest" href="/manifest.json" />
+    <link rel="apple-touch-icon" href="/icon-192.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#4f46e5" />
     <title>Ciclo</title>

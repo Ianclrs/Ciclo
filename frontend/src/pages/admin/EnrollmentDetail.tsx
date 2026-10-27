@@ -8,6 +8,9 @@ import { Modal } from '../../components/Modal';
 import { Input } from '../../components/Input';
 import { ArrowLeft } from 'lucide-react';
 import * as api from '../../api/enrollments';
+import { apiErrorMessage } from '../../api/errors';
+import { LoadError } from '../../components/LoadError';
+import { formatDate } from '../../utils/format';
 import type { Enrollment } from '../../types';
 
 export default function EnrollmentDetail() {
@@ -15,23 +18,46 @@ export default function EnrollmentDetail() {
   const [enrollment, setEnrollment] = useState<Enrollment | null>(null);
   const [showReject, setShowReject] = useState(false);
   const [motivo, setMotivo] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
   const carried = enrollment?.carriedDocuments ?? [];
   const missing = enrollment?.missingDocumentTypes ?? [];
 
   useEffect(() => {
-    if (id) api.getEnrollment(id).then(setEnrollment).catch(() => toast.error('Erro.'));
-  }, [id]);
+    if (!id) return;
+    let active = true;
+    api
+      .getEnrollment(id)
+      .then((data) => {
+        if (!active) return;
+        setEnrollment(data); setError(null);
+      })
+      .catch((err) => {
+        if (!active) return;
+        setError(apiErrorMessage(err, 'Não foi possível carregar a matrícula.'));
+      });
+    return () => { active = false; };
+  }, [id, reloadKey]);
 
   const handleApprove = async () => {
     if (!id) return;
     try { await api.approveEnrollment(id); toast.success('Aprovada!'); setEnrollment(await api.getEnrollment(id)); }
-    catch { toast.error('Erro.'); }
+    catch (err) { toast.error(apiErrorMessage(err, 'Não foi possível aprovar a matrícula.')); }
   };
   const handleReject = async () => {
     if (!id) return;
     try { await api.rejectEnrollment(id, motivo); toast.success('Rejeitada.'); setShowReject(false); setEnrollment(await api.getEnrollment(id)); }
-    catch { toast.error('Erro.'); }
+    catch (err) { toast.error(apiErrorMessage(err, 'Não foi possível rejeitar a matrícula.')); }
   };
+
+  if (error) {
+    return (
+      <div>
+        <Link to="/admin/enrollments" className="flex items-center gap-1 text-sm text-gray-500 mb-4"><ArrowLeft size={16} /> Voltar</Link>
+        <LoadError message={error} onRetry={() => setReloadKey((k) => k + 1)} />
+      </div>
+    );
+  }
 
   if (!enrollment) return <p>Carregando...</p>;
 
@@ -46,8 +72,8 @@ export default function EnrollmentDetail() {
             <div className="flex justify-between"><dt className="text-gray-500">Período:</dt><dd>{enrollment.periodName}</dd></div>
             <div className="flex justify-between"><dt className="text-gray-500">Status:</dt><dd><StatusBadge status={enrollment.status} variant={enrollment.status === 'Aprovado' ? 'success' : 'warning'} /></dd></div>
             {enrollment.motivoRejeicao && <div className="flex justify-between"><dt className="text-gray-500">Motivo:</dt><dd className="text-red-600">{enrollment.motivoRejeicao}</dd></div>}
-            <div className="flex justify-between"><dt className="text-gray-500">Data:</dt><dd>{new Date(enrollment.createdAt).toLocaleDateString()}</dd></div>
-            {enrollment.approvedAt && <div className="flex justify-between"><dt className="text-gray-500">Aprovada em:</dt><dd>{new Date(enrollment.approvedAt).toLocaleDateString()}</dd></div>}
+            <div className="flex justify-between"><dt className="text-gray-500">Data:</dt><dd>{formatDate(enrollment.createdAt)}</dd></div>
+            {enrollment.approvedAt && <div className="flex justify-between"><dt className="text-gray-500">Aprovada em:</dt><dd>{formatDate(enrollment.approvedAt)}</dd></div>}
           </dl>
         </Card>
         {/* A4 passou a devolver a situação documental no detalhe; sem esta exibição o dado não
@@ -78,7 +104,7 @@ export default function EnrollmentDetail() {
                       {doc.isExpired
                         ? 'vencido — precisa reenviar'
                         : doc.dataValidade
-                          ? `válido até ${new Date(doc.dataValidade).toLocaleDateString()}`
+                          ? `válido até ${formatDate(doc.dataValidade)}`
                           : 'sem validade'}
                     </span>
                   </li>

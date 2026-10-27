@@ -94,6 +94,11 @@ public class ExceptionMiddleware
         ForbiddenException forbidden =>
             (StatusCodes.Status403Forbidden, "forbidden", forbidden.Message),
 
+        // B9: negativa com código de contrato (ex.: not_linked_to_student). O código vai como
+        // `code` e como `title` — o texto para humanos é resolvido no cliente, como no M3.
+        AccessDeniedException denied =>
+            (denied.StatusCode, denied.Message, denied.Message),
+
         TenantNotResolvedException =>
             (StatusCodes.Status401Unauthorized, "tenant_not_resolved",
                 "Tenant context could not be resolved from the current request."),
