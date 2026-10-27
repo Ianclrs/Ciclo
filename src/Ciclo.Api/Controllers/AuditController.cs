@@ -1,4 +1,6 @@
+using Ciclo.Api.Middleware;
 using Ciclo.Infrastructure.Contracts;
+using Ciclo.Infrastructure.Security;
 using Ciclo.Infrastructure.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -7,7 +9,7 @@ namespace Ciclo.Api.Controllers;
 
 [ApiController]
 [Route("api/audit-events")]
-[Authorize(Roles = "Admin")]
+[Authorize(Roles = AccessPolicy.Roles.AuditRead)]
 public class AuditController : ControllerBase
 {
     private readonly IAuditQueryService _service;
@@ -32,7 +34,7 @@ public class AuditController : ControllerBase
         }
         catch (AuditException ex)
         {
-            return Problem(title: ex.Message, statusCode: ex.StatusCode);
+            return ProblemResponse.FromCode(ex.Message, ex.StatusCode);
         }
     }
 
@@ -53,7 +55,7 @@ public class AuditController : ControllerBase
         }
         catch (AuditException ex)
         {
-            return Problem(title: ex.Message, statusCode: ex.StatusCode);
+            return ProblemResponse.FromCode(ex.Message, ex.StatusCode);
         }
     }
 }

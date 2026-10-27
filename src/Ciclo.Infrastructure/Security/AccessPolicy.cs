@@ -44,6 +44,9 @@ public static class AccessPolicy
         public const string EnrollmentCancel = "Admin";
         public const string EnrollmentReopen = "Admin";
 
+        // Auditoria (Spec 110): consulta e exportacao sao restritas ao Admin.
+        public const string AuditRead = "Admin";
+
         public const string NotificationWrite = "Admin,Staff";
         public const string NotificationBroadcast = "Admin";
 
