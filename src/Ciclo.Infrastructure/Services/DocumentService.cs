@@ -1,9 +1,11 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Ciclo.Core.Auditing;
 using Ciclo.Core.Entities;
 using Ciclo.Core.Interfaces;
 using Ciclo.Infrastructure.Contracts;
 using Ciclo.Infrastructure.Data;
+using Ciclo.Infrastructure.Security;
 using Ciclo.Infrastructure.Storage;
 
 namespace Ciclo.Infrastructure.Services;
@@ -14,15 +16,15 @@ public interface IDocumentService
     Task<DocumentDto> UploadAsync(Stream fileStream, string fileName, string contentType, Guid studentId, Guid documentTypeId, Guid tenantId, Guid userId, UserRole role);
     Task<PagedResponse<DocumentDto>> GetStudentDocumentsAsync(Guid studentId, Guid tenantId, Guid userId, UserRole role, int page, int pageSize);
     Task<(Stream Stream, string ContentType, string FileName)> DownloadAsync(Guid documentId, Guid tenantId, Guid userId, UserRole role);
-    Task VerifyAsync(Guid documentId, VerifyDocumentRequest request, Guid tenantId);
+    Task VerifyAsync(Guid documentId, VerifyDocumentRequest request, Guid tenantId, UserRole role);
     Task<PagedResponse<DocumentDto>> GetPendingAsync(Guid tenantId, int page, int pageSize);
     Task<List<DocumentDto>> GetExpiringAsync(Guid tenantId, int days);
 
     // Document Types
-    Task<DocumentTypeDto> CreateDocumentTypeAsync(CreateDocumentTypeRequest request, Guid tenantId);
+    Task<DocumentTypeDto> CreateDocumentTypeAsync(CreateDocumentTypeRequest request, Guid tenantId, UserRole role);
     Task<List<DocumentTypeDto>> GetDocumentTypesAsync(Guid tenantId);
-    Task<DocumentTypeDto> UpdateDocumentTypeAsync(Guid id, CreateDocumentTypeRequest request, Guid tenantId);
-    Task DeleteDocumentTypeAsync(Guid id, Guid tenantId);
+    Task<DocumentTypeDto> UpdateDocumentTypeAsync(Guid id, CreateDocumentTypeRequest request, Guid tenantId, UserRole role);
+    Task DeleteDocumentTypeAsync(Guid id, Guid tenantId, UserRole role);
 }
 
 public class DocumentService : IDocumentService
@@ -30,6 +32,7 @@ public class DocumentService : IDocumentService
     private readonly AppDbContext _db;
     private readonly IFileStorage _storage;
     private readonly INotificationService _notificationService;
+    private readonly ILogger<DocumentService> _logger;
     private readonly IAuditTrail _audit;
 
     private static readonly HashSet<string> AllowedExtensions = new(StringComparer.OrdinalIgnoreCase)
@@ -39,11 +42,14 @@ public class DocumentService : IDocumentService
 
     private const long MaxFileSize = 10 * 1024 * 1024; // 10 MB
 
-    public DocumentService(AppDbContext db, IFileStorage storage, INotificationService notificationService, IAuditTrail audit)
+    public DocumentService(
+        AppDbContext db, IFileStorage storage, INotificationService notificationService,
+        ILogger<DocumentService> logger, IAuditTrail audit)
     {
         _db = db;
         _storage = storage;
         _notificationService = notificationService;
+        _logger = logger;
         _audit = audit;
     }
 
@@ -61,19 +67,22 @@ public class DocumentService : IDocumentService
         if (string.IsNullOrEmpty(ext) || !AllowedExtensions.Contains(ext))
             throw new DocumentException("invalid_extension", 400);
 
+        // M6: a extensão é texto que o cliente escolhe. A assinatura do conteúdo é o que
+        // realmente define o tipo — um executável renomeado para .pdf era aceito antes.
+        if (!fileStream.CanSeek)
+            throw new DocumentException("invalid_file_content", 400);
+
+        var kind = await FileSignature.DetectAsync(fileStream);
+        if (!FileSignature.MatchesExtension(kind, ext))
+            throw new DocumentException("invalid_file_content", 400);
+
         // Validate student
         var student = await _db.Students.FirstOrDefaultAsync(s => s.Id == studentId);
         if (student is null)
             throw new DocumentException("student_not_found", 404);
 
-        // Parent: must be linked
-        if (role == UserRole.Parent)
-        {
-            var isLinked = await _db.StudentParents
-                .AnyAsync(sp => sp.StudentId == studentId && sp.ParentId == userId);
-            if (!isLinked)
-                throw new DocumentException("not_linked_to_student", 403);
-        }
+        // B9: regra de vínculo em um dono único.
+        await StudentAccess.EnsureLinkedAsync(_db, studentId, userId, role);
 
         // Validate document type
         var docType = await _db.DocumentTypes
@@ -100,7 +109,33 @@ public class DocumentService : IDocumentService
         };
 
         _db.Documents.Add(document);
-        await _db.SaveChangesAsync();
+
+        try
+        {
+            await _db.SaveChangesAsync();
+        }
+        catch
+        {
+            // M7: o arquivo é gravado ANTES do commit. Sem compensação, um insert que falha
+            // deixa o arquivo em disco para sempre, sem registro que o referencie.
+            _db.Entry(document).State = EntityState.Detached;
+
+            try
+            {
+                await _storage.DeleteAsync(filePath);
+            }
+#pragma warning disable CA1031 // limpeza não pode mascarar o erro original; a falha é registrada
+            catch (Exception cleanup)
+#pragma warning restore CA1031
+            {
+#pragma warning disable CA1848, CA1873
+                _logger.LogWarning(cleanup,
+                    "Falha ao remover arquivo órfão {FilePath} após erro no insert do documento", filePath);
+#pragma warning restore CA1848, CA1873
+            }
+
+            throw;
+        }
 
         return MapToDto(document);
     }
@@ -108,17 +143,10 @@ public class DocumentService : IDocumentService
     public async Task<PagedResponse<DocumentDto>> GetStudentDocumentsAsync(
         Guid studentId, Guid tenantId, Guid userId, UserRole role, int page, int pageSize)
     {
-        if (page < 1) page = 1;
-        if (pageSize > 100) pageSize = 100;
+        (page, pageSize) = Pagination.Normalize(page, pageSize);
 
-        // Parent: must be linked
-        if (role == UserRole.Parent)
-        {
-            var isLinked = await _db.StudentParents
-                .AnyAsync(sp => sp.StudentId == studentId && sp.ParentId == userId);
-            if (!isLinked)
-                throw new DocumentException("not_linked_to_student", 403);
-        }
+        // B9: regra de vínculo em um dono único.
+        await StudentAccess.EnsureLinkedAsync(_db, studentId, userId, role);
 
         var query = _db.Documents
             .Include(d => d.DocumentType)
@@ -150,12 +178,8 @@ public class DocumentService : IDocumentService
         if (doc is null)
             throw new DocumentException("document_not_found", 404);
 
-        // Parent: must be linked to document's student
-        if (role == UserRole.Parent)
-        {
-            if (!doc.Student.StudentParents.Any(sp => sp.ParentId == userId))
-                throw new DocumentException("not_linked_to_student", 403);
-        }
+        // B9: regra de vínculo em um dono único.
+        await StudentAccess.EnsureLinkedAsync(_db, doc.StudentId, userId, role);
 
         var stream = await GetFileStreamSafeAsync(doc.CaminhoArquivo);
         var ext = Path.GetExtension(doc.NomeArquivo).ToLowerInvariant();
@@ -170,8 +194,10 @@ public class DocumentService : IDocumentService
         return (stream, contentType, doc.NomeArquivo);
     }
 
-    public async Task VerifyAsync(Guid documentId, VerifyDocumentRequest request, Guid tenantId)
+    public async Task VerifyAsync(Guid documentId, VerifyDocumentRequest request, Guid tenantId, UserRole role)
     {
+        AccessPolicy.Require(AccessPolicy.Roles.DocumentVerify, role);
+
         var doc = await _db.Documents
             .Include(d => d.DocumentType)
             .FirstOrDefaultAsync(d => d.Id == documentId);
@@ -202,9 +228,9 @@ public class DocumentService : IDocumentService
             doc.MotivoRejeicao = request.MotivoRejeicao;
         }
 
-        // O evento entra no change tracker ANTES de qualquer SaveChanges: SendByStudentAsync grava
-        // internamente (notificação), então registrar depois dele deixaria o status de rejeição
-        // persistido sem auditoria caso a gravação da trilha falhasse (FR-003).
+        // O evento entra no change tracker ANTES de qualquer SaveChanges: o envio de notificação
+        // grava internamente, então registrar depois dele deixaria a rejeição persistida sem
+        // auditoria se a trilha falhasse (FR-003).
         _audit.Record(new AuditEntry(
             request.Approved ? AuditActions.DocumentVerified : AuditActions.DocumentRejected,
             AuditTargetTypes.Document,
@@ -218,7 +244,7 @@ public class DocumentService : IDocumentService
             var titulo = $"Documento rejeitado: {doc.DocumentType.Nome}";
             var mensagem = $"O documento '{doc.NomeArquivo}' foi rejeitado. Motivo: {doc.MotivoRejeicao}";
             await _notificationService.SendByStudentAsync(
-                doc.StudentId, titulo, mensagem, NotificationType.DocumentoPendente, doc.Id, tenantId);
+                doc.StudentId, titulo, mensagem, NotificationType.DocumentoPendente, doc.Id, tenantId, role);
         }
 
         await _db.SaveChangesAsync();
@@ -226,8 +252,7 @@ public class DocumentService : IDocumentService
 
     public async Task<PagedResponse<DocumentDto>> GetPendingAsync(Guid tenantId, int page, int pageSize)
     {
-        if (page < 1) page = 1;
-        if (pageSize > 100) pageSize = 100;
+        (page, pageSize) = Pagination.Normalize(page, pageSize);
 
         var query = _db.Documents
             .Include(d => d.DocumentType)
@@ -250,6 +275,10 @@ public class DocumentService : IDocumentService
 
     public async Task<List<DocumentDto>> GetExpiringAsync(Guid tenantId, int days)
     {
+        // M6: sem limite, `days=999999` varria a tabela inteira e `days=-1` devolvia o passado.
+        if (days < 1 || days > 365)
+            throw new DocumentException("days_out_of_range", 400);
+
         var cutoff = DateTime.UtcNow.AddDays(days);
 
         var docs = await _db.Documents
@@ -269,8 +298,10 @@ public class DocumentService : IDocumentService
 
     // ── Document Types ─────────────────────────────────────────────
 
-    public async Task<DocumentTypeDto> CreateDocumentTypeAsync(CreateDocumentTypeRequest request, Guid tenantId)
+    public async Task<DocumentTypeDto> CreateDocumentTypeAsync(CreateDocumentTypeRequest request, Guid tenantId, UserRole role)
     {
+        AccessPolicy.Require(AccessPolicy.Roles.DocumentTypeManage, role);
+
         if (string.IsNullOrWhiteSpace(request.Nome))
             throw new DocumentException("type_name_required", 400);
 
@@ -298,8 +329,10 @@ public class DocumentService : IDocumentService
             .ToListAsync();
     }
 
-    public async Task<DocumentTypeDto> UpdateDocumentTypeAsync(Guid id, CreateDocumentTypeRequest request, Guid tenantId)
+    public async Task<DocumentTypeDto> UpdateDocumentTypeAsync(Guid id, CreateDocumentTypeRequest request, Guid tenantId, UserRole role)
     {
+        AccessPolicy.Require(AccessPolicy.Roles.DocumentTypeManage, role);
+
         var type = await _db.DocumentTypes.FirstOrDefaultAsync(dt => dt.Id == id);
         if (type is null)
             throw new DocumentException("document_type_not_found", 404);
@@ -317,8 +350,10 @@ public class DocumentService : IDocumentService
         return new DocumentTypeDto(type.Id, type.Nome, type.Descricao, type.IsRequired, type.ValidadeMeses, type.IsActive);
     }
 
-    public async Task DeleteDocumentTypeAsync(Guid id, Guid tenantId)
+    public async Task DeleteDocumentTypeAsync(Guid id, Guid tenantId, UserRole role)
     {
+        AccessPolicy.Require(AccessPolicy.Roles.DocumentTypeManage, role);
+
         var type = await _db.DocumentTypes.FirstOrDefaultAsync(dt => dt.Id == id);
         if (type is null)
             throw new DocumentException("document_type_not_found", 404);

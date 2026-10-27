@@ -3,7 +3,10 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Ciclo.Core.Entities;
 using Ciclo.Infrastructure.Contracts;
+using Ciclo.Infrastructure.Security;
 using Ciclo.Infrastructure.Services;
+
+using Ciclo.Api.Middleware;
 
 namespace Ciclo.Api.Controllers;
 
@@ -20,55 +23,58 @@ public class NotificationController : ControllerBase
 
     /// <summary>FR-001: Create notifications for specific users.</summary>
     [HttpPost]
-    [Authorize(Roles = "Admin,Staff")]
+    [Authorize(Roles = AccessPolicy.Roles.NotificationWrite)]
     public async Task<IActionResult> Create([FromBody] CreateNotificationRequest request)
     {
         try
         {
             var tenantId = GetTenantId();
-            var result = await _service.CreateAsync(request, tenantId);
+            var (_, role) = GetUserInfo();
+            var result = await _service.CreateAsync(request, tenantId, role);
             return Created(string.Empty, result);
         }
         catch (NotificationException ex)
         {
-            return Problem(title: ex.Message, statusCode: ex.StatusCode);
+            return ProblemResponse.FromCode(ex.Message, ex.StatusCode);
         }
     }
 
     /// <summary>FR-002: Broadcast notification to all parents in the tenant.</summary>
     [HttpPost("broadcast")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = AccessPolicy.Roles.NotificationBroadcast)]
     public async Task<IActionResult> Broadcast([FromBody] BroadcastNotificationRequest request)
     {
         try
         {
             var tenantId = GetTenantId();
-            var (count, notification) = await _service.BroadcastAsync(request, tenantId);
+            var (_, role) = GetUserInfo();
+            var (count, notification) = await _service.BroadcastAsync(request, tenantId, role);
             if (count == 0) return Ok(new { recipientCount = 0 });
             return Created(string.Empty, new { recipientCount = count, notification });
         }
         catch (NotificationException ex)
         {
-            return Problem(title: ex.Message, statusCode: ex.StatusCode);
+            return ProblemResponse.FromCode(ex.Message, ex.StatusCode);
         }
     }
 
     /// <summary>FR-003: Notify parents of a specific student.</summary>
     [HttpPost("by-student/{studentId:guid}")]
-    [Authorize(Roles = "Admin,Staff")]
+    [Authorize(Roles = AccessPolicy.Roles.NotificationWrite)]
     public async Task<IActionResult> SendByStudent(Guid studentId, [FromBody] CreateNotificationRequest request)
     {
         try
         {
             var tenantId = GetTenantId();
+            var (_, role) = GetUserInfo();
             var count = await _service.SendByStudentAsync(
-                studentId, request.Titulo, request.Mensagem, request.Tipo, request.ReferenceId, tenantId);
+                studentId, request.Titulo, request.Mensagem, request.Tipo, request.ReferenceId, tenantId, role);
             if (count == 0) return Ok(new { recipientCount = 0 });
             return Created(string.Empty, new { recipientCount = count });
         }
         catch (NotificationException ex)
         {
-            return Problem(title: ex.Message, statusCode: ex.StatusCode);
+            return ProblemResponse.FromCode(ex.Message, ex.StatusCode);
         }
     }
 
@@ -88,7 +94,7 @@ public class NotificationController : ControllerBase
         }
         catch (NotificationException ex)
         {
-            return Problem(title: ex.Message, statusCode: ex.StatusCode);
+            return ProblemResponse.FromCode(ex.Message, ex.StatusCode);
         }
     }
 
@@ -105,7 +111,7 @@ public class NotificationController : ControllerBase
         }
         catch (NotificationException ex)
         {
-            return Problem(title: ex.Message, statusCode: ex.StatusCode);
+            return ProblemResponse.FromCode(ex.Message, ex.StatusCode);
         }
     }
 
@@ -122,7 +128,7 @@ public class NotificationController : ControllerBase
         }
         catch (NotificationException ex)
         {
-            return Problem(title: ex.Message, statusCode: ex.StatusCode);
+            return ProblemResponse.FromCode(ex.Message, ex.StatusCode);
         }
     }
 
@@ -139,7 +145,7 @@ public class NotificationController : ControllerBase
         }
         catch (NotificationException ex)
         {
-            return Problem(title: ex.Message, statusCode: ex.StatusCode);
+            return ProblemResponse.FromCode(ex.Message, ex.StatusCode);
         }
     }
 

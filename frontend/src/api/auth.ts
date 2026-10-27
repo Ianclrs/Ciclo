@@ -6,6 +6,16 @@ export async function login(email: string, password: string): Promise<{ accessTo
   return res.data;
 }
 
+export async function registerParent(input: {
+  schoolSlug: string;
+  name: string;
+  email: string;
+  password: string;
+}): Promise<{ accessToken: string; user: User }> {
+  const res = await api.post('/api/auth/register/parent', input);
+  return res.data;
+}
+
 export async function refreshToken(): Promise<{ accessToken: string }> {
   const res = await api.post('/api/auth/refresh');
   return res.data;

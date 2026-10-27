@@ -2,77 +2,62 @@
 
 ---
 
-## L1: .NET SDK 10.0.302 — NuGet Restore / Build Quebrado
+## L1: NuGet restore quebrado neste ambiente — build e testes funcionam com `--no-restore`/`--no-build`
 
-**Date:** 2026-08-08  
+**Date:** 2026-08-08 (revisado em 2026-10-27 — D7)
 **Category:** tooling
 
-**Problem:** O .NET SDK 10.0.302 vem com `NuGet.Configuration.dll v7.6.0-rc.33009` (Release Candidate) que tem um bug no construtor estático da classe `ConfigurationDefaults`. Qualquer operação que toca no NuGet falha com:
+**Problem:** Neste ambiente **somente o `dotnet restore` está quebrado**. O componente NuGet do SDK lança
+`Value cannot be null. (Parameter 'path1')` (`NuGet.Configuration.ConfigurationDefaults`). O defeito atinge
+o comando que **toca o NuGet**; compilar e testar não passam por esse caminho quando se usa
+`--no-restore`/`--no-build`.
 
-```
-error: Value cannot be null. (Parameter 'path1')
-The type initializer for 'NuGet.Configuration.ConfigurationDefaults' threw an exception.
-```
+A versão antiga desta lição dizia "build quebrado" — **está errado** e custou tempo: `dotnet build` falha
+porque faz **restore implícito**, não porque o build em si esteja quebrado.
 
-Afeta TODOS os comandos:
-- `dotnet restore` ❌
-- `dotnet build` ❌ (tenta ler `project.assets.json` via NuGet)
-- `dotnet nuget *` ❌
-- `dotnet test` com build implícito ❌
+Medição de 2026-10-16 (SDK padrão 10.0.402; 10.0.302 e 9.0.316 também instalados):
 
-O reparo/reinstalação do SDK não resolve — a versão 10.0.302 é a mais recente disponível e mantém o mesmo binário RC bugado. O SDK 9.0.316 funciona mas não suporta `net10.0`. O SDK 10.0.202 está corrompido na instalação (pasta incompleta).
+| Comando | Resultado |
+|---|---|
+| `dotnet restore Ciclo.sln` | ❌ `path1` |
+| `dotnet nuget locals all --list` | ❌ `path1` — confirma que é o componente do SDK, não o repositório |
+| `dotnet build Ciclo.sln --no-restore` | ✅ 0 erros / 0 avisos |
+| `dotnet test tests/Ciclo.Api.Tests --no-build` | ✅ (217/217 em 2026-10-27) |
+| `dotnet ef` (10.0.13) | ✅ usado com sucesso no M12; nesta versão **não** aceita `--no-build` |
 
-**Solution:** Usar ferramentas alternativas que não dependem do SDK bugado:
+**Hipóteses já descartadas por medição — não repetir:** repositório, `NuGet.Config` do projeto, configs globais
+(`%APPDATA%\NuGet`, `C:\ProgramData\NuGet`), variáveis de ambiente (`env -i`), registro/pastas especiais,
+nós do MSBuild, `RestorePackagesPath`. Trocar de SDK não resolve: 10.0.400/10.0.402 mantêm o defeito.
 
-### Restore: `nuget.exe` standalone
+**Solution:**
 
-```bash
-# Baixar (uma vez)
-curl -sL "https://dist.nuget.org/win-x86-commandline/latest/nuget.exe" -o /tmp/nuget.exe
-
-# Restaurar
-/tmp/nuget.exe restore Ciclo.sln
-```
-
-O `nuget.exe` standalone tem seu próprio runtime NuGet, não usa o `NuGet.Configuration.dll` do SDK.
-
-### Build: MSBuild do Visual Studio
+### Caminho normal (o que usar)
 
 ```bash
+dotnet build Ciclo.sln --no-restore      # build
+dotnet test tests/Ciclo.Api.Tests --no-build   # testes
+```
+
+### Quando é preciso restaurar de verdade (mudou `.csproj`)
+
+`dotnet build --no-restore` falha com `NETSDK1060` (assets desatualizados). Aí há duas saídas que **não**
+usam o componente quebrado:
+
+```bash
+# 1) MSBuild do Visual Studio (usa o NuGet do VS)
 MSBUILD="C:/Program Files/Microsoft Visual Studio/18/Community/MSBuild/Current/bin/MSBuild.exe"
+"$MSBUILD" Ciclo.sln -t:Restore -p:Configuration=Debug -v:minimal
 
-# Build
-"$MSBUILD" Ciclo.sln -t:Build -p:Configuration=Debug -v:minimal
-```
-
-O MSBuild do VS é .NET Framework (não .NET Core), não sofre do bug do SDK. **Flags usam `-` (não `/`)**: `-t:Build`, `-p:Configuration=Debug`, `-v:minimal`.
-
-### Testes: `dotnet test --no-build`
-
-```bash
-dotnet test --no-build
-```
-
-Funciona porque só executa DLLs já compiladas, sem tocar no NuGet.
-
-### Migration EF Core
-
-O `dotnet ef` não está instalado e `dotnet tool install` depende do NuGet. Solução: criar a migration manualmente (o código C# é determinístico baseado nas entidades).
-
-### Fluxo completo de trabalho
-
-```bash
-# 1. Se adicionar/remover pacotes NuGet: editar .csproj, depois:
+# 2) nuget.exe standalone
+curl -sL "https://dist.nuget.org/win-x86-commandline/latest/nuget.exe" -o /tmp/nuget.exe
 /tmp/nuget.exe restore Ciclo.sln
-
-# 2. Build
-"$MSBUILD" Ciclo.sln -t:Build -p:Configuration=Debug -v:minimal
-
-# 3. Testes
-dotnet test --no-build
 ```
 
-**Takeaway:** Sempre verificar se `dotnet restore` funciona ANTES de tentar buildar. Se falhar com `Value cannot be null`, não insistir — usar imediatamente o `nuget.exe` + `MSBuild.exe` do VS. Este padrão deve ser reutilizado em TODAS as specs até que o SDK seja atualizado para uma versão com NuGet estável (10.0.303+).
+> **No CI isso não se aplica:** o runner do GitHub tem NuGet íntegro, então `dotnet restore` roda normal
+> (ver `.github/workflows/`). O contorno é **só desta máquina**.
+
+**Takeaway:** antes de concluir que "o projeto não compila", rodar com `--no-restore`. Se o erro for
+`Value cannot be null (path1)`, é o restore do ambiente — não o código.
 
 ---
 

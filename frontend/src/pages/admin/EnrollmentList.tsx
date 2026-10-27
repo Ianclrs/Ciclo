@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { Card } from '../../components/Card';
+import { useAuth } from '../../hooks/useAuth';
 import { StatusBadge } from '../../components/StatusBadge';
 import { StudentAvatar } from '../../components/StudentAvatar';
 import { Button } from '../../components/Button';
@@ -11,6 +12,7 @@ import { Input } from '../../components/Input';
 import { Select } from '../../components/Select';
 import { Table } from '../../components/Table';
 import * as api from '../../api/enrollments';
+import { motivoValidationError } from '../../domain/validation';
 import {
   ENROLLMENT_STATUSES,
   actionLabel,
@@ -32,6 +34,7 @@ interface Query {
 const INITIAL_QUERY: Query = { page: 1, periodId: '', status: '' };
 
 export default function EnrollmentList() {
+  const { user } = useAuth();
   const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
   const [periods, setPeriods] = useState<EnrollmentPeriod[]>([]);
   const [total, setTotal] = useState(0);
@@ -41,6 +44,8 @@ export default function EnrollmentList() {
   const [reloadKey, setReloadKey] = useState(0);
   const [rejectId, setRejectId] = useState('');
   const [motivo, setMotivo] = useState('');
+  const [reopenId, setReopenId] = useState('');
+  const motivoError = motivo === '' ? null : motivoValidationError(motivo);
 
   useEffect(() => {
     let cancelled = false;
@@ -103,6 +108,7 @@ export default function EnrollmentList() {
     approve: 'Matrícula aprovada.',
     cancel: 'Matrícula cancelada.',
     reject: 'Matrícula rejeitada.',
+    reopen: 'Matrícula reaberta.',
   };
 
   const ACTION_FAILED: Record<EnrollmentAction, string> = {
@@ -110,6 +116,7 @@ export default function EnrollmentList() {
     approve: 'Não foi possível aprovar a matrícula.',
     cancel: 'Não foi possível cancelar a matrícula.',
     reject: 'Não foi possível rejeitar a matrícula.',
+    reopen: 'Não foi possível reabrir a matrícula.',
   };
 
   const runAction = async (id: string, action: EnrollmentAction) => {
@@ -117,6 +124,12 @@ export default function EnrollmentList() {
     if (actionRequiresReason(action)) {
       setMotivo('');
       setRejectId(id);
+      return;
+    }
+
+    // Reabrir desfaz uma decisão já tomada: confirma antes, em vez de agir no primeiro clique.
+    if (action === 'reopen') {
+      setReopenId(id);
       return;
     }
 
@@ -141,6 +154,17 @@ export default function EnrollmentList() {
       refresh();
     } catch {
       toast.error('Não foi possível rejeitar a matrícula.');
+    }
+  };
+
+  const handleReopen = async () => {
+    try {
+      await api.reopenEnrollment(reopenId);
+      toast.success(ACTION_DONE.reopen);
+      setReopenId('');
+      refresh();
+    } catch {
+      toast.error(ACTION_FAILED.reopen);
     }
   };
 
@@ -182,7 +206,7 @@ export default function EnrollmentList() {
       // As ações vêm do estado da matrícula, não de um `if` na tela: quem sabe quais transições
       // são válidas é a máquina de estados (espelhada em domain/enrollmentStatus.ts).
       accessor: (enrollment: Enrollment) => {
-        const actions = actionsFor(enrollment.status);
+        const actions = actionsFor(enrollment.status, user?.role);
         if (actions.length === 0) return null;
 
         return (
@@ -282,13 +306,28 @@ export default function EnrollmentList() {
         onConfirm={handleReject}
         confirmLabel="Rejeitar"
         confirmVariant="danger"
-        confirmDisabled={motivo.trim() === ''}
+        confirmDisabled={motivo.trim() === '' || motivoError !== null}
       >
         <Input
           label="Motivo da rejeição"
           value={motivo}
           onChange={(event) => setMotivo(event.target.value)}
         />
+        {motivoError && <p className="text-xs text-red-600 mt-1">{motivoError}</p>}
+      </Modal>
+
+      <Modal
+        open={reopenId !== ''}
+        onClose={() => setReopenId('')}
+        title="Reabrir matrícula"
+        onConfirm={handleReopen}
+        confirmLabel="Reabrir"
+        confirmVariant="primary"
+      >
+        <p className="text-sm text-gray-700">
+          A matrícula volta para a fila de análise. A decisão anterior é desfeita e o registro
+          guarda quem reabriu e quando.
+        </p>
       </Modal>
     </div>
   );

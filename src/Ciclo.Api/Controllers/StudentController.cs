@@ -3,7 +3,10 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Ciclo.Core.Entities;
 using Ciclo.Infrastructure.Contracts;
+using Ciclo.Infrastructure.Security;
 using Ciclo.Infrastructure.Services;
+
+using Ciclo.Api.Middleware;
 
 namespace Ciclo.Api.Controllers;
 
@@ -20,7 +23,7 @@ public class StudentController : ControllerBase
 
     /// <summary>FR-001: List students with search, filters, and pagination.</summary>
     [HttpGet]
-    [Authorize(Roles = "Admin,Staff,Parent")]
+    [Authorize(Roles = AccessPolicy.Roles.StudentRead)]
     public async Task<IActionResult> GetAll(
         [FromQuery] string? search,
         [FromQuery] string? turma,
@@ -37,13 +40,13 @@ public class StudentController : ControllerBase
         }
         catch (StudentException ex)
         {
-            return Problem(title: ex.Message, statusCode: ex.StatusCode);
+            return ProblemResponse.FromCode(ex.Message, ex.StatusCode);
         }
     }
 
     /// <summary>FR-002: Get student details.</summary>
     [HttpGet("{id:guid}")]
-    [Authorize(Roles = "Admin,Staff,Parent")]
+    [Authorize(Roles = AccessPolicy.Roles.StudentRead)]
     public async Task<IActionResult> GetById(Guid id)
     {
         try
@@ -55,98 +58,103 @@ public class StudentController : ControllerBase
         }
         catch (StudentException ex)
         {
-            return Problem(title: ex.Message, statusCode: ex.StatusCode);
+            return ProblemResponse.FromCode(ex.Message, ex.StatusCode);
         }
     }
 
     /// <summary>FR-003: Create a new student.</summary>
     [HttpPost]
-    [Authorize(Roles = "Admin,Staff")]
+    [Authorize(Roles = AccessPolicy.Roles.StudentWrite)]
     public async Task<IActionResult> Create([FromBody] CreateStudentRequest request)
     {
         try
         {
+            var (_, role) = GetUserInfo();
             var tenantId = GetTenantId();
-            var result = await _studentService.CreateAsync(request, tenantId);
+            var result = await _studentService.CreateAsync(request, tenantId, role);
             return CreatedAtAction(nameof(GetById), new { id = result.Id }, result);
         }
         catch (StudentException ex)
         {
-            return Problem(title: ex.Message, statusCode: ex.StatusCode);
+            return ProblemResponse.FromCode(ex.Message, ex.StatusCode);
         }
     }
 
     /// <summary>FR-004: Update an existing student.</summary>
     [HttpPut("{id:guid}")]
-    [Authorize(Roles = "Admin,Staff")]
+    [Authorize(Roles = AccessPolicy.Roles.StudentWrite)]
     public async Task<IActionResult> Update(Guid id, [FromBody] UpdateStudentRequest request)
     {
         try
         {
+            var (_, role) = GetUserInfo();
             var tenantId = GetTenantId();
-            var result = await _studentService.UpdateAsync(id, request, tenantId);
+            var result = await _studentService.UpdateAsync(id, request, tenantId, role);
             return Ok(result);
         }
         catch (StudentException ex)
         {
-            return Problem(title: ex.Message, statusCode: ex.StatusCode);
+            return ProblemResponse.FromCode(ex.Message, ex.StatusCode);
         }
     }
 
     /// <summary>FR-005: Soft-delete a student (Admin only).</summary>
     [HttpDelete("{id:guid}")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = AccessPolicy.Roles.StudentDelete)]
     public async Task<IActionResult> Delete(Guid id)
     {
         try
         {
+            var (_, role) = GetUserInfo();
             var tenantId = GetTenantId();
-            await _studentService.DeleteAsync(id, tenantId);
+            await _studentService.DeleteAsync(id, tenantId, role);
             return Ok();
         }
         catch (StudentException ex)
         {
-            return Problem(title: ex.Message, statusCode: ex.StatusCode);
+            return ProblemResponse.FromCode(ex.Message, ex.StatusCode);
         }
     }
 
     /// <summary>FR-006: Link a parent to a student.</summary>
     [HttpPost("{id:guid}/link-parent")]
-    [Authorize(Roles = "Admin,Staff")]
+    [Authorize(Roles = AccessPolicy.Roles.StudentWrite)]
     public async Task<IActionResult> LinkParent(Guid id, [FromBody] LinkParentRequest request)
     {
         try
         {
+            var (_, role) = GetUserInfo();
             var tenantId = GetTenantId();
-            await _studentService.LinkParentAsync(id, request.ParentId, tenantId);
+            await _studentService.LinkParentAsync(id, request.ParentId, tenantId, role);
             return Created(string.Empty, null);
         }
         catch (StudentException ex)
         {
-            return Problem(title: ex.Message, statusCode: ex.StatusCode);
+            return ProblemResponse.FromCode(ex.Message, ex.StatusCode);
         }
     }
 
     /// <summary>FR-007: Unlink a parent from a student.</summary>
     [HttpDelete("{id:guid}/link-parent/{parentId:guid}")]
-    [Authorize(Roles = "Admin,Staff")]
+    [Authorize(Roles = AccessPolicy.Roles.StudentWrite)]
     public async Task<IActionResult> UnlinkParent(Guid id, Guid parentId)
     {
         try
         {
+            var (_, role) = GetUserInfo();
             var tenantId = GetTenantId();
-            await _studentService.UnlinkParentAsync(id, parentId, tenantId);
+            await _studentService.UnlinkParentAsync(id, parentId, tenantId, role);
             return Ok();
         }
         catch (StudentException ex)
         {
-            return Problem(title: ex.Message, statusCode: ex.StatusCode);
+            return ProblemResponse.FromCode(ex.Message, ex.StatusCode);
         }
     }
 
     /// <summary>FR-007 (Spec 60): Get enrollment history for a student.</summary>
     [HttpGet("{id:guid}/enrollment-history")]
-    [Authorize(Roles = "Admin,Staff,Parent")]
+    [Authorize(Roles = AccessPolicy.Roles.StudentRead)]
     public async Task<IActionResult> GetEnrollmentHistory(Guid id)
     {
         try
@@ -158,7 +166,7 @@ public class StudentController : ControllerBase
         }
         catch (StudentException ex)
         {
-            return Problem(title: ex.Message, statusCode: ex.StatusCode);
+            return ProblemResponse.FromCode(ex.Message, ex.StatusCode);
         }
     }
 

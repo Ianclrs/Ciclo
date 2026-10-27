@@ -5,6 +5,8 @@ using Microsoft.AspNetCore.RateLimiting;
 using Ciclo.Infrastructure.Contracts;
 using Ciclo.Infrastructure.Services;
 
+using Ciclo.Api.Middleware;
+
 namespace Ciclo.Api.Controllers;
 
 [ApiController]
@@ -31,7 +33,7 @@ public class TenantsController : ControllerBase
         }
         catch (AuthException ex)
         {
-            return Problem(title: ex.Message, statusCode: ex.StatusCode);
+            return ProblemResponse.FromCode(ex.Message, ex.StatusCode);
         }
     }
 }

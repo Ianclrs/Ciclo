@@ -4,14 +4,15 @@ using Ciclo.Core.Entities;
 using Ciclo.Infrastructure.Contracts;
 using Ciclo.Infrastructure.Data;
 using Ciclo.Infrastructure.Email;
+using Ciclo.Infrastructure.Security;
 
 namespace Ciclo.Infrastructure.Services;
 
 public interface INotificationService
 {
-    Task<NotificationDto> CreateAsync(CreateNotificationRequest request, Guid tenantId);
-    Task<(int RecipientCount, NotificationDto Notification)> BroadcastAsync(BroadcastNotificationRequest request, Guid tenantId);
-    Task<int> SendByStudentAsync(Guid studentId, string titulo, string mensagem, NotificationType tipo, Guid? referenceId, Guid tenantId);
+    Task<NotificationDto> CreateAsync(CreateNotificationRequest request, Guid tenantId, UserRole role);
+    Task<(int RecipientCount, NotificationDto? Notification)> BroadcastAsync(BroadcastNotificationRequest request, Guid tenantId, UserRole role);
+    Task<int> SendByStudentAsync(Guid studentId, string titulo, string mensagem, NotificationType tipo, Guid? referenceId, Guid tenantId, UserRole role);
     Task<PagedResponse<NotificationDto>> GetForUserAsync(Guid userId, bool unreadOnly, int page, int pageSize);
     Task MarkReadAsync(Guid userNotificationId, Guid userId);
     Task<int> MarkAllReadAsync(Guid userId);
@@ -33,8 +34,10 @@ public class NotificationService : INotificationService
 
     // ── FR-001: Create Notification ──────────────────────────────────
 
-    public async Task<NotificationDto> CreateAsync(CreateNotificationRequest request, Guid tenantId)
+    public async Task<NotificationDto> CreateAsync(CreateNotificationRequest request, Guid tenantId, UserRole role)
     {
+        AccessPolicy.Require(AccessPolicy.Roles.NotificationWrite, role);
+
         if (string.IsNullOrWhiteSpace(request.Titulo) || request.Titulo.Length > 200)
             throw new NotificationException("titulo_required_max_200", 400);
 
@@ -88,9 +91,11 @@ public class NotificationService : INotificationService
 
     // ── FR-002: Broadcast to Parents ─────────────────────────────────
 
-    public async Task<(int RecipientCount, NotificationDto Notification)> BroadcastAsync(
-        BroadcastNotificationRequest request, Guid tenantId)
+    public async Task<(int RecipientCount, NotificationDto? Notification)> BroadcastAsync(
+        BroadcastNotificationRequest request, Guid tenantId, UserRole role)
     {
+        AccessPolicy.Require(AccessPolicy.Roles.NotificationBroadcast, role);
+
         if (string.IsNullOrWhiteSpace(request.Titulo) || request.Titulo.Length > 200)
             throw new NotificationException("titulo_required_max_200", 400);
 
@@ -102,8 +107,10 @@ public class NotificationService : INotificationService
             .Select(u => u.Id)
             .ToListAsync();
 
+        // B2: sem destinatários não existe notificação — devolver um DTO com Guid.Empty e
+        // DateTime.MinValue era um objeto fantasma que o cliente poderia exibir.
         if (parentIds.Count == 0)
-            return (0, new NotificationDto(Guid.Empty, Guid.Empty, string.Empty, string.Empty, string.Empty, null, false, DateTime.MinValue));
+            return (0, null);
 
         var notification = new Notification
         {
@@ -137,8 +144,10 @@ public class NotificationService : INotificationService
     // ── FR-003: Notify by Student ────────────────────────────────────
 
     public async Task<int> SendByStudentAsync(Guid studentId, string titulo, string mensagem,
-        NotificationType tipo, Guid? referenceId, Guid tenantId)
+        NotificationType tipo, Guid? referenceId, Guid tenantId, UserRole role)
     {
+        AccessPolicy.Require(AccessPolicy.Roles.NotificationWrite, role);
+
         if (string.IsNullOrWhiteSpace(titulo) || titulo.Length > 200)
             throw new NotificationException("titulo_required_max_200", 400);
 
@@ -195,8 +204,7 @@ public class NotificationService : INotificationService
     public async Task<PagedResponse<NotificationDto>> GetForUserAsync(
         Guid userId, bool unreadOnly, int page, int pageSize)
     {
-        if (page < 1) page = 1;
-        if (pageSize > 100) pageSize = 100;
+        (page, pageSize) = Pagination.Normalize(page, pageSize);
 
         var query = _db.UserNotifications
             .Include(un => un.Notification)

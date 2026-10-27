@@ -35,6 +35,17 @@ This file records architecture decisions that affect the project. Each ADR descr
 
 **Decision:** Use a **shared database with a `TenantId` discriminator column** on all tenant-scoped tables, enforced by EF Core global query filters and a tenant-aware middleware.
 
+**Escopo (revisado em 2026-10-27, B10):** "tenant-scoped" significa **entidade de domínio cujo dado pertence a um colégio**. Quatro entidades mapeadas NÃO carregam `TenantId`, por decisão registrada aqui — não por esquecimento:
+
+| Entidade | Por que não tem `TenantId` |
+|---|---|
+| `Tenant` | É a raiz do tenant; não pertence a outro. |
+| `RefreshToken` | Credencial pré-autenticação: é consultada pelo próprio token **antes** de o tenant ser resolvido (login/refresh). |
+| `StudentParent` | Vínculo aluno↔responsável; o tenant é derivado de `Student` (escopado) e a consulta é sempre por `StudentId`/`ParentId`. |
+| `UserNotification` | Vínculo notificação↔usuário; o tenant é derivado de `Notification` (escopada) e a consulta é por `UserId`. |
+
+`TenantCoverageTests` enumera **todas** as entidades de domínio mapeadas e falha se uma nova não for escopada nem estiver na lista de exceções — a exceção é uma decisão explícita, nunca um silêncio.
+
 **Rationale:**
 - Single database to manage and backup — operational simplicity.
 - EF Core global query filters automatically append `WHERE TenantId = @currentTenantId` to every query.
@@ -43,6 +54,7 @@ This file records architecture decisions that affect the project. Each ADR descr
 
 **Consequences:**
 - Every tenant-scoped entity must include `TenantId`.
+- Entidades de vínculo/credencial isentas (tabela acima) precisam derivar o tenant do agregado pai e nunca ser consultadas sem esse vínculo.
 - Tenant context must flow from HTTP request through the entire pipeline.
 - Migration discipline required: never forget to include TenantId in new entities.
 

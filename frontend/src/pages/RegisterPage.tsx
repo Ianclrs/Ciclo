@@ -8,14 +8,7 @@ import { Input } from '../components/Input';
 import { CountryFlag } from '../components/CountryFlag';
 import { registerSchool } from '../api/tenants';
 import { COUNTRIES, COUNTRY_ORDER, getCountry, applyMask, digitCount } from '../config/countries';
-
-function passwordError(pw: string): string | null {
-  if (pw.length < 8) return 'A senha deve ter no mínimo 8 caracteres.';
-  if (!/[A-Z]/.test(pw)) return 'A senha deve ter pelo menos uma letra maiúscula.';
-  if (!/\d/.test(pw)) return 'A senha deve ter pelo menos um número.';
-  if (!/[^A-Za-z0-9]/.test(pw)) return 'A senha deve ter pelo menos um símbolo (ex.: !@#$%).';
-  return null;
-}
+import { passwordError } from '../domain/password';
 
 const emptyForm = {
   schoolName: '',

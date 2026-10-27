@@ -1,12 +1,13 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
-using Ciclo.Core.Auditing;
-using Ciclo.Core.Interfaces;
 using Ciclo.Infrastructure.Contracts;
+using Ciclo.Core.Auditing;
 using Ciclo.Core.Entities;
+using Ciclo.Core.Interfaces;
 using Ciclo.Infrastructure.Auth;
 using Ciclo.Infrastructure.Data;
+using Ciclo.Infrastructure.Security;
 using Ciclo.Infrastructure.Tenancy;
 
 namespace Ciclo.Infrastructure.Services;
@@ -14,12 +15,24 @@ namespace Ciclo.Infrastructure.Services;
 public interface IAuthService
 {
     Task<AuthResponse> RegisterAsync(RegisterRequest request);
+    Task<AuthResponse> RegisterParentAsync(RegisterParentRequest request);
     Task<AuthResponse> LoginAsync(LoginRequest request);
     Task<AuthResponse> RefreshTokenAsync(string refreshToken);
     Task RevokeTokenAsync(string refreshToken);
     Task<string?> ForgotPasswordAsync(string email);
     Task ResetPasswordAsync(ResetPasswordRequest request);
     Task<AuthResponse> GenerateAuthResponseForUser(User user);
+
+    // M11 — gestão de usuários e verificação de e-mail
+    Task<List<UserDto>> ListUsersAsync(Guid tenantId, UserRole actorRole);
+    Task<(UserDto User, string InviteToken)> InviteUserAsync(
+        InviteUserRequest request, Guid tenantId, UserRole actorRole);
+    Task<UserDto> ChangeRoleAsync(
+        Guid userId, UserRole role, Guid actorId, Guid tenantId, UserRole actorRole);
+    Task<UserDto> SetActiveAsync(
+        Guid userId, bool isActive, Guid actorId, Guid tenantId, UserRole actorRole);
+    Task<string?> ResendConfirmationAsync(string email);
+    Task ConfirmEmailAsync(ConfirmEmailRequest request);
 }
 
 public class AuthService : IAuthService
@@ -54,15 +67,41 @@ public class AuthService : IAuthService
         if (tenant == null)
             throw new AuthException("invalid_tenant", 400);
 
+        return await CreateParentUserAsync(tenant.Id, request.Email, request.Password, request.Name);
+    }
+
+    /// <summary>
+    /// A5 - cadastro de responsavel pelo slug publico do colegio. Decisao de produto aplicada
+    /// (registrada em plano-correcoes.md): o slug e informacao publica e criar a conta **nao**
+    /// concede acesso a aluno nenhum — sem vinculo, o responsavel nao ve nada. O vinculo exige
+    /// acao da secretaria, que e o portao de autorizacao real. Convite nominal e o caminho
+    /// preferivel a longo prazo e pertence a spec 120 (ciclo de vida de identidade).
+    /// </summary>
+    public async Task<AuthResponse> RegisterParentAsync(RegisterParentRequest request)
+    {
+        var slug = request.SchoolSlug?.Trim().ToLowerInvariant() ?? string.Empty;
+        var tenant = await _dbContext.Tenants.FirstOrDefaultAsync(t => t.Slug == slug);
+        if (tenant is null || !tenant.IsActive)
+            throw new AuthException("invalid_tenant", 400);
+
+        return await CreateParentUserAsync(tenant.Id, request.Email, request.Password, request.Name);
+    }
+
+    /// <summary>
+    /// Dono unico da criacao de conta de responsavel: os dois caminhos de cadastro passam por aqui,
+    /// para que a regra de e-mail unico e o papel nao possam divergir entre eles (foi o defeito do C2).
+    /// </summary>
+    private async Task<AuthResponse> CreateParentUserAsync(Guid tenantId, string email, string password, string name)
+    {
         // O e-mail é a chave de login: precisa ser único globalmente, não só neste tenant.
-        await EmailUniqueness.EnsureAvailableAsync(_dbContext, request.Email);
+        await EmailUniqueness.EnsureAvailableAsync(_dbContext, email);
 
         var user = new User
         {
-            TenantId = request.TenantId,
-            Email = request.Email,
-            UserName = request.Email,
-            Name = request.Name,
+            TenantId = tenantId,
+            Email = email,
+            UserName = email,
+            Name = name,
             Role = UserRole.Parent,
             IsActive = true,
             CreatedAt = DateTime.UtcNow
@@ -70,9 +109,9 @@ public class AuthService : IAuthService
 
         // Resolve o tenant do usuário para que as consultas internas do Identity
         // (ex.: FindByNameAsync) não falhem por causa do global query filter.
-        _tenantContext.SetTenant(request.TenantId);
+        _tenantContext.SetTenant(tenantId);
 
-        var result = await _userManager.CreateAsync(user, request.Password);
+        var result = await _userManager.CreateAsync(user, password);
         if (!result.Succeeded)
         {
             var errors = string.Join(", ", result.Errors.Select(e => e.Description));
@@ -125,10 +164,29 @@ public class AuthService : IAuthService
         var storedToken = await _dbContext.RefreshTokens
             .FirstOrDefaultAsync(rt => rt.Token == refreshToken);
 
-        if (storedToken == null || !storedToken.IsActive)
+        if (storedToken is null)
             throw new AuthException("invalid_token", 401);
 
-        storedToken.RevokedAt = DateTime.UtcNow;
+        // B3: o reuso de um token JÁ ROTACIONADO é o sinal de roubo — e é AQUI que ele importa.
+        // Antes a detecção ficava no revoke (logout): repetir o logout revogava todas as sessões
+        // do usuário, derrubando também os outros dispositivos. No refresh, o token revogado
+        // chegando de novo é exatamente o que deve encerrar a família de tokens.
+        // B3: o reuso de um token JÁ ROTACIONADO é o sinal de roubo — e é AQUI que ele importa.
+        // Antes a detecção ficava no revoke (logout): repetir o logout revogava todas as sessões
+        // do usuário, derrubando também os outros dispositivos. No refresh, o token revogado
+        // chegando de novo é exatamente o que deve encerrar a família de tokens.
+        if (storedToken.IsRevoked)
+        {
+#pragma warning disable CA1848, CA1873
+            _logger.LogWarning("Refresh token reuse detected for user {UserId}", storedToken.UserId);
+#pragma warning restore CA1848, CA1873
+
+            await RevokeAllActiveTokensAsync(storedToken.UserId, "reuse_detected");
+            throw new AuthException("invalid_token", 401);
+        }
+
+        if (!storedToken.IsActive)
+            throw new AuthException("invalid_token", 401);
 
         var user = await _dbContext.Users
             .IgnoreQueryFilters()
@@ -136,6 +194,10 @@ public class AuthService : IAuthService
 
         if (user == null)
             throw new AuthException("invalid_token", 401);
+
+        // Rotação: o token apresentado deixa de valer e um novo é emitido (GenerateAuthResponse
+        // persiste os dois no mesmo SaveChanges).
+        storedToken.RevokedAt = DateTime.UtcNow;
 
         return await GenerateAuthResponse(user);
     }
@@ -145,47 +207,15 @@ public class AuthService : IAuthService
         var storedToken = await _dbContext.RefreshTokens
             .FirstOrDefaultAsync(rt => rt.Token == refreshToken);
 
-        if (storedToken == null)
+        // B3: revogar é LOCAL e IDEMPOTENTE. Repetir o logout não pode encerrar as outras
+        // sessões do usuário — era o que a detecção de reuso fazia neste ponto.
+        // B3: revogar é LOCAL e IDEMPOTENTE. Repetir o logout não pode encerrar as outras
+        // sessões do usuário — era o que a detecção de reuso fazia neste ponto.
+        if (storedToken is null || storedToken.IsRevoked)
             return;
 
-        // O logout é anônimo (cookie de refresh): se o JWT não estiver presente, o tenant não foi
-        // resolvido na borda. A trilha exige tenant resolvido, então resolvemos pelo dono do token.
-        if (!_tenantContext.IsResolved)
-        {
-            var owner = await _dbContext.Users
-                .IgnoreQueryFilters()
-                .Where(u => u.Id == storedToken.UserId)
-                .Select(u => new { u.TenantId })
-                .FirstOrDefaultAsync();
-
-            if (owner is not null)
-                _tenantContext.SetTenant(owner.TenantId);
-        }
-
-        if (storedToken.IsRevoked)
-        {
-#pragma warning disable CA1848, CA1873
-            _logger.LogWarning("Refresh token reuse detected for user {UserId}", storedToken.UserId);
-#pragma warning restore CA1848, CA1873
-            var allTokens = await _dbContext.RefreshTokens
-                .Where(rt => rt.UserId == storedToken.UserId && rt.RevokedAt == null)
-                .ToListAsync();
-
-            var revokedAt = DateTime.UtcNow;
-            foreach (var t in allTokens)
-            {
-                t.RevokedAt = revokedAt;
-                _audit.Record(new AuditEntry(
-                    AuditActions.SessionRevoked,
-                    AuditTargetTypes.Session,
-                    t.Id,
-                    new { RevokedAt = (DateTime?)null },
-                    new { RevokedAt = t.RevokedAt, Reason = "reuse_detected" }));
-            }
-
-            await _dbContext.SaveChangesAsync();
-            return;
-        }
+        // O logout é anônimo: sem JWT o tenant não foi resolvido na borda, e a trilha exige tenant.
+        await EnsureTenantResolvedAsync(storedToken.UserId);
 
         storedToken.RevokedAt = DateTime.UtcNow;
 
@@ -195,6 +225,58 @@ public class AuthService : IAuthService
             storedToken.Id,
             new { RevokedAt = (DateTime?)null },
             new { RevokedAt = storedToken.RevokedAt }));
+
+        await _dbContext.SaveChangesAsync();
+    }
+
+    private async Task EnsureTenantResolvedAsync(Guid userId)
+    {
+        if (_tenantContext.IsResolved) return;
+
+        var tenantId = await _dbContext.Users
+            .IgnoreQueryFilters()
+            .Where(u => u.Id == userId)
+            .Select(u => (Guid?)u.TenantId)
+            .FirstOrDefaultAsync();
+
+        if (tenantId.HasValue)
+            _tenantContext.SetTenant(tenantId.Value);
+    }
+
+    private async Task RevokeAllActiveTokensAsync(Guid userId, string? reason = null)
+    {
+        var active = await _dbContext.RefreshTokens
+            .Where(rt => rt.UserId == userId && rt.RevokedAt == null)
+            .ToListAsync();
+
+        if (active.Count == 0) return;
+
+        await EnsureTenantResolvedAsync(userId);
+
+        var revokedAt = DateTime.UtcNow;
+        foreach (var token in active)
+        {
+            token.RevokedAt = revokedAt;
+
+            if (reason is null)
+            {
+                _audit.Record(new AuditEntry(
+                    AuditActions.SessionRevoked,
+                    AuditTargetTypes.Session,
+                    token.Id,
+                    new { RevokedAt = (DateTime?)null },
+                    new { RevokedAt = token.RevokedAt }));
+            }
+            else
+            {
+                _audit.Record(new AuditEntry(
+                    AuditActions.SessionRevoked,
+                    AuditTargetTypes.Session,
+                    token.Id,
+                    new { RevokedAt = (DateTime?)null },
+                    new { RevokedAt = token.RevokedAt, Reason = reason }));
+            }
+        }
 
         await _dbContext.SaveChangesAsync();
     }
@@ -242,6 +324,14 @@ public class AuthService : IAuthService
             throw new AuthException(errors, 400);
         }
 
+        // M11: aceitar o convite/reset prova a posse da caixa — o token só chega por e-mail.
+        // É este caminho que ativa a conta convidada (que nasce sem senha).
+        if (!user.EmailConfirmed)
+        {
+            user.EmailConfirmed = true;
+            await _userManager.UpdateAsync(user);
+        }
+
 #pragma warning disable CA1848, CA1873
         _logger.LogInformation("Password changed for user {UserId} ({Email})", user.Id, user.Email);
 #pragma warning restore CA1848, CA1873
@@ -253,10 +343,15 @@ public class AuthService : IAuthService
         return GenerateAuthResponse(user);
     }
 
+    /// <summary>B4: retenção dos tokens revogados — auditoria de reuso sem crescimento sem fim.</summary>
+    private const int RevokedTokenRetentionDays = 30;
+
     private async Task<AuthResponse> GenerateAuthResponse(User user)
     {
         var accessToken = _tokenGenerator.GenerateAccessToken(user);
         var refreshToken = _tokenGenerator.GenerateRefreshToken(user.Id);
+
+        await PruneStaleTokensAsync(user.Id, DateTime.UtcNow);
 
         _dbContext.RefreshTokens.Add(refreshToken);
         await _dbContext.SaveChangesAsync();
@@ -264,7 +359,193 @@ public class AuthService : IAuthService
         return new AuthResponse(
             AccessToken: accessToken,
             RefreshToken: refreshToken.Token,
-            User: new UserDto(user.Id, user.Email ?? string.Empty, user.Name, user.Role.ToString(), user.TenantId));
+            User: new UserDto(
+                user.Id, user.Email ?? string.Empty, user.Name, user.Role.ToString(), user.TenantId,
+                user.EmailConfirmed));
+    }
+
+    // ── M11: gestão de usuários ─────────────────────────────────────
+
+    private static UserDto ToDto(User user) => new(
+        user.Id, user.Email ?? string.Empty, user.Name, user.Role.ToString(), user.TenantId,
+        user.EmailConfirmed);
+
+    public async Task<List<UserDto>> ListUsersAsync(Guid tenantId, UserRole actorRole)
+    {
+        AccessPolicy.Require(AccessPolicy.Roles.UserRead, actorRole);
+        _tenantContext.SetTenant(tenantId);
+
+        return await _dbContext.Users
+            .IgnoreQueryFilters()
+            .Where(u => u.TenantId == tenantId)
+            .OrderBy(u => u.Name)
+            .Select(u => new UserDto(
+                u.Id, u.Email ?? string.Empty, u.Name, u.Role.ToString(), u.TenantId, u.EmailConfirmed))
+            .ToListAsync();
+    }
+
+    /// <summary>
+    /// M11 — convite. A conta nasce SEM SENHA e sem e-mail confirmado; o convite carrega um token
+    /// de definição de senha. Aceitar o convite (reset de senha) é o que prova a posse da caixa
+    /// de e-mail e ativa a conta — por isso não é preciso bloquear login de quem já tem senha.
+    /// </summary>
+    public async Task<(UserDto User, string InviteToken)> InviteUserAsync(
+        InviteUserRequest request, Guid tenantId, UserRole actorRole)
+    {
+        AccessPolicy.Require(AccessPolicy.Roles.UserManage, actorRole);
+
+        if (request.Role is not (UserRole.Admin or UserRole.Staff))
+            throw new AuthException("invalid_role", 400);
+
+        var email = request.Email.Trim().ToLowerInvariant();
+        await EmailUniqueness.EnsureAvailableAsync(_dbContext, email);
+        _tenantContext.SetTenant(tenantId);
+
+        var user = new User
+        {
+            TenantId = tenantId,
+            Email = email,
+            UserName = email,
+            Name = request.Name,
+            Role = request.Role,
+            IsActive = true,
+            EmailConfirmed = false,
+            CreatedAt = DateTime.UtcNow
+        };
+
+        // Sem senha: até aceitar o convite, o usuário não tem como autenticar.
+        var created = await _userManager.CreateAsync(user);
+        if (!created.Succeeded)
+            throw new AuthException(
+                string.Join(", ", created.Errors.Select(e => e.Description)), 400);
+
+        await _userManager.AddToRoleAsync(user, user.Role.ToString());
+
+        var inviteToken = await _userManager.GeneratePasswordResetTokenAsync(user);
+        return (ToDto(user), inviteToken);
+    }
+
+    public async Task<UserDto> ChangeRoleAsync(
+        Guid userId, UserRole role, Guid actorId, Guid tenantId, UserRole actorRole)
+    {
+        AccessPolicy.Require(AccessPolicy.Roles.UserManage, actorRole);
+
+        if (role is not (UserRole.Admin or UserRole.Staff or UserRole.Parent))
+            throw new AuthException("invalid_role", 400);
+
+        // Um Admin rebaixando a si mesmo perderia o acesso à gestão sem ninguém ter decidido isso.
+        if (userId == actorId)
+            throw new AuthException("cannot_change_own_role", 400);
+
+        _tenantContext.SetTenant(tenantId);
+        var user = await _dbContext.Users.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(u => u.Id == userId && u.TenantId == tenantId)
+            ?? throw new AuthException("user_not_found", 404);
+
+
+        if (user.Role == UserRole.Admin && role != UserRole.Admin)
+            await EnsureAnotherActiveAdminAsync(tenantId, userId);
+
+        var previousRoles = await _userManager.GetRolesAsync(user);
+        await _userManager.RemoveFromRolesAsync(user, previousRoles);
+        await _userManager.AddToRoleAsync(user, role.ToString());
+
+        user.Role = role;
+        var result = await _userManager.UpdateAsync(user);
+        if (!result.Succeeded)
+            throw new AuthException(
+                string.Join(", ", result.Errors.Select(e => e.Description)), 400);
+
+        return ToDto(user);
+    }
+
+    public async Task<UserDto> SetActiveAsync(
+        Guid userId, bool isActive, Guid actorId, Guid tenantId, UserRole actorRole)
+    {
+        AccessPolicy.Require(AccessPolicy.Roles.UserManage, actorRole);
+
+        if (userId == actorId && !isActive)
+            throw new AuthException("cannot_deactivate_self", 400);
+
+        _tenantContext.SetTenant(tenantId);
+        var user = await _dbContext.Users.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(u => u.Id == userId && u.TenantId == tenantId)
+            ?? throw new AuthException("user_not_found", 404);
+
+
+        if (user.Role == UserRole.Admin && user.IsActive && !isActive)
+            await EnsureAnotherActiveAdminAsync(tenantId, userId);
+
+        user.IsActive = isActive;
+        var result = await _userManager.UpdateAsync(user);
+        if (!result.Succeeded)
+            throw new AuthException(
+                string.Join(", ", result.Errors.Select(e => e.Description)), 400);
+
+        return ToDto(user);
+    }
+
+    /// <summary>Não deixa o colégio sem nenhum Admin ativo — seria perder a gestão para sempre.</summary>
+    private async Task EnsureAnotherActiveAdminAsync(Guid tenantId, Guid excludingUserId)
+    {
+        var others = await _dbContext.Users.IgnoreQueryFilters().CountAsync(u =>
+            u.TenantId == tenantId && u.Id != excludingUserId
+            && u.Role == UserRole.Admin && u.IsActive);
+
+        if (others == 0)
+            throw new AuthException("last_admin", 400);
+    }
+
+    public async Task<string?> ResendConfirmationAsync(string email)
+    {
+        var user = await _dbContext.Users
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(u => u.Email == email);
+
+        if (user is null || user.EmailConfirmed)
+            return null;
+
+        _tenantContext.SetTenant(user.TenantId);
+        return await _userManager.GenerateEmailConfirmationTokenAsync(user);
+    }
+
+    public async Task ConfirmEmailAsync(ConfirmEmailRequest request)
+    {
+        var user = await _dbContext.Users
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(u => u.Email == request.Email);
+
+        if (user is null)
+            throw new AuthException("invalid_token", 400);
+
+        if (user.EmailConfirmed)
+            return;
+
+        _tenantContext.SetTenant(user.TenantId);
+        var result = await _userManager.ConfirmEmailAsync(user, request.Token);
+        if (!result.Succeeded)
+            throw new AuthException("invalid_token", 400);
+    }
+
+    /// <summary>
+    /// B4: cada login/refresh insere uma linha e nada nunca saía. A poda acontece na própria
+    /// emissão (o único ponto que sempre roda) e remove o que já não serve para nada: tokens
+    /// expirados e revogados além da retenção. Um token recém-rotacionado é preservado — é ele
+    /// que permite detectar reuso dentro da janela.
+    /// </summary>
+    private async Task PruneStaleTokensAsync(Guid userId, DateTime now)
+    {
+        var revokedCutoff = now.AddDays(-RevokedTokenRetentionDays);
+
+        var stale = await _dbContext.RefreshTokens
+            .Where(rt => rt.UserId == userId
+                && (rt.ExpiresAt < now || (rt.RevokedAt != null && rt.RevokedAt < revokedCutoff)))
+            .ToListAsync();
+
+        if (stale.Count == 0)
+            return;
+
+        _dbContext.RefreshTokens.RemoveRange(stale);
     }
 }
 

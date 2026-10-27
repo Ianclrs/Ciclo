@@ -46,7 +46,8 @@ public sealed class NotificationEmailHandoffTests
                 NotificationType.Geral,
                 null,
                 [withEmail, alsoWithEmail, withoutEmail]),
-            tenantId);
+            tenantId,
+            UserRole.Staff);
 
         // A partir daqui o escopo da requisição acabou. Com o código anterior, a consulta de
         // usuários ainda estava pendente e estouraria aqui — e o e-mail se perdia.

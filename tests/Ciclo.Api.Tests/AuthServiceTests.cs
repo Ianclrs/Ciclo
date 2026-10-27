@@ -144,6 +144,39 @@ public sealed class AuthServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task RegisterParentAsync_WithPublicSchoolSlug_CreatesAParentAccount()
+    {
+        var result = await _authService.RegisterParentAsync(
+            new RegisterParentRequest("test-school", "responsavel@test.com", "Password1!", "Responsável"));
+
+        Assert.Equal("responsavel@test.com", result.User.Email);
+        Assert.Equal("Parent", result.User.Role);
+        Assert.Equal(TestConstants.TenantId, result.User.TenantId);
+    }
+
+    [Fact]
+    public async Task RegisterParentAsync_WithUnknownSlug_IsRejected()
+    {
+        var ex = await Assert.ThrowsAsync<AuthException>(() => _authService.RegisterParentAsync(
+            new RegisterParentRequest("colegio-inexistente", "x@test.com", "Password1!", "X")));
+
+        Assert.Equal("invalid_tenant", ex.Message);
+    }
+
+    /// <summary>
+    /// O limite do cadastro por slug: criar a conta não concede acesso a aluno nenhum. Se este
+    /// teste falhar, o cadastro passou a conceder algo além de uma conta.
+    /// </summary>
+    [Fact]
+    public async Task RegisterParentAsync_DoesNotLinkAnyStudent()
+    {
+        await _authService.RegisterParentAsync(
+            new RegisterParentRequest("test-school", "sem-vinculo@test.com", "Password1!", "Sem Vínculo"));
+
+        Assert.Empty(_dbContext.StudentParents);
+    }
+
+    [Fact]
     public async Task RegisterAsync_DuplicateEmailInSameTenant_ThrowsAuthException()
     {
         var request = new RegisterRequest("duplicate@test.com", "Password1!", "First User", TestConstants.TenantId);
@@ -343,22 +376,67 @@ public sealed class AuthServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task RevokeTokenAsync_AlreadyRevokedToken_RevokesAllUserTokens()
+    public async Task RefreshTokenAsync_ReuseOfRotatedToken_RevokesAllActiveSessions()
     {
-        var authResult = await _authService.RegisterAsync(
-            new RegisterRequest("revoke-all@test.com", "Password1!", "Revoke All", TestConstants.TenantId));
+        var first = await _authService.RegisterAsync(
+            new RegisterRequest("reuse@test.com", "Password1!", "Reuse", TestConstants.TenantId));
 
-        // First revoke
-        await _authService.RevokeTokenAsync(authResult.RefreshToken);
+        // Rotação normal: o primeiro token morre e nasce o segundo.
+        var second = await _authService.RefreshTokenAsync(first.RefreshToken);
 
-        // Second revoke of same token (reuse detection)
-        await _authService.RevokeTokenAsync(authResult.RefreshToken);
+        // Reapresentar o token já rotacionado é o sinal de roubo (B3).
+        var ex = await Assert.ThrowsAsync<AuthException>(
+            () => _authService.RefreshTokenAsync(first.RefreshToken));
+        Assert.Equal("invalid_token", ex.Message);
 
-        // All user tokens should be revoked
-        var userTokens = await _dbContext.RefreshTokens
-            .Where(rt => rt.UserId == authResult.User.Id)
+        // A família inteira é encerrada — inclusive o token que estava válido.
+        var secondStored = await _dbContext.RefreshTokens.FirstAsync(rt => rt.Token == second.RefreshToken);
+        Assert.True(secondStored.IsRevoked);
+    }
+
+    [Fact]
+    public async Task RevokeTokenAsync_Repeated_DoesNotEndOtherSessions()
+    {
+        var first = await _authService.RegisterAsync(
+            new RegisterRequest("logout@test.com", "Password1!", "Logout", TestConstants.TenantId));
+
+        // Segunda sessão (outro dispositivo), ativa.
+        var second = await _authService.LoginAsync(
+            new LoginRequest("logout@test.com", "Password1!"));
+
+        // Logout repetido do primeiro token (B3): o antigo revogava TODAS as sessões.
+        await _authService.RevokeTokenAsync(first.RefreshToken);
+        await _authService.RevokeTokenAsync(first.RefreshToken);
+
+        var secondStored = await _dbContext.RefreshTokens.FirstAsync(rt => rt.Token == second.RefreshToken);
+        Assert.False(secondStored.IsRevoked);
+    }
+
+    [Fact]
+    public async Task RefreshTokenAsync_PrunesExpiredAndOldRevokedTokens()
+    {
+        var auth = await _authService.RegisterAsync(
+            new RegisterRequest("prune@test.com", "Password1!", "Prune", TestConstants.TenantId));
+        var userId = auth.User.Id;
+
+        _dbContext.RefreshTokens.AddRange(
+            new RefreshToken { Id = Guid.NewGuid(), UserId = userId, Token = "expirado", ExpiresAt = DateTime.UtcNow.AddDays(-1) },
+            new RefreshToken { Id = Guid.NewGuid(), UserId = userId, Token = "revogado-antigo", ExpiresAt = DateTime.UtcNow.AddDays(10), RevokedAt = DateTime.UtcNow.AddDays(-31) },
+            new RefreshToken { Id = Guid.NewGuid(), UserId = userId, Token = "revogado-recente", ExpiresAt = DateTime.UtcNow.AddDays(10), RevokedAt = DateTime.UtcNow.AddDays(-1) });
+        await _dbContext.SaveChangesAsync();
+
+        // Emitir um novo par dispara a poda.
+        await _authService.RefreshTokenAsync(auth.RefreshToken);
+
+        var remaining = await _dbContext.RefreshTokens
+            .Where(rt => rt.UserId == userId)
+            .Select(rt => rt.Token)
             .ToListAsync();
-        Assert.All(userTokens, t => Assert.True(t.IsRevoked));
+
+        Assert.DoesNotContain("expirado", remaining);
+        Assert.DoesNotContain("revogado-antigo", remaining);
+        // O revogado recente fica: é ele que permite detectar reuso dentro da janela.
+        Assert.Contains("revogado-recente", remaining);
     }
 
     [Fact]
@@ -451,6 +529,159 @@ public sealed class AuthServiceTests : IDisposable
 
         Assert.Equal(400, ex.StatusCode);
         Assert.Equal("invalid_token", ex.Message);
+    }
+
+    // ===== M11: gestão de usuários e ciclo de convite =====
+
+    private async Task<User> CreateAdminAsync(string email)
+    {
+        var admin = new User
+        {
+            Id = Guid.NewGuid(),
+            TenantId = TestConstants.TenantId,
+            Email = email,
+            UserName = email,
+            Name = "Admin",
+            Role = UserRole.Admin,
+            IsActive = true,
+            EmailConfirmed = true,
+            CreatedAt = DateTime.UtcNow
+        };
+
+        var created = await _userManager.CreateAsync(admin, "Password1!");
+        Assert.True(created.Succeeded);
+        await _userManager.AddToRoleAsync(admin, "Admin");
+        return admin;
+    }
+
+    [Fact]
+    public async Task InviteUserAsync_CreatesAccountWithoutPasswordAndUnconfirmed()
+    {
+        await CreateAdminAsync("inviter@test.com");
+
+        var (user, inviteToken) = await _authService.InviteUserAsync(
+            new InviteUserRequest("invited@test.com", "Convidado", UserRole.Staff),
+            TestConstants.TenantId,
+            UserRole.Admin);
+
+        Assert.False(user.EmailConfirmed);
+        Assert.False(string.IsNullOrWhiteSpace(inviteToken));
+
+        // Consulta direta: o store do Identity aplica o filtro global, e neste harness o
+        // tenant do contexto é vazio (mock sem estado).
+        var stored = await _dbContext.Users.IgnoreQueryFilters()
+            .FirstAsync(u => u.Email == "invited@test.com");
+        // Sem senha: não há como autenticar antes de aceitar o convite.
+        Assert.False(await _userManager.HasPasswordAsync(stored));
+    }
+
+    [Fact]
+    public async Task InviteUserAsync_ByStaff_IsForbidden()
+    {
+        await Assert.ThrowsAsync<Ciclo.Core.Exceptions.ForbiddenException>(() =>
+            _authService.InviteUserAsync(
+                new InviteUserRequest("x@test.com", "X", UserRole.Staff),
+                TestConstants.TenantId,
+                UserRole.Staff));
+    }
+
+    [Fact]
+    public async Task InvitedUser_AcceptingInvite_ConfirmsEmailAndAllowsLogin()
+    {
+        await CreateAdminAsync("inviter2@test.com");
+
+        var (_, inviteToken) = await _authService.InviteUserAsync(
+            new InviteUserRequest("accept@test.com", "Aceite", UserRole.Staff),
+            TestConstants.TenantId,
+            UserRole.Admin);
+
+        // Antes de aceitar, o login não é possível (não há senha).
+        await Assert.ThrowsAsync<AuthException>(() =>
+            _authService.LoginAsync(new LoginRequest("accept@test.com", "NewPassword1!")));
+
+        await _authService.ResetPasswordAsync(
+            new ResetPasswordRequest("accept@test.com", inviteToken, "NewPassword1!"));
+
+        var login = await _authService.LoginAsync(
+            new LoginRequest("accept@test.com", "NewPassword1!"));
+
+        Assert.True(login.User.EmailConfirmed);
+        Assert.Equal("Staff", login.User.Role);
+    }
+
+    [Fact]
+    public async Task ChangeRoleAsync_OnTheLastAdmin_IsRejected()
+    {
+        var admin = await CreateAdminAsync("only-admin@test.com");
+
+        var ex = await Assert.ThrowsAsync<AuthException>(() =>
+            _authService.ChangeRoleAsync(
+                admin.Id, UserRole.Staff, Guid.NewGuid(), TestConstants.TenantId, UserRole.Admin));
+
+        Assert.Equal("last_admin", ex.Message);
+    }
+
+    [Fact]
+    public async Task ChangeRoleAsync_OnSelf_IsRejected()
+    {
+        var admin = await CreateAdminAsync("self@test.com");
+        await CreateAdminAsync("other-admin@test.com");
+
+        var ex = await Assert.ThrowsAsync<AuthException>(() =>
+            _authService.ChangeRoleAsync(
+                admin.Id, UserRole.Staff, admin.Id, TestConstants.TenantId, UserRole.Admin));
+
+        Assert.Equal("cannot_change_own_role", ex.Message);
+    }
+
+    [Fact]
+    public async Task SetActiveAsync_DeactivatingSelf_IsRejected()
+    {
+        var admin = await CreateAdminAsync("self-deactivate@test.com");
+
+        var ex = await Assert.ThrowsAsync<AuthException>(() =>
+            _authService.SetActiveAsync(
+                admin.Id, false, admin.Id, TestConstants.TenantId, UserRole.Admin));
+
+        Assert.Equal("cannot_deactivate_self", ex.Message);
+    }
+
+    [Fact]
+    public async Task SetActiveAsync_DeactivatedUser_CannotLogin()
+    {
+        await CreateAdminAsync("admin3@test.com");
+        var parent = await _authService.RegisterAsync(
+            new RegisterRequest("deactivated@test.com", "Password1!", "Inativo", TestConstants.TenantId));
+
+        await _authService.SetActiveAsync(
+            parent.User.Id, false, Guid.NewGuid(), TestConstants.TenantId, UserRole.Admin);
+
+        var ex = await Assert.ThrowsAsync<AuthException>(() =>
+            _authService.LoginAsync(new LoginRequest("deactivated@test.com", "Password1!")));
+
+        Assert.Equal("account_inactive", ex.Message);
+    }
+
+    [Fact]
+    public async Task ConfirmEmailAsync_WithTokenFromResend_ConfirmsTheAccount()
+    {
+        await _authService.RegisterAsync(
+            new RegisterRequest("confirm@test.com", "Password1!", "Confirmar", TestConstants.TenantId));
+
+        var token = await _authService.ResendConfirmationAsync("confirm@test.com");
+        Assert.NotNull(token);
+
+        await _authService.ConfirmEmailAsync(new ConfirmEmailRequest("confirm@test.com", token!));
+
+        var stored = await _dbContext.Users.IgnoreQueryFilters()
+            .FirstAsync(u => u.Email == "confirm@test.com");
+        Assert.True(stored.EmailConfirmed);
+    }
+
+    [Fact]
+    public async Task ResendConfirmationAsync_ForUnknownEmail_ReturnsNull()
+    {
+        Assert.Null(await _authService.ResendConfirmationAsync("ninguem@test.com"));
     }
 }
 

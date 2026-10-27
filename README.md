@@ -16,12 +16,12 @@ O **Ciclo** centraliza e automatiza o ciclo de vida acadêmico dos alunos: matr�
 | # | Funcionalidade | Descrição |
 |---|---------------|-----------|
 | 1 | **Multi-Tenant** | Cada colégio tem seu ambiente isolado via `TenantId`. Dados nunca vazam entre tenants. |
-| 2 | **Autenticação** | Login com email/senha. JWT access tokens (15min) + refresh tokens (7 dias). O fluxo Google foi removido do backend (item C8 do plano de correções). |
+| 2 | **Autenticação** | Login com email/senha. JWT access tokens (15min) + refresh tokens (7 dias). *(Google OAuth foi removido no C8.)* |
 | 3 | **Gestão de Alunos** | CRUD completo com dados pessoais, contatos, filiação e informações acadêmicas. |
 | 4 | **Matrícula** | Workflow completo: abertura de período, inscrição, checklist de documentos, aprovação. |
 | 5 | **Rematrícula** | Renovação com reaproveitamento de documentos validados e alertas de vencimento. |
 | 6 | **Documentos** | Upload, categorização, verificação pela secretaria, tracking de validade. |
-| 7 | **Notificações** | In-app para documentos pendentes, comunicados e lembretes; envio por e-mail enfileirado com sender de console (provedor real pendente). |
+| 7 | **Notificações** | In-app para documentos pendentes, comunicados e lembretes. O e-mail está **preparado, não entregue**: o dispatcher enfileira e o `ConsoleEmailSender` apenas registra (provedor em aberto). |
 | 8 | **Portal dos Pais** | Dashboard dos filhos, desempenho, inbox de notificações e upload de documentos. |
 | 9 | **PWA Mobile** | Aplicativo progressivo instalável no celular (iOS/Android) com suporte offline. |
 | 10 | **Auditoria** | Trilha imutável por escola de aprovações, rejeições, cancelamentos e revogações de sessão, com consulta e exportação CSV restritas ao Admin. |
@@ -35,7 +35,7 @@ O **Ciclo** centraliza e automatiza o ciclo de vida acadêmico dos alunos: matr�
 | **Backend** | C# .NET 10 — ASP.NET Core Web API |
 | **ORM** | Entity Framework Core 10 + Npgsql |
 | **Banco de Dados** | PostgreSQL 16 |
-| **Autenticação** | ASP.NET Core Identity + JWT Bearer + Google OAuth 2.0 |
+| **Autenticação** | ASP.NET Core Identity + JWT Bearer (Google OAuth removido no C8) |
 | **Validação** | FluentValidation |
 | **Logging** | Serilog (Console + File) |
 | **Documentação da API** | Swagger / OpenAPI |
@@ -175,7 +175,6 @@ A API precisa estar publicada em **HTTPS** e alcançável pela internet — o re
 
 | Configuração | Por quê |
 |---|---|
-| `Frontend:Url` | O `AuthController` redireciona para cá ao final do login com Google (`GetFrontendUrl()`); sem definir, ele manda o usuário para `http://localhost:5173` |
 | `Jwt:Secret` | **Ausente** de `appsettings.json` por decisão; a API **não inicia** sem ele (`JwtSettings.cs`). Defina pela variável `Jwt__Secret` |
 | `FileStorage:EncryptionKey` | Base64 de 32 bytes; a API **não inicia** sem ela (`FileStorageKey.cs`). Defina pela variável `FileStorage__EncryptionKey` |
 | `FileStorage:RootPath` | Disco local: em container sem volume os arquivos somem a cada deploy |

@@ -29,7 +29,7 @@ export const ENROLLMENT_STATUSES = [
 export type EnrollmentStatus = (typeof ENROLLMENT_STATUSES)[number];
 
 /** Operações que a API expõe, uma por endpoint. */
-export type EnrollmentAction = 'submit' | 'approve' | 'reject' | 'cancel';
+export type EnrollmentAction = 'submit' | 'approve' | 'reject' | 'cancel' | 'reopen';
 
 const STATUS_VARIANTS: Record<EnrollmentStatus, BadgeVariant> = {
   Rascunho: 'default',
@@ -46,10 +46,12 @@ const ACTIONS: Record<EnrollmentStatus, EnrollmentAction[]> = {
   Rascunho: ['submit'],
   Pendente: ['approve', 'reject', 'cancel'],
   DocumentacaoPendente: ['approve', 'reject', 'cancel'],
-  // Terminais. Não há caminho de volta — a política de reversão é o item M12 do plano de correções.
-  Aprovado: [],
-  Rejeitado: [],
-  Cancelado: [],
+  // M12: estados terminais ganharam caminho de volta (`reopen`), decidido pelo backend —
+  // o destino é Pendente ou DocumentacaoPendente conforme a documentação obrigatória.
+  // A API restringe a reabertura a Admin; a tela filtra por papel em `actionsFor`.
+  Aprovado: ['reopen'],
+  Rejeitado: ['reopen'],
+  Cancelado: ['reopen'],
 };
 
 const ACTION_LABELS: Record<EnrollmentAction, string> = {
@@ -57,6 +59,7 @@ const ACTION_LABELS: Record<EnrollmentAction, string> = {
   approve: 'Aprovar',
   reject: 'Rejeitar',
   cancel: 'Cancelar',
+  reopen: 'Reabrir',
 };
 
 /** Só `Rejeitar` exige motivo (10 a 500 caracteres) e por isso abre modal em vez de agir direto. */
@@ -72,8 +75,10 @@ export function statusVariant(status: string): BadgeVariant {
   return isKnownStatus(status) ? STATUS_VARIANTS[status] : 'default';
 }
 
-export function actionsFor(status: string): EnrollmentAction[] {
-  return isKnownStatus(status) ? ACTIONS[status] : [];
+export function actionsFor(status: string, role?: string): EnrollmentAction[] {
+  if (!isKnownStatus(status)) return [];
+  // `reopen` é Admin-only no backend; oferecer o botão a Staff geraria 403 previsível.
+  return ACTIONS[status].filter((action) => action !== 'reopen' || role === 'Admin');
 }
 
 function isKnownStatus(status: string): status is EnrollmentStatus {

@@ -191,7 +191,7 @@ public sealed class EnrollmentDocumentGatingTests
         var enrollment = await DocumentTestData.AddEnrollmentAsync(
             db, tenantId, student.Id, period.Id, EnrollmentStatus.Rascunho);
 
-        var result = await new EnrollmentService(db, NoopAuditTrail.Instance).SubmitAsync(enrollment.Id, tenantId);
+        var result = await new EnrollmentService(db, NoopAuditTrail.Instance).SubmitAsync(enrollment.Id, tenantId, Guid.NewGuid(), UserRole.Staff);
 
         Assert.Equal(EnrollmentStatus.DocumentacaoPendente.ToString(), result.Status);
     }
@@ -210,7 +210,7 @@ public sealed class EnrollmentDocumentGatingTests
         var enrollment = await DocumentTestData.AddEnrollmentAsync(
             db, tenantId, student.Id, period.Id, EnrollmentStatus.Rascunho);
 
-        var result = await new EnrollmentService(db, NoopAuditTrail.Instance).SubmitAsync(enrollment.Id, tenantId);
+        var result = await new EnrollmentService(db, NoopAuditTrail.Instance).SubmitAsync(enrollment.Id, tenantId, Guid.NewGuid(), UserRole.Staff);
 
         Assert.Equal(EnrollmentStatus.Pendente.ToString(), result.Status);
     }
@@ -233,7 +233,7 @@ public sealed class EnrollmentDocumentGatingTests
         var enrollment = await DocumentTestData.AddEnrollmentAsync(
             db, tenantId, student.Id, period.Id, EnrollmentStatus.Rascunho);
 
-        var result = await new EnrollmentService(db, NoopAuditTrail.Instance).SubmitAsync(enrollment.Id, tenantId);
+        var result = await new EnrollmentService(db, NoopAuditTrail.Instance).SubmitAsync(enrollment.Id, tenantId, Guid.NewGuid(), UserRole.Staff);
 
         Assert.Equal(EnrollmentStatus.DocumentacaoPendente.ToString(), result.Status);
     }
@@ -254,7 +254,7 @@ public sealed class EnrollmentDocumentGatingTests
         var enrollment = await DocumentTestData.AddEnrollmentAsync(
             db, tenantId, student.Id, period.Id, EnrollmentStatus.Rascunho);
 
-        var result = await new EnrollmentService(db, NoopAuditTrail.Instance).SubmitAsync(enrollment.Id, tenantId);
+        var result = await new EnrollmentService(db, NoopAuditTrail.Instance).SubmitAsync(enrollment.Id, tenantId, Guid.NewGuid(), UserRole.Staff);
 
         Assert.Equal(EnrollmentStatus.Pendente.ToString(), result.Status);
     }
@@ -272,7 +272,7 @@ public sealed class EnrollmentDocumentGatingTests
             db, tenantId, student.Id, period.Id, EnrollmentStatus.DocumentacaoPendente);
 
         var exception = await Assert.ThrowsAsync<EnrollmentException>(
-            () => new EnrollmentService(db, NoopAuditTrail.Instance).ApproveAsync(enrollment.Id, tenantId));
+            () => new EnrollmentService(db, NoopAuditTrail.Instance).ApproveAsync(enrollment.Id, tenantId, Guid.NewGuid(), UserRole.Admin));
 
         Assert.Equal(400, exception.StatusCode);
         Assert.Equal("pending_required_documents", exception.Message);
@@ -292,7 +292,7 @@ public sealed class EnrollmentDocumentGatingTests
         var enrollment = await DocumentTestData.AddEnrollmentAsync(
             db, tenantId, student.Id, period.Id, EnrollmentStatus.Pendente);
 
-        var result = await new EnrollmentService(db, NoopAuditTrail.Instance).ApproveAsync(enrollment.Id, tenantId);
+        var result = await new EnrollmentService(db, NoopAuditTrail.Instance).ApproveAsync(enrollment.Id, tenantId, Guid.NewGuid(), UserRole.Admin);
 
         Assert.Equal(EnrollmentStatus.Aprovado.ToString(), result.Status);
 
@@ -317,7 +317,7 @@ public sealed class EnrollmentDocumentGatingTests
         var enrollment = await DocumentTestData.AddEnrollmentAsync(
             db, tenantId, student.Id, period.Id, EnrollmentStatus.Rascunho);
 
-        var result = await new EnrollmentService(db, NoopAuditTrail.Instance).SubmitAsync(enrollment.Id, tenantId);
+        var result = await new EnrollmentService(db, NoopAuditTrail.Instance).SubmitAsync(enrollment.Id, tenantId, Guid.NewGuid(), UserRole.Staff);
 
         Assert.Equal(EnrollmentStatus.Pendente.ToString(), result.Status);
     }
@@ -386,6 +386,6 @@ public sealed class EnrollmentDetailDocumentTests
         var detail = await service.GetEnrollmentByIdAsync(enrollment.Id, tenantId, Guid.NewGuid(), UserRole.Admin);
 
         Assert.NotEmpty(detail.MissingDocumentTypes!);
-        await Assert.ThrowsAsync<EnrollmentException>(() => service.ApproveAsync(enrollment.Id, tenantId));
+        await Assert.ThrowsAsync<EnrollmentException>(() => service.ApproveAsync(enrollment.Id, tenantId, Guid.NewGuid(), UserRole.Admin));
     }
 }

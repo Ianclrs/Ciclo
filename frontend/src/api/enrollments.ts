@@ -28,11 +28,16 @@ export async function cancelEnrollment(id: string): Promise<void> {
   await api.post(`/api/enrollments/${id}/cancel`);
 }
 
+export async function reopenEnrollment(id: string): Promise<void> {
+  await api.post(`/api/enrollments/${id}/reopen`);
+}
+
 export async function rejectEnrollment(id: string, motivo: string): Promise<void> {
   await api.post(`/api/enrollments/${id}/reject`, { motivo });
 }
 
 export async function getEnrollmentPeriods(): Promise<EnrollmentPeriod[]> {
+  // B1: a resposta é uma lista, não um envelope paginado.
   const res = await api.get('/api/enrollment-periods');
-  return res.data.items;
+  return res.data;
 }

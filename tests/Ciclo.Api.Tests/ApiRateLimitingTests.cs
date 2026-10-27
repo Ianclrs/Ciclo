@@ -22,10 +22,13 @@ public class ApiRateLimitingTests
     /// <summary>Política esperada por endpoint anônimo — mudar isto é decisão consciente.</summary>
     private static readonly Dictionary<string, string> ExpectedPolicyByRoute = new(StringComparer.Ordinal)
     {
+        ["api/auth/confirm-email"] = "auth",
         ["api/auth/forgot-password"] = "auth",
         ["api/auth/login"] = "auth",
         ["api/auth/refresh"] = "auth",
         ["api/auth/register"] = "auth",
+        ["api/auth/register/parent"] = "auth",
+        ["api/auth/resend-confirmation"] = "auth",
         ["api/auth/reset-password"] = "auth",
         ["api/tenants/register"] = "school-registration"
     };

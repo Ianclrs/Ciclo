@@ -39,8 +39,22 @@ public class ParentService : IParentService
         if (linkedStudentIds.Count == 0)
             return new ParentDashboardDto(0, 0, 0, 0, []);
 
-        var students = await _db.Students
+        // Uma única consulta para todos os filhos (M2). O laço anterior fazia duas
+        // consultas POR FILHO — o custo crescia com o número de filhos do responsável,
+        // e o dashboard era o único lugar com esse padrão.
+        var children = await _db.Students
             .Where(s => linkedStudentIds.Contains(s.Id))
+            .Select(s => new ChildSummaryDto(
+                s.Id,
+                s.Nome,
+                s.Turma,
+                s.AnoLetivo,
+                _db.Enrollments
+                    .Where(e => e.StudentId == s.Id && e.Status == EnrollmentStatus.Aprovado)
+                    .Select(e => (string?)e.Status.ToString())
+                    .FirstOrDefault(),
+                _db.Documents.Count(d => d.StudentId == s.Id && d.Status == DocumentStatus.Pendente),
+                s.Foto))
             .ToListAsync();
 
         var pendingDocs = await _db.Documents
@@ -52,22 +66,8 @@ public class ParentService : IParentService
         var unreadNotifications = await _db.UserNotifications
             .CountAsync(un => un.UserId == parentId && !un.IsRead);
 
-        var children = new List<ChildSummaryDto>();
-        foreach (var s in students)
-        {
-            var enrollmentStatus = await _db.Enrollments
-                .Where(e => e.StudentId == s.Id && e.Status == EnrollmentStatus.Aprovado)
-                .Select(e => (string?)e.Status.ToString())
-                .FirstOrDefaultAsync();
-
-            var childPendingDocs = await _db.Documents
-                .CountAsync(d => d.StudentId == s.Id && d.Status == DocumentStatus.Pendente);
-
-            children.Add(new ChildSummaryDto(s.Id, s.Nome, s.Turma, s.AnoLetivo, enrollmentStatus, childPendingDocs, s.Foto));
-        }
-
         return new ParentDashboardDto(
-            students.Count, unreadNotifications, pendingDocs, activeEnrollments, children);
+            children.Count, unreadNotifications, pendingDocs, activeEnrollments, children);
     }
 
     // ── FR-002: List Children ────────────────────────────────────────
@@ -104,7 +104,7 @@ public class ParentService : IParentService
             .FirstOrDefaultAsync();
 
         if (student is null)
-            throw new ForbiddenException("You are not linked to this student.");
+            throw new AccessDeniedException("not_linked_to_student");
 
         var documents = await _db.Documents
             .Where(d => d.StudentId == studentId)
@@ -167,17 +167,10 @@ public class ParentService : IParentService
 
     // ── FR-007: Access Control ───────────────────────────────────────
 
-    private async Task VerifyParentChildLinkAsync(Guid parentId, Guid studentId)
-    {
-        var linked = await _db.StudentParents
-            .AnyAsync(sp => sp.StudentId == studentId && sp.ParentId == parentId);
-
-        if (!linked)
-            throw new ForbiddenException("You are not linked to this student.");
-
-        // Verify student exists in this tenant (via global query filter on Students)
-        var studentExists = await _db.Students.AnyAsync(s => s.Id == studentId);
-        if (!studentExists)
-            throw new ForbiddenException("You are not linked to this student.");
-    }
+    /// <summary>
+    /// B9: a regra vive em <see cref="StudentAccess"/>; este wrapper só fixa o papel do controller
+    /// (Parent) e evita repetir a política em cada chamador.
+    /// </summary>
+    private Task VerifyParentChildLinkAsync(Guid parentId, Guid studentId) =>
+        StudentAccess.EnsureLinkedAsync(_db, studentId, parentId, UserRole.Parent);
 }

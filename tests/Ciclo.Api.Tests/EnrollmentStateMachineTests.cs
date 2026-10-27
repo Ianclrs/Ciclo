@@ -24,10 +24,11 @@ public sealed class EnrollmentStateMachineTests
         [EnrollmentStatus.Rascunho] = ["DocumentacaoPendente", "Pendente"],
         [EnrollmentStatus.Pendente] = ["Aprovado", "Cancelado", "DocumentacaoPendente", "Rejeitado"],
         [EnrollmentStatus.DocumentacaoPendente] = ["Aprovado", "Cancelado", "Pendente", "Rejeitado"],
-        // Terminais: sem caminho de volta. A política de reversão é o item M12 do plano de correções.
-        [EnrollmentStatus.Aprovado] = [],
-        [EnrollmentStatus.Rejeitado] = [],
-        [EnrollmentStatus.Cancelado] = [],
+        // M12: estados terminais reabrem por `ReopenAsync` (Admin) para Pendente ou
+        // DocumentacaoPendente — o destino é decidido pela documentação, como no submit.
+        [EnrollmentStatus.Aprovado] = ["DocumentacaoPendente", "Pendente"],
+        [EnrollmentStatus.Rejeitado] = ["DocumentacaoPendente", "Pendente"],
+        [EnrollmentStatus.Cancelado] = ["DocumentacaoPendente", "Pendente"],
     };
 
     [Fact]

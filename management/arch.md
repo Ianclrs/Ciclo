@@ -5,7 +5,7 @@
 - **Stack:** C# .NET 10 (ASP.NET Core Web API), Entity Framework Core 10, PostgreSQL 16
 - **Frontend:** React 19, Vite 8, Tailwind CSS 4, PWA (Workbox)
 - **Database:** PostgreSQL 16 — schema-per-tenant via EF Core global query filters
-- **Auth:** ASP.NET Core Identity + JWT Bearer tokens + Google OAuth 2.0 (OpenID Connect)
+- **Auth:** ASP.NET Core Identity + JWT Bearer tokens (Google OAuth removido no C8)
 - **Deployment:** Docker Compose (local dev), Docker Swarm or AWS ECS (production)
 - **Platform:** Web (SPA) + PWA for mobile (iOS/Android)
 
@@ -34,12 +34,12 @@
 | Concern | Implementation |
 |---|---|
 | Multi-Tenancy | Middleware + EF Core Global Query Filter (`TenantId`) |
-| Auth | JWT (access + refresh tokens). O fluxo Google foi removido do backend (C8) |
+| Auth | JWT (access + refresh), ASP.NET Core Identity — Google OAuth removido no C8 |
 | Logging | Serilog → Console + File |
 | Validation | FluentValidation |
 | API Docs | Swagger / OpenAPI |
-| Error Handling | Global exception middleware + ProblemDetails (RFC 9457) |
-| Background Jobs | `BackgroundService` próprio: `EmailDispatchService` (fila de e-mail) e `AuditRetentionService` (expurgo diário) |
+| Error Handling | Global exception middleware + ProblemDetails (RFC 9457) com `code` estável (M3) |
+| Background Jobs | **Sem agendador externo** (Hangfire/Quartz não existem). `BackgroundService` próprio: `EmailDispatchService` (fila de e-mail, canal inerte — `ConsoleEmailSender`) e `AuditRetentionService` (expurgo diário) |
 | File Storage | Local disk (dev) / S3-compatible (prod) |
 | Audit trail | Middleware de ator/correlação + trilha append-only com imutabilidade em aplicação e banco (Spec 110) |
 

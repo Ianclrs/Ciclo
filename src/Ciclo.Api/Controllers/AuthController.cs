@@ -9,6 +9,8 @@ using Ciclo.Infrastructure.Contracts;
 using Ciclo.Infrastructure.Data;
 using Ciclo.Infrastructure.Services;
 
+using Ciclo.Api.Middleware;
+
 namespace Ciclo.Api.Controllers;
 
 [ApiController]
@@ -40,7 +42,28 @@ public class AuthController : ControllerBase
         }
         catch (AuthException ex)
         {
-            return Problem(title: ex.Message, statusCode: ex.StatusCode);
+            return ProblemResponse.FromCode(ex.Message, ex.StatusCode);
+        }
+    }
+
+    /// <summary>
+    /// A5: cadastro de responsavel pelo slug publico do colegio. Endpoint anonimo por decisao
+    /// (como o cadastro de escola); criar a conta nao vincula aluno — o vinculo e ato da secretaria.
+    /// </summary>
+    [HttpPost("register/parent")]
+    [AllowAnonymous]
+    [EnableRateLimiting(RateLimitPolicies.Auth)]
+    public async Task<IActionResult> RegisterParent([FromBody] RegisterParentRequest request)
+    {
+        try
+        {
+            var result = await _authService.RegisterParentAsync(request);
+            SetRefreshTokenCookie(result.RefreshToken);
+            return Created(string.Empty, new { result.AccessToken, result.User });
+        }
+        catch (AuthException ex)
+        {
+            return ProblemResponse.FromCode(ex.Message, ex.StatusCode);
         }
     }
 
@@ -58,7 +81,7 @@ public class AuthController : ControllerBase
         }
         catch (AuthException ex)
         {
-            return Problem(title: ex.Message, statusCode: ex.StatusCode);
+            return ProblemResponse.FromCode(ex.Message, ex.StatusCode);
         }
     }
 
@@ -70,7 +93,7 @@ public class AuthController : ControllerBase
     {
         var refreshToken = Request.Cookies["refresh_token"];
         if (string.IsNullOrEmpty(refreshToken))
-            return Unauthorized(new { error = "invalid_token" });
+            return ProblemResponse.FromCode("invalid_token", 401);
 
         try
         {
@@ -80,7 +103,7 @@ public class AuthController : ControllerBase
         }
         catch (AuthException ex)
         {
-            return Problem(title: ex.Message, statusCode: ex.StatusCode);
+            return ProblemResponse.FromCode(ex.Message, ex.StatusCode);
         }
     }
 
@@ -121,6 +144,7 @@ public class AuthController : ControllerBase
             user.Email,
             role = user.Role.ToString(),
             user.TenantId,
+            user.EmailConfirmed,
         });
     }
 
@@ -154,8 +178,42 @@ public class AuthController : ControllerBase
         }
         catch (AuthException ex)
         {
-            return Problem(title: ex.Message, statusCode: ex.StatusCode);
+            return ProblemResponse.FromCode(ex.Message, ex.StatusCode);
         }
+    }
+
+    /// <summary>M11: confirma o e-mail com o token enviado ao usuário.</summary>
+    [HttpPost("confirm-email")]
+    [AllowAnonymous]
+    [EnableRateLimiting(RateLimitPolicies.Auth)]
+    public async Task<IActionResult> ConfirmEmail([FromBody] ConfirmEmailRequest request)
+    {
+        try
+        {
+            await _authService.ConfirmEmailAsync(request);
+            return Ok();
+        }
+        catch (AuthException ex)
+        {
+            return ProblemResponse.FromCode(ex.Message, ex.StatusCode);
+        }
+    }
+
+    /// <summary>
+    /// M11: reenvia o token de confirmação. Em Development o token volta na resposta (mesmo
+    /// padrão do forgot-password, que viabiliza o fluxo sem servidor de e-mail).
+    /// </summary>
+    [HttpPost("resend-confirmation")]
+    [AllowAnonymous]
+    [EnableRateLimiting(RateLimitPolicies.Auth)]
+    public async Task<IActionResult> ResendConfirmation([FromBody] ForgotPasswordRequest request)
+    {
+        var token = await _authService.ResendConfirmationAsync(request.Email);
+
+        if (_environment.IsDevelopment() && token is not null)
+            return Ok(new { confirmationToken = token });
+
+        return Ok();
     }
 
     private void SetRefreshTokenCookie(string token)

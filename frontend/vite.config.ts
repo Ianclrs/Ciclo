@@ -16,18 +16,12 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       registerType: 'autoUpdate',
-      manifest: {
-        name: 'Ciclo',
-        short_name: 'Ciclo',
-        theme_color: '#4f46e5',
-        background_color: '#f9fafb',
-        display: 'standalone',
-        orientation: 'portrait-primary',
-        icons: [
-          { src: '/icon-192.png', sizes: '192x192', type: 'image/png' },
-          { src: '/icon-512.png', sizes: '512x512', type: 'image/png' },
-        ],
-      },
+      // B11: o manifest é ESTÁTICO (`public/manifest.json`, ligado no `index.html`). O plugin
+      // segue dono do service worker (Workbox), mas não gera manifest — a geração dele com
+      // Vite 8/Rolldown não produzia `manifest.webmanifest`, e o `index.html` ficava sem link
+      // nenhum (PWA não instalável). Um arquivo estático é verificável no build e não depende
+      // da integração do plugin.
+      manifest: false,
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
         // Sem runtimeCaching para a API, de propósito: as respostas são autenticadas e a

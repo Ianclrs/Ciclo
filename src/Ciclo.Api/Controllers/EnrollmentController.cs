@@ -3,7 +3,10 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Ciclo.Core.Entities;
 using Ciclo.Infrastructure.Contracts;
+using Ciclo.Infrastructure.Security;
 using Ciclo.Infrastructure.Services;
+
+using Ciclo.Api.Middleware;
 
 namespace Ciclo.Api.Controllers;
 
@@ -20,24 +23,24 @@ public class EnrollmentPeriodController : ControllerBase
 
     /// <summary>FR-001: Create an enrollment period.</summary>
     [HttpPost]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = AccessPolicy.Roles.EnrollmentPeriodManage)]
     public async Task<IActionResult> Create([FromBody] CreateEnrollmentPeriodRequest request)
     {
         try
         {
             var tenantId = GetTenantId();
-            var result = await _service.CreatePeriodAsync(request, tenantId);
+            var result = await _service.CreatePeriodAsync(request, tenantId, GetRole());
             return Created(string.Empty, result);
         }
         catch (EnrollmentException ex)
         {
-            return Problem(title: ex.Message, statusCode: ex.StatusCode);
+            return ProblemResponse.FromCode(ex.Message, ex.StatusCode);
         }
     }
 
     /// <summary>FR-002: List enrollment periods.</summary>
     [HttpGet]
-    [Authorize(Roles = "Admin,Staff")]
+    [Authorize(Roles = AccessPolicy.Roles.EnrollmentPeriodRead)]
     public async Task<IActionResult> GetAll([FromQuery] bool includeInactive = false)
     {
         try
@@ -48,24 +51,24 @@ public class EnrollmentPeriodController : ControllerBase
         }
         catch (EnrollmentException ex)
         {
-            return Problem(title: ex.Message, statusCode: ex.StatusCode);
+            return ProblemResponse.FromCode(ex.Message, ex.StatusCode);
         }
     }
 
     /// <summary>FR-003: Close an enrollment period.</summary>
     [HttpPut("{id:guid}/close")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = AccessPolicy.Roles.EnrollmentPeriodManage)]
     public async Task<IActionResult> Close(Guid id)
     {
         try
         {
             var tenantId = GetTenantId();
-            await _service.ClosePeriodAsync(id, tenantId);
+            await _service.ClosePeriodAsync(id, tenantId, GetRole());
             return Ok();
         }
         catch (EnrollmentException ex)
         {
-            return Problem(title: ex.Message, statusCode: ex.StatusCode);
+            return ProblemResponse.FromCode(ex.Message, ex.StatusCode);
         }
     }
 
@@ -76,6 +79,11 @@ public class EnrollmentPeriodController : ControllerBase
             throw new EnrollmentException("tenant_not_resolved", 401);
         return tenantId;
     }
+
+    private UserRole GetRole() =>
+        User.IsInRole("Admin") ? UserRole.Admin
+        : User.IsInRole("Staff") ? UserRole.Staff
+        : UserRole.Parent;
 }
 
 [ApiController]
@@ -91,24 +99,25 @@ public class EnrollmentController : ControllerBase
 
     /// <summary>FR-004: Create a new enrollment (draft).</summary>
     [HttpPost]
-    [Authorize(Roles = "Admin,Staff")]
+    [Authorize(Roles = AccessPolicy.Roles.EnrollmentWrite)]
     public async Task<IActionResult> Create([FromBody] CreateEnrollmentRequest request)
     {
         try
         {
             var tenantId = GetTenantId();
-            var result = await _service.CreateEnrollmentAsync(request, tenantId);
+            var (_, role) = GetUserInfo();
+            var result = await _service.CreateEnrollmentAsync(request, tenantId, role);
             return CreatedAtAction(nameof(GetById), new { id = result.Id }, result);
         }
         catch (EnrollmentException ex)
         {
-            return Problem(title: ex.Message, statusCode: ex.StatusCode);
+            return ProblemResponse.FromCode(ex.Message, ex.StatusCode);
         }
     }
 
     /// <summary>FR-005: List enrollments with filters.</summary>
     [HttpGet]
-    [Authorize(Roles = "Admin,Staff,Parent")]
+    [Authorize(Roles = AccessPolicy.Roles.EnrollmentRead)]
     public async Task<IActionResult> GetAll(
         [FromQuery] string? status,
         [FromQuery] Guid? periodId,
@@ -124,13 +133,13 @@ public class EnrollmentController : ControllerBase
         }
         catch (EnrollmentException ex)
         {
-            return Problem(title: ex.Message, statusCode: ex.StatusCode);
+            return ProblemResponse.FromCode(ex.Message, ex.StatusCode);
         }
     }
 
     /// <summary>FR-006: Get enrollment details.</summary>
     [HttpGet("{id:guid}")]
-    [Authorize(Roles = "Admin,Staff,Parent")]
+    [Authorize(Roles = AccessPolicy.Roles.EnrollmentRead)]
     public async Task<IActionResult> GetById(Guid id)
     {
         try
@@ -142,75 +151,101 @@ public class EnrollmentController : ControllerBase
         }
         catch (EnrollmentException ex)
         {
-            return Problem(title: ex.Message, statusCode: ex.StatusCode);
+            return ProblemResponse.FromCode(ex.Message, ex.StatusCode);
         }
     }
 
     /// <summary>FR-007: Submit enrollment for approval.</summary>
     [HttpPost("{id:guid}/submit")]
-    [Authorize(Roles = "Admin,Staff")]
+    [Authorize(Roles = AccessPolicy.Roles.EnrollmentWrite)]
     public async Task<IActionResult> Submit(Guid id)
     {
         try
         {
             var tenantId = GetTenantId();
-            var result = await _service.SubmitAsync(id, tenantId);
+            var (userId, role) = GetUserInfo();
+            var result = await _service.SubmitAsync(id, tenantId, userId, role);
             return Ok(result);
         }
         catch (EnrollmentException ex)
         {
-            return Problem(title: ex.Message, statusCode: ex.StatusCode);
+            return ProblemResponse.FromCode(ex.Message, ex.StatusCode);
         }
     }
 
     /// <summary>FR-008: Approve enrollment.</summary>
     [HttpPost("{id:guid}/approve")]
-    [Authorize(Roles = "Admin,Staff")]
+    [Authorize(Roles = AccessPolicy.Roles.EnrollmentReview)]
     public async Task<IActionResult> Approve(Guid id)
     {
         try
         {
             var tenantId = GetTenantId();
-            var result = await _service.ApproveAsync(id, tenantId);
+            var (userId, role) = GetUserInfo();
+            var result = await _service.ApproveAsync(id, tenantId, userId, role);
             return Ok(result);
         }
         catch (EnrollmentException ex)
         {
-            return Problem(title: ex.Message, statusCode: ex.StatusCode);
+            return ProblemResponse.FromCode(ex.Message, ex.StatusCode);
         }
     }
 
     /// <summary>FR-009: Reject enrollment.</summary>
     [HttpPost("{id:guid}/reject")]
-    [Authorize(Roles = "Admin,Staff")]
+    [Authorize(Roles = AccessPolicy.Roles.EnrollmentReview)]
     public async Task<IActionResult> Reject(Guid id, [FromBody] RejectEnrollmentRequest request)
     {
         try
         {
             var tenantId = GetTenantId();
-            await _service.RejectAsync(id, request, tenantId);
+            var (userId, role) = GetUserInfo();
+            await _service.RejectAsync(id, request, tenantId, userId, role);
             return Ok();
         }
         catch (EnrollmentException ex)
         {
-            return Problem(title: ex.Message, statusCode: ex.StatusCode);
+            return ProblemResponse.FromCode(ex.Message, ex.StatusCode);
         }
     }
 
     /// <summary>FR-010: Cancel enrollment (Admin only).</summary>
     [HttpPost("{id:guid}/cancel")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = AccessPolicy.Roles.EnrollmentCancel)]
     public async Task<IActionResult> Cancel(Guid id)
     {
         try
         {
             var tenantId = GetTenantId();
-            await _service.CancelAsync(id, tenantId);
+            var (userId, role) = GetUserInfo();
+            await _service.CancelAsync(id, tenantId, userId, role);
             return Ok();
         }
         catch (EnrollmentException ex)
         {
-            return Problem(title: ex.Message, statusCode: ex.StatusCode);
+            return ProblemResponse.FromCode(ex.Message, ex.StatusCode);
+        }
+    }
+
+    /// <summary>
+    /// M12 - reabre uma matricula em estado terminal (Aprovado, Rejeitado ou Cancelado).
+    /// Admin only: reabrir desfaz uma decisao administrativa e fica registrado em
+    /// `StatusChangedBy`/`StatusChangedAt`.
+    /// </summary>
+    [HttpPost("{id:guid}/reopen")]
+    [Authorize(Roles = AccessPolicy.Roles.EnrollmentReopen)]
+    public async Task<IActionResult> Reopen(Guid id)
+    {
+        try
+        {
+            var tenantId = GetTenantId();
+            var (userId, role) = GetUserInfo();
+            var result = await _service.ReopenAsync(id, tenantId, userId, role);
+            return Ok(result);
+        }
+        catch (EnrollmentException ex)
+        {
+            return ProblemResponse.FromCode(ex.Message, ex.StatusCode);
         }
     }
 

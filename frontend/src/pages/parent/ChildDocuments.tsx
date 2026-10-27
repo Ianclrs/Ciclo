@@ -1,32 +1,19 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import axios from 'axios';
 import { Card } from '../../components/Card';
 import { StatusBadge } from '../../components/StatusBadge';
 import { Button } from '../../components/Button';
 import { ArrowLeft, Upload } from 'lucide-react';
 import * as api from '../../api/parent';
+import { apiErrorMessage } from '../../api/errors';
+import { LoadError } from '../../components/LoadError';
 import { getDocumentTypes } from '../../api/documents';
+import { formatDate } from '../../utils/format';
 import type { Document, DocumentType } from '../../types';
 
 function uploadErrorMessage(err: unknown): string {
-  const title =
-    axios.isAxiosError(err) && typeof err.response?.data?.title === 'string'
-      ? err.response.data.title
-      : '';
-  switch (title) {
-    case 'document_type_not_found':
-      return 'Tipo de documento não encontrado. Selecione um tipo válido.';
-    case 'invalid_extension':
-      return 'Formato de arquivo não permitido. Use PDF, JPG ou PNG.';
-    case 'file_too_large':
-      return 'Arquivo muito grande (máximo 10MB).';
-    case 'not_linked_to_student':
-      return 'Você não está vinculado a este aluno.';
-    default:
-      return 'Erro no upload. Tente novamente.';
-  }
+  return apiErrorMessage(err, 'Erro no upload. Tente novamente.');
 }
 
 export default function ChildDocuments() {
@@ -35,19 +22,40 @@ export default function ChildDocuments() {
   const [docTypes, setDocTypes] = useState<DocumentType[]>([]);
   const [selectedTypeId, setSelectedTypeId] = useState('');
   const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [reloadKey, setReloadKey] = useState(0);
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (id) api.getChildDocuments(id).then(setDocs).catch(() => {});
+    if (!id) return;
+    let active = true;
+    api
+      .getChildDocuments(id)
+      .then((docs) => {
+        if (!active) return;
+        setDocs(docs); setError(null); setLoading(false);
+      })
+      .catch((err) => {
+        if (!active) return;
+        setError(apiErrorMessage(err, 'Não foi possível carregar os documentos.')); setLoading(false);
+      });
     getDocumentTypes()
       .then((types) => {
-        const active = types.filter((t) => t.isActive);
-        setDocTypes(active);
-        const residencia = active.find((t) => t.nome.toLowerCase().includes('resid'));
-        setSelectedTypeId((residencia ?? active[0])?.id ?? '');
+        if (!active) return;
+        const activeTypes = types.filter((t) => t.isActive);
+        setDocTypes(activeTypes);
+        // Sem "tipo padrão" no contrato, a primeira opção ativa é a escolha previsível.
+        // A heurística por nome ("resid") adivinhava e mudava de escola para escola.
+        setSelectedTypeId(activeTypes[0]?.id ?? '');
+        setError(null); setLoading(false);
       })
-      .catch(() => {});
-  }, [id]);
+      .catch((err) => {
+        if (!active) return;
+        setError(apiErrorMessage(err, 'Não foi possível carregar os tipos de documento.'));
+      });
+    return () => { active = false; };
+  }, [id, reloadKey]);
 
   const handleUpload = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -68,7 +76,7 @@ export default function ChildDocuments() {
       formData.append('documentTypeId', selectedTypeId);
       const doc = await api.uploadChildDocument(id, formData);
       toast.success('Upload concluído!');
-      setDocs([doc, ...docs]);
+      setDocs((prev) => [doc, ...prev]);
       if (fileRef.current) fileRef.current.value = '';
     } catch (err) {
       toast.error(uploadErrorMessage(err));
@@ -81,6 +89,7 @@ export default function ChildDocuments() {
     <div>
       <Link to={`/parent/children/${id}`} className="flex items-center gap-1 text-sm text-gray-500 mb-4"><ArrowLeft size={16} /> Voltar</Link>
       <h2 className="text-2xl font-bold text-gray-900 mb-6">Documentos</h2>
+      {error && <div className="mb-6"><LoadError message={error} onRetry={() => setReloadKey((k) => k + 1)} /></div>}
       <Card className="mb-6">
         <form onSubmit={handleUpload} className="flex flex-col sm:flex-row gap-4 items-stretch sm:items-end">
           <div className="flex-1">
@@ -105,13 +114,15 @@ export default function ChildDocuments() {
         </form>
       </Card>
       <Card>
-        {docs.length === 0 ? <p className="text-gray-500 text-center py-4">Nenhum documento.</p> : (
+        {loading ? (
+          <p className="text-gray-500 text-center py-4">Carregando...</p>
+        ) : docs.length === 0 ? (!error && <p className="text-gray-500 text-center py-4">Nenhum documento.</p>) : (
           <ul className="divide-y">
             {docs.map((d) => (
               <li key={d.id} className="py-3 flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium">{d.nomeArquivo}</p>
-                  <p className="text-xs text-gray-500">{d.documentTypeName} • {new Date(d.createdAt).toLocaleDateString()}</p>
+                  <p className="text-xs text-gray-500">{d.documentTypeName} • {formatDate(d.createdAt)}</p>
                   {/* A7: o motivo já vinha no DTO e não era exibido — sem ele o responsável sabe que
                       o documento foi recusado, mas não o que corrigir para reenviar. */}
                   {d.motivoRejeicao && (

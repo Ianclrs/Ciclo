@@ -8,6 +8,7 @@ import { Button } from '../../components/Button';
 import { Input } from '../../components/Input';
 import { ArrowLeft } from 'lucide-react';
 import * as api from '../../api/students';
+import { apiErrorMessage } from '../../api/errors';
 import type { Student } from '../../types';
 
 export default function StudentDetail() {
@@ -16,20 +17,20 @@ export default function StudentDetail() {
   const [parentEmail, setParentEmail] = useState('');
 
   useEffect(() => {
-    if (id) api.getStudent(id).then(setStudent).catch(() => toast.error('Erro ao carregar.'));
+    if (id) api.getStudent(id).then(setStudent).catch((err) => toast.error(apiErrorMessage(err, 'Não foi possível carregar o aluno.')));
   }, [id]);
 
   const handleLinkParent = async () => {
     if (!parentEmail || !id) return;
     try { await api.linkParent(id, parentEmail); toast.success('Responsável vinculado!'); setParentEmail('');
       const s = await api.getStudent(id); setStudent(s); }
-    catch { toast.error('Erro ao vincular.'); }
+    catch (err) { toast.error(apiErrorMessage(err, 'Não foi possível vincular o responsável.')); }
   };
 
   const handleUnlink = async (parentId: string) => {
     if (!id) return;
     try { await api.unlinkParent(id, parentId); toast.success('Desvinculado.'); setStudent(await api.getStudent(id)); }
-    catch { toast.error('Erro.'); }
+    catch (err) { toast.error(apiErrorMessage(err, 'Não foi possível desvincular o responsável.')); }
   };
 
   if (!student) return <p>Carregando...</p>;

@@ -8,6 +8,7 @@ import { Input } from '../../components/Input';
 import { Card } from '../../components/Card';
 import { StudentAvatar } from '../../components/StudentAvatar';
 import * as api from '../../api/students';
+import { apiErrorMessage } from '../../api/errors';
 
 const MAX_SIDE = 256;
 const JPEG_QUALITY = 0.82;
@@ -62,7 +63,10 @@ export default function StudentForm() {
         setForm({ nome: s.nome, turma: s.turma, anoLetivo: s.anoLetivo, dataNascimento: s.dataNascimento?.split('T')[0] || '', cpf: s.cpf || '', observacoes: s.observacoes || '' });
         setFoto(s.foto);
       })
-      .catch(() => navigate('/admin/students'));
+      .catch((err) => {
+        toast.error(apiErrorMessage(err, 'Não foi possível carregar o aluno.'));
+        navigate('/admin/students');
+      });
   }, [id, navigate]);
 
   const handleFoto = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -93,7 +97,7 @@ export default function StudentForm() {
       if (isEdit) { await api.updateStudent(id!, data); toast.success('Aluno atualizado!'); }
       else { await api.createStudent(data); toast.success('Aluno criado!'); }
       navigate('/admin/students');
-    } catch { toast.error('Erro ao salvar.'); }
+    } catch (err) { toast.error(apiErrorMessage(err, 'Não foi possível salvar o aluno.')); }
     finally { setLoading(false); }
   };
 

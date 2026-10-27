@@ -15,7 +15,7 @@ Ciclo é um sistema de gestão escolar SaaS multi-tenant que conecta colégios e
 - **Automação:** Alertas automáticos de documentos vencidos/pendentes e lembretes de rematrícula.
 - **Multi-tenant SaaS:** Cada colégio tem seu ambiente isolado, com seus próprios gestores, alunos e pais.
 - **PWA Mobile-Ready:** Acesso completo via navegador no celular com experiência nativa (PWA).
-- **Login Simplificado:** Email/senha ou conta Google para os pais, reduzindo fricção no onboarding.
+- **Login Simplificado:** Email/senha para os pais, reduzindo fricção no onboarding. (O login com Google foi **removido** no C8 — nunca chegou a funcionar.)
 
 ---
 
@@ -34,7 +34,7 @@ Isolamento completo de dados entre colégios usando `TenantId` como coluna discr
 **Delivered by:** Spec 20 (multi-tenant)
 
 ### V3: Authentication & Authorization
-Login com email/senha e Google OAuth. ASP.NET Core Identity para gestão de credenciais. JWT access tokens (15min) + refresh tokens (7 dias) com rotação. Roles: Admin, Staff, Parent. Cada role tem permissões específicas por tenant.
+Login com email/senha. ASP.NET Core Identity para gestão de credenciais. JWT access tokens (15min) + refresh tokens (7 dias) com rotação. Roles: Admin, Staff, Parent. Cada role tem permissões específicas por tenant. *(O Google OAuth foi removido no C8.)*
 
 **Delivered by:** Spec 30 (auth)
 
