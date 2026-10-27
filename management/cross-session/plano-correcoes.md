@@ -365,4 +365,4 @@ Registradas no roadmap pelo tool canônico (`roadmap-plan-commit`), com status `
 
 **Pendência documental (D2 parcial, bloqueada):** `management/roadmap.md` é protegido contra escrita por LLM. A tabela de status ainda define `audited` como "Feature is live" e cita `/spec-verify` (removido). A correção exige uma operação do pipeline SDD (`updateSpecStatus`/equivalente), não `edit`. **Onda 5:** o mesmo bloqueio impede rebaixar/registrar as specs com pendência real (A3/A4/A5/A6/C9).
 
-**Estado de git:** **nada commitado** (nenhuma autorização de commit foi dada). O working tree tem 79 arquivos alterados, incluindo as 11 linhas do roadmap, os 88 acréscimos em `vision.md` e todo o trabalho das ondas 1–4.
+**Estado de git:** ondas 1–5 **commitadas em `8bca9c0`** (96 arquivos, +5493/−579; inclui as 11 linhas do roadmap e os 88 acréscimos em `vision.md`). Working tree limpo. **Sem push** — nenhuma autorização de publicação foi dada.
