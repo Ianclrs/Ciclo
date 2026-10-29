@@ -169,6 +169,24 @@ O `vercel.json` faz três coisas:
 
 Em desenvolvimento nada disso é necessário: o `vite.config.ts` faz o mesmo proxy de `/api` para `localhost:5264`.
 
+### Modo demonstração (deploy sem API)
+
+Quando o build **não recebe `VITE_API_URL`**, o frontend entra em modo demonstração: uma API falsa
+responde no lugar do backend, com dados fictícios gravados no navegador. Serve para publicar o
+produto como vitrine antes de a API estar no ar.
+
+| Item | Como funciona |
+|---|---|
+| Ativação | automática quando `VITE_API_URL` está ausente no build; `VITE_DEMO_MODE=1` força a demo também em desenvolvimento |
+| Transporte | adaptador do axios (`src/mocks/index.ts`) — sem Service Worker, então funciona em qualquer navegador sem exigir HTTPS especial |
+| Dados | `src/mocks/seed.ts`: colégio, 12 alunos, matrículas, documentos, notificações e usuários |
+| Persistência | escrita sobrevive ao recarregar (`localStorage['ciclo.demo.v1']`). Para zerar, apague essa chave |
+| Entrada | a tela de login mostra dois acessos de um clique: `diretor@demo.ciclo` (Admin) e `responsavel@demo.ciclo` (Responsável); a senha é ignorada |
+| Sinalização | a topbar exibe o selo **demonstração** enquanto os dados são fictícios |
+
+> A demo não substitui a API: para apontar o app a um backend real, defina `VITE_API_URL` e
+> rebuild — sem essa variável e sem a demo forçada, o frontend chamaria `/api` no próprio domínio.
+
 ### Backend
 
 A API precisa estar publicada em **HTTPS** e alcançável pela internet — o rewrite da Vercel chama o host diretamente.
@@ -214,6 +232,26 @@ e relata arquivos ausentes (registros órfãos) separadamente de falhas de decif
 > Se um arquivo falhar com "No configured storage key could decrypt this file", a chave antiga
 > não está no keyring ou o arquivo foi criptografado com uma chave anterior a ela. Não remova o
 > keyring antes de resolver: sem a chave correta, o conteúdo é irrecuperável.
+
+### Operação e observabilidade
+
+| Endpoint | Uso |
+|---|---|
+| `/health/live` | liveness — o processo responde; **não** consulta banco, disco ou fila |
+| `/health/ready` | readiness — banco e armazenamento; responde **503** detalhando o check que falhou |
+| `/metrics` | scrape Prometheus (texto), fora de `/api` e sem dado pessoal |
+
+A correlação de uma requisição aparece em três lugares com o mesmo valor: cabeçalho
+`X-Correlation-Id` da resposta, campo `[<id>]` do log e extensão `correlationId` do corpo de erro.
+
+#### Limiares de alerta
+
+| Sinal | Limiar | Ação |
+|---|---|---|
+| `/health/ready` com `Unhealthy` | por mais de 2 minutos | investigar a dependência indicada em `checks` |
+| `http_requests_received_total` com `code=5xx` | acima de 1% em 5 minutos | buscar no log o `correlationId` do relato |
+| `http_request_duration_seconds` (p95) | acima de 1 segundo em 5 minutos | verificar banco e profundidade da fila |
+| `ciclo_email_queue_depth` | acima de 80% de `ciclo_email_queue_capacity` por 5 minutos | verificar o consumidor de e-mail e o provedor |
 
 ---
 

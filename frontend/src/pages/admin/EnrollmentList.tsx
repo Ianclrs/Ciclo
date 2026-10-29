@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { Card } from '../../components/Card';
+import { PageHeader } from '../../components/PageHeader';
 import { useAuth } from '../../hooks/useAuth';
 import { StatusBadge } from '../../components/StatusBadge';
 import { StudentAvatar } from '../../components/StudentAvatar';
@@ -234,12 +235,12 @@ export default function EnrollmentList() {
 
   return (
     <div>
-      <div className="mb-6">
-        <h2 className="text-2xl font-bold text-gray-900">Matrículas</h2>
-        <p className="text-sm text-gray-500 mt-1">Acompanhe e aprove as matrículas por período.</p>
-      </div>
+      <PageHeader
+        title="Matrículas"
+        subtitle="Acompanhe e aprove as matrículas por período."
+      />
 
-      <Card>
+      <Card tone="glass">
         <div className="flex flex-wrap items-end gap-3 mb-5">
           <Select
             label="Período"

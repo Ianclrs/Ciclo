@@ -1,4 +1,5 @@
 import api from './client';
+import type { TenantSummary } from '../types';
 
 export interface RegisterSchoolPayload {
   schoolName: string;
@@ -22,5 +23,11 @@ export interface RegisterSchoolResponse {
 
 export async function registerSchool(payload: RegisterSchoolPayload): Promise<RegisterSchoolResponse> {
   const res = await api.post('/api/tenants/register', payload);
+  return res.data;
+}
+
+/** Colégio do usuário logado (chip de identificação na topbar). */
+export async function getCurrentTenant(): Promise<TenantSummary> {
+  const res = await api.get('/api/tenants/me');
   return res.data;
 }

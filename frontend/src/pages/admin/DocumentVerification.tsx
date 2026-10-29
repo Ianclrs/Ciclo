@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
-import { Download, FileText } from 'lucide-react';
+import { Download, FileText, Search } from 'lucide-react';
 import { Card } from '../../components/Card';
+import { PageHeader } from '../../components/PageHeader';
 import { Badge } from '../../components/Badge';
 import { uniformBadgeClass } from '../../components/badgeStyles';
 import { StudentAvatar } from '../../components/StudentAvatar';
@@ -246,43 +247,62 @@ export default function DocumentVerification() {
 
   return (
     <div>
-      <div className="mb-6">
-        <h2 className="text-2xl font-bold text-gray-900">Documentos</h2>
-        <p className="text-sm text-gray-500 mt-1">
-          {view === 'all'
+      <PageHeader
+        title="Documentos"
+        subtitle={
+          view === 'all'
             ? 'Documentos de todos os alunos, com filtros.'
-            : 'Documentos aprovados que vencem nos próximos 30 dias.'}
-        </p>
-        <div className="flex gap-2 mt-3">
-          <Button
-            variant={view === 'all' ? 'primary' : 'ghost'}
-            size="sm"
-            onClick={() => switchView('all')}
-          >
-            Todos
-          </Button>
-          <Button
-            variant={view === 'expiring' ? 'primary' : 'ghost'}
-            size="sm"
-            onClick={() => switchView('expiring')}
-          >
-            A vencer
-          </Button>
-        </div>
+            : 'Documentos aprovados que vencem nos próximos 30 dias.'
+        }
+        actions={
+          <>
+            <Button
+              variant={view === 'all' ? 'primary' : 'secondary'}
+              size="sm"
+              aria-pressed={view === 'all'}
+              onClick={() => switchView('all')}
+            >
+              Todos
+            </Button>
+            <Button
+              variant={view === 'expiring' ? 'primary' : 'secondary'}
+              size="sm"
+              aria-pressed={view === 'expiring'}
+              onClick={() => switchView('expiring')}
+            >
+              A vencer
+            </Button>
+          </>
+        }
+      />
 
+      <Card tone="glass">
         {view === 'all' && (
-          <div className="mt-3 flex flex-wrap items-end gap-3">
-            <Input
-              label="Aluno"
-              placeholder="Buscar por nome"
-              value={search}
-              onChange={(event) => {
-                setPage(1);
-                setLoading(true);
-                setSearch(event.target.value);
-              }}
-              className="max-w-xs"
-            />
+          <div className="mb-5 flex flex-wrap items-end gap-3">
+            <div className="min-w-[260px] flex-1 sm:max-w-md">
+              <label htmlFor="filtro-aluno" className="mb-1 block text-sm font-medium text-gray-700">
+                Aluno
+              </label>
+              <div className="relative">
+                <Search
+                  size={16}
+                  aria-hidden="true"
+                  className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+                />
+                <input
+                  id="filtro-aluno"
+                  type="search"
+                  placeholder="Buscar aluno por nome"
+                  value={search}
+                  onChange={(event) => {
+                    setPage(1);
+                    setLoading(true);
+                    setSearch(event.target.value);
+                  }}
+                  className="w-full rounded-lg border border-gray-300 bg-white py-2 pl-9 pr-3 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+            </div>
             <Select
               label="Tipo"
               value={documentTypeId}
@@ -313,9 +333,7 @@ export default function DocumentVerification() {
             </Select>
           </div>
         )}
-      </div>
 
-      <Card>
         <Table
           columns={columns}
           data={docs}

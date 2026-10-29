@@ -6,6 +6,7 @@ import { Button } from '../../components/Button';
 import { buttonClass } from '../../components/buttonStyles';
 import { Input } from '../../components/Input';
 import { Card } from '../../components/Card';
+import { PageHeader } from '../../components/PageHeader';
 import { StudentAvatar } from '../../components/StudentAvatar';
 import * as api from '../../api/students';
 import { apiErrorMessage } from '../../api/errors';
@@ -103,8 +104,15 @@ export default function StudentForm() {
 
   return (
     <div>
-      <h2 className="text-2xl font-bold text-gray-900 mb-6">{isEdit ? 'Editar Aluno' : 'Novo Aluno'}</h2>
-      <Card>
+      <PageHeader
+        title={isEdit ? 'Editar aluno' : 'Novo aluno'}
+        subtitle={
+          isEdit
+            ? 'Altere os dados e salve.'
+            : 'Preencha os dados para cadastrar o aluno.'
+        }
+      />
+      <Card tone="glass">
         <form onSubmit={handleSubmit} className="space-y-4 max-w-lg">
           <div>
             <span className="block text-sm font-medium text-gray-700 mb-1">Foto do aluno</span>

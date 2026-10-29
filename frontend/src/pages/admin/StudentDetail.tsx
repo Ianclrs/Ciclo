@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { Card } from '../../components/Card';
+import { PageHeader } from '../../components/PageHeader';
 import { StatusBadge } from '../../components/StatusBadge';
 import { StudentAvatar } from '../../components/StudentAvatar';
 import { Button } from '../../components/Button';
@@ -38,12 +39,13 @@ export default function StudentDetail() {
   return (
     <div>
       <Link to="/admin/students" className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700 mb-4"><ArrowLeft size={16} /> Voltar</Link>
-      <div className="flex items-center gap-4 mb-6">
-        <StudentAvatar name={student.nome} photo={student.foto} size="lg" />
-        <h2 className="text-2xl font-bold text-gray-900">{student.nome}</h2>
-      </div>
+      <PageHeader
+        title={student.nome}
+        subtitle={`${student.turma} · ano letivo ${student.anoLetivo}`}
+        leading={<StudentAvatar name={student.nome} photo={student.foto} size="lg" />}
+      />
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card title="Dados do Aluno">
+        <Card tone="glass" title="Dados do aluno">
           <dl className="space-y-2 text-sm">
             <div className="flex justify-between"><dt className="text-gray-500">Turma:</dt><dd className="font-medium">{student.turma}</dd></div>
             <div className="flex justify-between"><dt className="text-gray-500">Ano Letivo:</dt><dd className="font-medium">{student.anoLetivo}</dd></div>
@@ -52,7 +54,7 @@ export default function StudentDetail() {
             <div className="flex justify-between"><dt className="text-gray-500">Observações:</dt><dd className="font-medium">{student.observacoes || '—'}</dd></div>
           </dl>
         </Card>
-        <Card title="Responsáveis">
+        <Card tone="glass" title="Responsáveis">
           {student.parents.length === 0 && <p className="text-sm text-gray-500 mb-4">Nenhum responsável vinculado.</p>}
           <ul className="space-y-2 mb-4">
             {student.parents.map((p) => (

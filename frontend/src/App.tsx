@@ -46,7 +46,7 @@ function AdminLayout() {
     : adminItems;
 
   return (
-    <Sidebar items={items} title="Admin" showLogo>
+    <Sidebar items={items} notificationsTo="/admin/notifications">
       <Routes>
           <Route index element={<AdminDashboard />} />
           <Route path="students" element={<StudentList />} />
@@ -66,7 +66,7 @@ function AdminLayout() {
 
 function ParentLayout() {
   return (
-    <Sidebar items={parentItems} title="Ciclo">
+    <Sidebar items={parentItems} notificationsTo="/parent/notifications">
         <Routes>
           <Route index element={<ParentDashboard />} />
           <Route path="children/:id" element={<ChildDetail />} />

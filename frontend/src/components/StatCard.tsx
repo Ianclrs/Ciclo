@@ -1,16 +1,7 @@
 import { Link } from 'react-router-dom';
 import { ArrowUpRight, type LucideIcon } from 'lucide-react';
 import { Card } from './Card';
-
-type Accent = 'violet' | 'blue' | 'green' | 'amber' | 'red';
-
-const accents: Record<Accent, string> = {
-  violet: 'bg-violet-100 text-violet-700',
-  blue: 'bg-blue-100 text-blue-700',
-  green: 'bg-green-100 text-green-700',
-  amber: 'bg-amber-100 text-amber-700',
-  red: 'bg-red-100 text-red-700',
-};
+import { accentBar, accentChip, type Accent } from './accentStyles';
 
 interface StatCardProps {
   label: string;
@@ -20,33 +11,66 @@ interface StatCardProps {
   /** Quando informado, o card vira atalho para a página do domínio. Sem destino, não é clicável. */
   to?: string;
   loading?: boolean;
+  /** Contexto do número principal, em texto. Sem detalhe, o rodapé do card não aparece. */
+  detail?: string;
+  /** Fração de 0 a 1 que a barra representa. A barra é decorativa; quem informa é o `detail`. */
+  ratio?: number;
 }
 
-export function StatCard({ label, value, icon: Icon, accent, to, loading = false }: StatCardProps) {
+export function StatCard({
+  label,
+  value,
+  icon: Icon,
+  accent,
+  to,
+  loading = false,
+  detail,
+  ratio,
+}: StatCardProps) {
+  const percent = ratio === undefined ? null : Math.round(Math.min(1, Math.max(0, ratio)) * 100);
+
   const content = (
-    <div className="flex items-center gap-4">
-      <div className={`p-3 rounded-xl shrink-0 ${accents[accent]}`}>
-        <Icon size={22} />
-      </div>
-      <div className="min-w-0 flex-1">
-        <p className="text-sm text-gray-500 truncate">{label}</p>
-        {loading ? (
-          <span className="mt-1 block h-7 w-12 rounded bg-gray-200 animate-pulse" />
-        ) : (
-          <p className="text-2xl font-bold text-gray-800 tabular-nums">{value}</p>
+    <>
+      <div className="flex items-start justify-between gap-3">
+        <div className={`flex h-12 w-12 items-center justify-center rounded-xl ring-1 ring-inset shrink-0 ${accentChip[accent]}`}>
+          <Icon size={24} strokeWidth={1.9} />
+        </div>
+        {to && (
+          <ArrowUpRight
+            size={18}
+            className="shrink-0 text-gray-400 transition-colors group-hover:text-gray-700"
+          />
         )}
       </div>
-      {to && (
-        <ArrowUpRight
-          size={18}
-          className="shrink-0 text-gray-300 transition-colors group-hover:text-gray-600"
-        />
+
+      <p className="mt-4 text-sm font-medium text-gray-600">{label}</p>
+      {loading ? (
+        <span className="mt-1.5 block h-8 w-16 rounded bg-gray-200 animate-pulse" />
+      ) : (
+        <p className="mt-1 text-3xl font-bold leading-none text-gray-900 tabular-nums">{value}</p>
       )}
-    </div>
+
+      {detail && (
+        <div className="mt-4 border-t border-gray-200/70 pt-3">
+          {loading ? (
+            <span className="block h-3 w-2/3 rounded bg-gray-200 animate-pulse" />
+          ) : (
+            <>
+              <p className="text-xs text-gray-600">{detail}</p>
+              {percent !== null && (
+                <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-gray-200">
+                  <div className={`h-full rounded-full ${accentBar[accent]}`} style={{ width: `${percent}%` }} />
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </>
   );
 
   if (!to) {
-    return <Card>{content}</Card>;
+    return <Card tone="glass">{content}</Card>;
   }
 
   return (
@@ -54,7 +78,9 @@ export function StatCard({ label, value, icon: Icon, accent, to, loading = false
       to={to}
       className="group block rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500"
     >
-      <Card className="hover:shadow-md hover:border-gray-300 transition-all">{content}</Card>
+      <Card tone="glass" className="h-full transition-all hover:shadow-md hover:border-white">
+        {content}
+      </Card>
     </Link>
   );
 }

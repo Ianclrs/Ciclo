@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
 import { UserPlus } from 'lucide-react';
 import { Card } from '../../components/Card';
+import { PageHeader } from '../../components/PageHeader';
 import { Badge } from '../../components/Badge';
 import { Button } from '../../components/Button';
 import { Input } from '../../components/Input';
@@ -63,7 +64,7 @@ export default function UserManagement() {
 
   if (current?.role !== 'Admin') {
     return (
-      <Card>
+      <Card tone="glass">
         <p className="text-gray-600 text-center py-4">
           Acesso restrito ao administrador do colégio.
         </p>
@@ -118,14 +119,17 @@ export default function UserManagement() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6 gap-3">
-        <h2 className="text-2xl font-bold text-gray-900">Usuários</h2>
-        <Button className="shrink-0" onClick={() => setInviteOpen(true)}>
-          <UserPlus size={16} className="mr-1" /> Convidar
-        </Button>
-      </div>
+      <PageHeader
+        title="Usuários"
+        subtitle="Quem tem acesso ao colégio e com qual papel."
+        actions={
+          <Button className="shrink-0" onClick={() => setInviteOpen(true)}>
+            <UserPlus size={16} className="mr-1" /> Convidar
+          </Button>
+        }
+      />
 
-      <Card>
+      <Card tone="glass">
         {error ? (
           <LoadError message={error} onRetry={reload} />
         ) : users.length === 0 ? (

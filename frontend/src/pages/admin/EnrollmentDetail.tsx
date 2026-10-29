@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { Card } from '../../components/Card';
+import { PageHeader } from '../../components/PageHeader';
 import { StatusBadge } from '../../components/StatusBadge';
 import { Button } from '../../components/Button';
 import { Modal } from '../../components/Modal';
@@ -64,9 +65,9 @@ export default function EnrollmentDetail() {
   return (
     <div>
       <Link to="/admin/enrollments" className="flex items-center gap-1 text-sm text-gray-500 mb-4"><ArrowLeft size={16} /> Voltar</Link>
-      <h2 className="text-2xl font-bold text-gray-900 mb-6">Detalhes da Matrícula</h2>
+      <PageHeader title="Detalhes da matrícula" subtitle={enrollment.studentName} />
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card title="Informações">
+        <Card tone="glass" title="Informações">
           <dl className="space-y-2 text-sm">
             <div className="flex justify-between"><dt className="text-gray-500">Aluno:</dt><dd>{enrollment.studentName}</dd></div>
             <div className="flex justify-between"><dt className="text-gray-500">Período:</dt><dd>{enrollment.periodName}</dd></div>
@@ -79,7 +80,7 @@ export default function EnrollmentDetail() {
         {/* A4 passou a devolver a situação documental no detalhe; sem esta exibição o dado não
             chegava ao usuário — e é ele que explica POR QUE a matrícula está em documentação
             pendente ou por que a aprovação será recusada. */}
-        <Card title="Situação documental">
+        <Card tone="glass" title="Situação documental">
           {missing.length > 0 ? (
             <div className="mb-4">
               <p className="text-sm font-medium text-amber-700">Documentos obrigatórios pendentes</p>
@@ -118,7 +119,7 @@ export default function EnrollmentDetail() {
           )}
         </Card>
         {enrollment.status === 'Pendente' && (
-          <Card title="Ações">
+          <Card tone="glass" title="Ações">
             <div className="flex gap-3">
               <Button onClick={handleApprove}>Aprovar</Button>
               <Button variant="danger" onClick={() => setShowReject(true)}>Rejeitar</Button>

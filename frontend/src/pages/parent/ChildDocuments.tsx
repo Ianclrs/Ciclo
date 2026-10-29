@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { Card } from '../../components/Card';
+import { PageHeader } from '../../components/PageHeader';
 import { StatusBadge } from '../../components/StatusBadge';
 import { Button } from '../../components/Button';
 import { ArrowLeft, Upload } from 'lucide-react';
@@ -88,9 +89,9 @@ export default function ChildDocuments() {
   return (
     <div>
       <Link to={`/parent/children/${id}`} className="flex items-center gap-1 text-sm text-gray-500 mb-4"><ArrowLeft size={16} /> Voltar</Link>
-      <h2 className="text-2xl font-bold text-gray-900 mb-6">Documentos</h2>
+      <PageHeader title="Documentos" subtitle="Envie e acompanhe os documentos do aluno." />
       {error && <div className="mb-6"><LoadError message={error} onRetry={() => setReloadKey((k) => k + 1)} /></div>}
-      <Card className="mb-6">
+      <Card tone="glass" className="mb-6">
         <form onSubmit={handleUpload} className="flex flex-col sm:flex-row gap-4 items-stretch sm:items-end">
           <div className="flex-1">
             <label className="block text-sm font-medium text-gray-700 mb-1">Tipo de documento</label>
@@ -113,7 +114,7 @@ export default function ChildDocuments() {
           <Button type="submit" disabled={uploading}><Upload size={14} className="mr-1" />{uploading ? 'Enviando...' : 'Upload'}</Button>
         </form>
       </Card>
-      <Card>
+      <Card tone="glass">
         {loading ? (
           <p className="text-gray-500 text-center py-4">Carregando...</p>
         ) : docs.length === 0 ? (!error && <p className="text-gray-500 text-center py-4">Nenhum documento.</p>) : (

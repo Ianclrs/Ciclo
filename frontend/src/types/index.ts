@@ -8,6 +8,13 @@ export interface User {
   emailConfirmed?: boolean;
 }
 
+/** Colégio do usuário logado (`GET /api/tenants/me`). */
+export interface TenantSummary {
+  id: string;
+  name: string;
+  slug: string;
+}
+
 export type ManagedRole = 'Admin' | 'Staff' | 'Parent';
 
 /** Usuário como a tela de gestão recebe (M11). */

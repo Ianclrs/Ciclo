@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { Card } from '../../components/Card';
+import { PageHeader } from '../../components/PageHeader';
 import { StatusBadge } from '../../components/StatusBadge';
 import { StudentAvatar } from '../../components/StudentAvatar';
 import { Button } from '../../components/Button';
@@ -48,10 +49,11 @@ export default function ChildDetail() {
   return (
     <div>
       <Link to="/parent" className="flex items-center gap-1 text-sm text-gray-500 mb-4"><ArrowLeft size={16} /> Voltar</Link>
-      <div className="flex items-center gap-4 mb-6">
-        <StudentAvatar name={child.student.nome} photo={child.student.foto} size="lg" />
-        <h2 className="text-2xl font-bold text-gray-900">{child.student.nome}</h2>
-      </div>
+      <PageHeader
+        title={child.student.nome}
+        subtitle={`${child.student.turma} · ano letivo ${child.student.anoLetivo}`}
+        leading={<StudentAvatar name={child.student.nome} photo={child.student.foto} size="lg" />}
+      />
 
       <div className="flex flex-wrap gap-2 mb-6">
         {(['info', 'docs', 'grades'] as const).map((t) => (
@@ -63,14 +65,14 @@ export default function ChildDetail() {
 
       {tab === 'info' && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <Card title="Dados">
+          <Card tone="glass" title="Dados">
             <dl className="space-y-2 text-sm">
               <div className="flex justify-between"><dt className="text-gray-500">Turma:</dt><dd>{child.student.turma}</dd></div>
               <div className="flex justify-between"><dt className="text-gray-500">Ano:</dt><dd>{child.student.anoLetivo}</dd></div>
               <div className="flex justify-between"><dt className="text-gray-500">Status:</dt><dd><StatusBadge status={child.student.status} variant={child.student.status === 'Ativo' ? 'success' : 'warning'} /></dd></div>
             </dl>
           </Card>
-          <Card title="Matrícula Atual">
+          <Card tone="glass" title="Matrícula atual">
             {child.currentEnrollment ? (
               <dl className="space-y-2 text-sm">
                 <div className="flex justify-between"><dt className="text-gray-500">Período:</dt><dd>{child.currentEnrollment.periodName}</dd></div>
@@ -82,7 +84,7 @@ export default function ChildDetail() {
       )}
 
       {tab === 'docs' && (
-        <Card title={`Documentos (${child.documents.length})`}>
+        <Card tone="glass" title={`Documentos (${child.documents.length})`}>
           {child.documents.length === 0 ? <p className="text-gray-500">Nenhum documento.</p> : (
             <ul className="divide-y text-sm">
               {child.documents.map((d) => (
@@ -98,7 +100,7 @@ export default function ChildDetail() {
       )}
 
       {tab === 'grades' && (
-        <Card title="Notas">
+        <Card tone="glass" title="Notas">
           {child.grades.length === 0 ? <p className="text-gray-500">Nenhuma nota disponível.</p> : (
             <ul className="divide-y text-sm">{child.grades.map((g, i) => <li key={i} className="py-2 flex justify-between"><span>{g.disciplina}</span><span className="font-medium">{g.nota ?? '—'}</span></li>)}</ul>
           )}

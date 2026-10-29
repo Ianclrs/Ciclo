@@ -8,6 +8,9 @@ import { setAccessToken } from '../api/client';
 import { Button } from '../components/Button';
 import { Input } from '../components/Input';
 import { buttonClass } from '../components/buttonStyles';
+import { ShaderBackground } from '../components/ShaderBackground';
+import { DEMO_ACCOUNTS } from '../mocks/accounts';
+import { isDemoMode } from '../mocks/mode';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -38,6 +41,20 @@ export default function LoginPage() {
     }
   }, [searchParams, navigate, getCurrentUser]);
 
+  /** Entrada de um clique na demonstração: a senha é ignorada pelo mock. */
+  const enterDemo = async (demoEmail: string) => {
+    setLoading(true);
+    setEmail(demoEmail);
+    setPassword('demo');
+    try {
+      await login(demoEmail, 'demo');
+    } catch (err) {
+      toast.error(apiErrorMessage(err, 'Não foi possível entrar na demonstração.'));
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -65,20 +82,9 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-stone-100 via-stone-50 to-stone-100 animate-gradient px-4 relative overflow-hidden">
-      {/* Decorative animated blobs */}
-      <div className="absolute -top-40 -right-40 w-96 h-96 bg-violet-300/40 rounded-full blur-3xl animate-blob" style={{ animationDelay: '0s', animationDuration: '24s' }} />
-      <div className="absolute top-1/2 -left-20 w-72 h-72 bg-blue-300/35 rounded-full blur-3xl animate-blob" style={{ animationDelay: '2s', animationDuration: '31s', animationDirection: 'reverse' }} />
-      <div className="absolute -bottom-32 right-1/4 w-80 h-80 bg-emerald-300/35 rounded-full blur-3xl animate-blob" style={{ animationDelay: '4s', animationDuration: '27s' }} />
-      <div className="absolute top-1/4 left-1/3 w-60 h-60 bg-amber-300/35 rounded-full blur-3xl animate-blob" style={{ animationDelay: '6s', animationDuration: '35s', animationDirection: 'reverse' }} />
-      <div className="absolute top-10 right-1/3 w-48 h-48 bg-rose-300/30 rounded-full blur-3xl animate-blob" style={{ animationDelay: '8s', animationDuration: '29s' }} />
-      <div className="absolute bottom-1/4 left-1/4 w-56 h-56 bg-cyan-300/30 rounded-full blur-3xl animate-blob" style={{ animationDelay: '10s', animationDuration: '33s', animationDirection: 'reverse' }} />
-      <div className="absolute top-3/4 right-10 w-40 h-40 bg-violet-300/25 rounded-full blur-2xl animate-blob" style={{ animationDelay: '1s', animationDuration: '26s' }} />
-      <div className="absolute top-0 left-10 w-36 h-36 bg-amber-300/25 rounded-full blur-2xl animate-blob" style={{ animationDelay: '5s', animationDuration: '37s', animationDirection: 'reverse' }} />
-      <div className="absolute bottom-10 right-1/2 w-44 h-44 bg-blue-300/25 rounded-full blur-2xl animate-blob" style={{ animationDelay: '7s', animationDuration: '23s' }} />
-      <div className="absolute -top-20 -left-20 w-72 h-72 bg-red-400/30 rounded-full blur-3xl animate-blob" style={{ animationDelay: '9s', animationDuration: '25s' }} />
-      <div className="absolute bottom-0 right-0 w-64 h-64 bg-fuchsia-300/30 rounded-full blur-3xl animate-blob" style={{ animationDelay: '11s', animationDuration: '28s', animationDirection: 'reverse' }} />
-      <div className="absolute top-2/3 left-0 w-52 h-52 bg-orange-300/35 rounded-full blur-3xl animate-blob" style={{ animationDelay: '13s', animationDuration: '34s' }} />
+    <div className="min-h-screen flex items-center justify-center bg-[#eceff2] px-4 relative overflow-hidden">
+      <ShaderBackground />
+
       <div className="w-full max-w-sm bg-stone-200 rounded-2xl shadow-2xl border border-stone-300 overflow-hidden relative z-10">
         {/* Top accent bar */}
         <div className="h-1 bg-gradient-to-r from-violet-500 via-blue-500 to-emerald-500 animate-gradient" />
@@ -117,6 +123,32 @@ export default function LoginPage() {
           >
             Sou responsável e quero criar minha conta
           </Link>
+          {isDemoMode && (
+            <div className="mt-4 rounded-lg border border-violet-300 bg-violet-50 p-3">
+              <p className="text-xs font-medium text-violet-900">
+                Demonstração — dados fictícios gravados neste navegador, sem backend.
+              </p>
+              <div className="mt-2 flex flex-col gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={loading}
+                  onClick={() => enterDemo(DEMO_ACCOUNTS.admin.email)}
+                >
+                  Entrar como administração
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  disabled={loading}
+                  onClick={() => enterDemo(DEMO_ACCOUNTS.parent.email)}
+                >
+                  Entrar como responsável
+                </Button>
+              </div>
+            </div>
+          )}
           <div className="relative my-6">
             <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-stone-300" /></div>
             <div className="relative flex justify-center text-xs"><span className="bg-stone-200 px-3 text-stone-400">ou</span></div>

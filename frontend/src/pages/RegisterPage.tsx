@@ -9,6 +9,7 @@ import { CountryFlag } from '../components/CountryFlag';
 import { registerSchool } from '../api/tenants';
 import { COUNTRIES, COUNTRY_ORDER, getCountry, applyMask, digitCount } from '../config/countries';
 import { passwordError } from '../domain/password';
+import { ShaderBackground } from '../components/ShaderBackground';
 
 const emptyForm = {
   schoolName: '',
@@ -104,14 +105,8 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-stone-100 via-stone-50 to-stone-100 animate-gradient px-4 py-8 relative">
-      {/* Os blobs ficam num wrapper com overflow-hidden próprio para não recortar
-          o dropdown de países nem gerar scroll. */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-40 -right-40 w-96 h-96 bg-violet-300/40 rounded-full blur-3xl animate-blob" />
-        <div className="absolute -bottom-32 left-1/4 w-80 h-80 bg-emerald-300/35 rounded-full blur-3xl animate-blob" style={{ animationDelay: '4s', animationDuration: '27s' }} />
-        <div className="absolute top-1/4 right-1/3 w-60 h-60 bg-amber-300/35 rounded-full blur-3xl animate-blob" style={{ animationDelay: '6s', animationDuration: '35s', animationDirection: 'reverse' }} />
-      </div>
+    <div className="min-h-screen flex items-center justify-center bg-[#eceff2] px-4 py-8 relative overflow-hidden">
+      <ShaderBackground />
 
       <div className="w-full max-w-lg bg-stone-200 rounded-2xl shadow-2xl border border-stone-300 relative z-10">
         <div className="h-1 bg-gradient-to-r from-violet-500 via-blue-500 to-emerald-500 animate-gradient rounded-t-2xl" />

@@ -104,9 +104,9 @@ export default function ParentDashboard() {
   return (
     <div>
       <div className="mb-6">
-        <h2 className="text-2xl font-bold text-gray-900">Meus Filhos</h2>
+        <h2 className="text-3xl font-bold tracking-tight text-gray-900">Meus Filhos</h2>
         {user && (
-          <p className="text-sm text-gray-500 mt-1">
+          <p className="mt-1 text-base text-gray-700">
             Olá, {user.name}. Acompanhe a vida escolar dos seus filhos.
           </p>
         )}
@@ -139,14 +139,17 @@ export default function ParentDashboard() {
         <div className="lg:col-span-2">
           <h3 className="font-semibold text-gray-800 mb-4">Meus filhos</h3>
           {children.length === 0 ? (
-            <Card>
+            <Card tone="glass">
               <p className="text-gray-500 text-center">Nenhum filho vinculado.</p>
             </Card>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
               {children.map((child) => (
                 <Link key={child.studentId} to={`/parent/children/${child.studentId}`}>
-                  <Card className="hover:shadow-md transition-shadow cursor-pointer h-full">
+                  <Card
+                    tone="glass"
+                    className="h-full cursor-pointer transition-all hover:shadow-md hover:border-white"
+                  >
                     <div className="flex items-center gap-3 mb-3">
                       <StudentAvatar name={child.nome} photo={child.studentFoto} />
                       <div className="min-w-0">

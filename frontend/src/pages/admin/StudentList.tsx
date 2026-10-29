@@ -7,6 +7,7 @@ import { buttonClass } from '../../components/buttonStyles';
 import { Input } from '../../components/Input';
 import { Select } from '../../components/Select';
 import { Card } from '../../components/Card';
+import { PageHeader } from '../../components/PageHeader';
 import { Pagination } from '../../components/Pagination';
 import { StatusBadge } from '../../components/StatusBadge';
 import { StudentAvatar } from '../../components/StudentAvatar';
@@ -153,14 +154,17 @@ export default function StudentList() {
 
   return (
     <div>
-      <div className="flex items-center justify-between gap-4 mb-6">
-        <h2 className="text-2xl font-bold text-gray-900">Alunos</h2>
-        <Link to="/admin/students/new" className={buttonClass('primary', 'md', 'shrink-0')}>
-          <Plus size={16} className="mr-1" /> Novo Aluno
-        </Link>
-      </div>
+      <PageHeader
+        title="Alunos"
+        subtitle="Cadastro e situação dos alunos da escola."
+        actions={
+          <Link to="/admin/students/new" className={buttonClass('primary', 'md', 'shrink-0')}>
+            <Plus size={16} className="mr-1" /> Novo aluno
+          </Link>
+        }
+      />
 
-      <Card>
+      <Card tone="glass">
         <form
           className="flex flex-wrap items-end gap-3 mb-5"
           onSubmit={(event) => {

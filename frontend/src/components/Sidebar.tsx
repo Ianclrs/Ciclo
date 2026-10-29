@@ -2,8 +2,8 @@ import { useState, useEffect, type ReactNode } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { Button } from './Button';
-import { Badge } from './Badge';
-import { Menu } from 'lucide-react';
+import { ShaderBackground } from './ShaderBackground';
+import { TopbarActions } from './TopbarActions';
 
 interface SidebarItem {
   label: string;
@@ -20,21 +20,14 @@ const colorMap: Record<string, { active: string; hover: string }> = {
   violet: { active: 'bg-violet-50 text-violet-700', hover: 'hover:bg-violet-50 hover:text-violet-700' },
 };
 
-const roleLabels: Record<'Admin' | 'Staff' | 'Parent', string> = {
-  Admin: 'Administração',
-  Staff: 'Secretaria',
-  Parent: 'Responsável',
-};
-
 interface SidebarProps {
   items: SidebarItem[];
-  title: string;
   children: ReactNode;
-  notificationCount?: number;
-  showLogo?: boolean;
+  /** Rota de notificações do perfil: o sino da topbar leva a ela. */
+  notificationsTo: string;
 }
 
-export function Sidebar({ items, title, children, notificationCount, showLogo }: SidebarProps) {
+export function Sidebar({ items, children, notificationsTo }: SidebarProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [desktopCollapsed, setDesktopCollapsed] = useState(true);
   const location = useLocation();
@@ -77,6 +70,9 @@ export function Sidebar({ items, title, children, notificationCount, showLogo }:
     }
   };
 
+  // Estado de abertura que o botão da logo controla — só serve para o rótulo acessível.
+  const menuOpen = mobileOpen || !desktopCollapsed;
+
   const isActive = (path: string) => {
     if (path === '/admin' || path === '/parent') {
       return location.pathname === path;
@@ -86,7 +82,7 @@ export function Sidebar({ items, title, children, notificationCount, showLogo }:
 
   const navContent = (
     <>
-      <nav className="flex-1 p-3 space-y-0.5 overflow-y-auto">
+      <nav className="no-scrollbar flex-1 p-3 space-y-0.5 overflow-y-auto">
         {items.map((item) => {
           const colors = colorMap[item.color ?? 'violet'];
           const active = isActive(item.path);
@@ -100,9 +96,6 @@ export function Sidebar({ items, title, children, notificationCount, showLogo }:
           >
             <span className="shrink-0">{item.icon}</span>
             <span className="truncate">{item.label}</span>
-            {item.label === 'Notificações' && notificationCount && notificationCount > 0 && (
-              <Badge variant="danger" className="ml-auto">{String(notificationCount)}</Badge>
-            )}
           </Link>
           )
         })}
@@ -125,60 +118,62 @@ export function Sidebar({ items, title, children, notificationCount, showLogo }:
   );
 
   return (
-    <div className="flex flex-col h-screen bg-stone-50 overflow-hidden">
-      {/* ===== TOP BAR — full width ===== */}
-      <div className="sticky top-0 z-20 flex items-center h-14 px-4 bg-stone-200/95 backdrop-blur-sm shadow-lg shrink-0">
-        <button
-          onClick={toggle}
-          className="p-2 -ml-2 rounded-xl hover:bg-stone-300/80 active:scale-95 transition-all"
-          aria-label={desktopCollapsed ? 'Expandir menu' : 'Colapsar menu'}
-        >
-          <Menu size={22} />
-        </button>
-        {showLogo && (
-          <img src="/Ciclo_favicon.png" alt="Ciclo" className="w-12 h-12 ml-0 shrink-0" />
-        )}
-        <span className={`${showLogo ? '' : 'ml-3'} font-semibold text-stone-800 truncate text-sm`}>
-          {user ? `${user.name} · ${roleLabels[user.role]}` : title}
-        </span>
-      </div>
+    <div className="relative flex h-screen bg-[#eceff2] overflow-hidden">
+      {/* Fundo do layout: aparece na topbar (transparente) e na área de conteúdo. */}
+      <ShaderBackground />
 
-      {/* ===== BODY: sidebar + content ===== */}
-      <div className="flex flex-1 overflow-hidden">
-        {/* ===== DESKTOP SIDEBAR ===== */}
-        <aside
-          className={`hidden md:flex md:flex-col bg-stone-200 shadow-lg transition-all duration-300 ease-out overflow-hidden ${
-            desktopCollapsed ? 'md:w-0' : 'md:w-64'
-          }`}
-        >
-          <div className="w-64 flex flex-col h-full">{navContent}</div>
-        </aside>
+      {/* ===== DESKTOP SIDEBAR — altura total, sem recorte da topbar ===== */}
+      <aside
+        className={`relative z-10 hidden md:flex md:flex-col h-full bg-stone-200/70 backdrop-blur-md shadow-lg transition-all duration-300 ease-out overflow-hidden ${
+          desktopCollapsed ? 'md:w-0' : 'md:w-52'
+        }`}
+      >
+        {/* Largura fixa: evita o texto reflowar durante a animação de abertura. */}
+        <div className="w-52 flex flex-col h-full">{navContent}</div>
+      </aside>
 
-        {/* ===== MOBILE BACKDROP ===== */}
-        <div
-          className={`fixed top-14 inset-x-0 bottom-0 z-40 bg-black/50 transition-opacity duration-300 ease-out md:hidden ${
-            mobileOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'
-          }`}
-          onClick={() => setMobileOpen(false)}
-          aria-hidden="true"
-        />
+      {/* ===== COLUNA DE CONTEÚDO: topbar + main ===== */}
+      <div className="relative z-10 flex min-w-0 flex-1 flex-col">
+        {/* ===== TOP BAR — apenas à direita da sidebar ===== */}
+        <div className="flex items-center h-16 px-4 shrink-0">
+          {/* A logo é o controle da sidebar: mesma ação do antigo botão hambúrguer. */}
+          <button
+            onClick={toggle}
+            aria-label={menuOpen ? 'Fechar menu' : 'Abrir menu'}
+            aria-expanded={menuOpen}
+            className="-ml-2 rounded-xl p-1 hover:bg-white/40 active:scale-95 transition-all"
+          >
+            <img src="/Ciclo_favicon.png" alt="" className="w-12 h-12 shrink-0" />
+          </button>
 
-        {/* ===== MOBILE SIDEBAR OVERLAY ===== */}
-        <aside
-          className={`fixed top-14 bottom-0 left-0 z-50 w-72 max-w-[85vw] bg-stone-200 flex flex-col shadow-lg transform transition-transform duration-300 ease-out md:hidden ${
-            mobileOpen ? 'translate-x-0' : '-translate-x-full'
-          }`}
-        >
-          {navContent}
-        </aside>
+          <TopbarActions notificationsTo={notificationsTo} />
+        </div>
 
         {/* ===== MAIN CONTENT ===== */}
-        <main className="flex-1 overflow-auto">
+        <main className="no-scrollbar flex-1 overflow-auto">
           <div className="p-4 md:p-6">
             {children}
           </div>
         </main>
       </div>
+
+      {/* ===== MOBILE BACKDROP ===== */}
+      <div
+        className={`fixed inset-0 z-40 bg-black/50 transition-opacity duration-300 ease-out md:hidden ${
+          mobileOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'
+        }`}
+        onClick={() => setMobileOpen(false)}
+        aria-hidden="true"
+      />
+
+      {/* ===== MOBILE SIDEBAR OVERLAY — também em altura total ===== */}
+      <aside
+        className={`fixed inset-y-0 left-0 z-50 w-64 max-w-[85vw] bg-stone-200/70 backdrop-blur-md flex flex-col shadow-lg transform transition-transform duration-300 ease-out md:hidden ${
+          mobileOpen ? 'translate-x-0' : '-translate-x-full'
+        }`}
+      >
+        {navContent}
+      </aside>
     </div>
   );
 }

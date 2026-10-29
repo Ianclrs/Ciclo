@@ -10,6 +10,7 @@ import { registerParent } from '../api/auth';
 import { setAccessToken } from '../api/client';
 import { useAuth } from '../hooks/useAuth';
 import { passwordError } from '../domain/password';
+import { ShaderBackground } from '../components/ShaderBackground';
 
 /**
  * A5 — cadastro de responsável.
@@ -62,8 +63,10 @@ export default function ParentRegisterPage() {
   };
 
   return (
-    <div className="min-h-screen bg-stone-100 px-4 py-10">
-      <div className="mx-auto w-full max-w-lg">
+    <div className="min-h-screen bg-[#eceff2] px-4 py-10 relative overflow-hidden">
+      <ShaderBackground />
+
+      <div className="mx-auto w-full max-w-lg relative z-10">
         <Link to="/login" className="flex items-center gap-1 text-sm text-gray-500 mb-4">
           <ArrowLeft size={16} /> Voltar ao login
         </Link>

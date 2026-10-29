@@ -1,4 +1,5 @@
 import { useState, useEffect, type ReactNode } from 'react';
+import { ShaderBackground } from './ShaderBackground';
 
 // Splash exibida uma única vez por sessão do navegador (sobrevive a reloads/navegação,
 // mas reaparece em uma nova aba/sessão).
@@ -53,19 +54,9 @@ export function SplashGate({ children }: { children: ReactNode }) {
       role="button"
       tabIndex={0}
       aria-label="Continuar para o login"
-      className="min-h-screen flex items-center justify-center bg-gradient-to-br from-stone-100 via-stone-50 to-stone-100 animate-gradient px-4 relative overflow-hidden cursor-pointer select-none"
+      className="min-h-screen flex items-center justify-center bg-[#eceff2] px-4 relative overflow-hidden cursor-pointer select-none"
     >
-      {/* Decorative animated blobs */}
-      <div className="absolute -top-40 -right-40 w-96 h-96 bg-violet-300/40 rounded-full blur-3xl animate-blob" style={{ animationDelay: '0s', animationDuration: '24s' }} />
-      <div className="absolute top-1/2 -left-20 w-72 h-72 bg-blue-300/35 rounded-full blur-3xl animate-blob" style={{ animationDelay: '2s', animationDuration: '31s', animationDirection: 'reverse' }} />
-      <div className="absolute -bottom-32 right-1/4 w-80 h-80 bg-emerald-300/35 rounded-full blur-3xl animate-blob" style={{ animationDelay: '4s', animationDuration: '27s' }} />
-      <div className="absolute top-1/4 left-1/3 w-60 h-60 bg-amber-300/35 rounded-full blur-3xl animate-blob" style={{ animationDelay: '6s', animationDuration: '35s', animationDirection: 'reverse' }} />
-      <div className="absolute -top-24 -left-24 w-72 h-72 bg-red-400/30 rounded-full blur-3xl animate-blob" style={{ animationDelay: '8s', animationDuration: '25s' }} />
-      <div className="absolute bottom-12 right-4 w-56 h-56 bg-fuchsia-300/30 rounded-full blur-3xl animate-blob" style={{ animationDelay: '10s', animationDuration: '28s', animationDirection: 'reverse' }} />
-      <div className="absolute top-1/2 right-0 w-52 h-52 bg-orange-300/35 rounded-full blur-3xl animate-blob" style={{ animationDelay: '12s', animationDuration: '34s' }} />
-      {/* Antigo halo fixo atrás da logo: agora deriva como os demais blobs.
-          -ml-36/-mt-36 centralizam por margin (não por transform, que a keyframe sobrescreve). */}
-      <div className="absolute top-1/2 left-1/2 -ml-36 -mt-36 w-72 h-72 bg-violet-400/30 rounded-full blur-3xl animate-blob motion-reduce:animate-none" style={{ animationDelay: '14s', animationDuration: '41s' }} />
+      <ShaderBackground />
 
       <div className="flex flex-col items-center relative z-10">
         <div className="relative">
