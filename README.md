@@ -150,22 +150,28 @@ dotnet test
 
 ### Frontend na Vercel
 
-O `vercel.json` na **raiz do repositório** contém toda a configuração de deploy — build, pasta de saída e rewrites. Nada precisa ser preenchido no painel da Vercel.
+A configuração de deploy vive em **dois** `vercel.json`, porque a Vercel lê **apenas** o arquivo que está no *Root Directory* do projeto — e os caminhos relativos mudam conforme esse campo:
 
-| Configuração do projeto | Valor |
-|---|---|
-| Root Directory | **vazio** (raiz do repositório) |
-| Install / Build / Output | definidos no `vercel.json`, não no painel |
+| Root Directory no painel | Arquivo lido pela Vercel | Comandos |
+|---|---|---|
+| **vazio** (recomendado) | `vercel.json` na raiz | `cd frontend && npm install` · `cd frontend && npm run build` · `outputDirectory: frontend/dist` |
+| `frontend` | `frontend/vercel.json` | `npm install` · `npm run build` · `outputDirectory: dist` |
 
-> **Root Directory precisa ficar vazio.** A Vercel só lê o `vercel.json` que está **dentro** do Root Directory. Se você apontar o Root Directory para `frontend`, o arquivo da raiz é ignorado: o build não roda, nenhum `dist/` é publicado e **todas as rotas respondem 404** (o repositório cru é servido — `/AGENTS.md` responde 200, `/index.html` responde 404). Foi exatamente esse o sintoma do primeiro deploy.
+Os dois arquivos têm os mesmos rewrites. O teste `frontend/tests/deployConfig.test.ts` falha se eles divergirem — a duplicação existe só para o deploy funcionar nas duas escolhas, não para permitir configurações diferentes.
 
-O `vercel.json` faz três coisas:
+> **Sintomas de configuração incoerente** (já aconteceram neste projeto):
+> - `cd: frontend: No such file or directory` no passo de install → o Root Directory aponta para `frontend`, mas o arquivo lido é o da raiz (que faz `cd frontend`).
+> - Build passa e **todas as rotas respondem 404** (`/index.html` some) → nenhum `vercel.json` foi encontrado no Root Directory; a Vercel serviu o repositório cru.
+>
+> Em qualquer um dos casos, alinhe o campo com a tabela acima e refaça o deploy. Overrides de *Install Command* / *Build Command* no painel vencem o arquivo — deixe-os vazios.
 
-1. **Build do frontend a partir da raiz:** `cd frontend && npm install` e `cd frontend && npm run build`, com `outputDirectory: frontend/dist`.
+Cada `vercel.json` faz três coisas:
+
+1. **Build do frontend**, conforme a tabela acima.
 2. **Rewrite de `/api/*` para a API.** O navegador continua falando com o próprio domínio, então o cookie de refresh (`HttpOnly`, `SameSite=Strict`, `Secure` — `AuthController.cs`) é first-party e nenhuma política de CORS é necessária.
 3. **Fallback do SPA:** `/(.*)` → `/index.html`, para que recarregar `/admin/students` não retorne 404. Arquivos estáticos são servidos direto do disco — a Vercel checa o filesystem antes de aplicar os rewrites.
 
-> **Ação obrigatória antes de integrar com a API:** trocar `https://TROCAR-PELO-HOST-DA-API` no `vercel.json` pelo host real da API. **Substitua o valor, não apague a regra:** sem ela, `/api/*` cairia no fallback do SPA e o frontend receberia HTML (status 200) no lugar de JSON.
+> **Ação obrigatória antes de integrar com a API:** trocar `https://TROCAR-PELO-HOST-DA-API` nos **dois** arquivos pelo host real da API. **Substitua o valor, não apague a regra:** sem ela, `/api/*` cairia no fallback do SPA e o frontend receberia HTML (status 200) no lugar de JSON.
 
 Em desenvolvimento nada disso é necessário: o `vite.config.ts` faz o mesmo proxy de `/api` para `localhost:5264`.
 
