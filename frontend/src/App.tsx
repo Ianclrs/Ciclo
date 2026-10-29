@@ -42,7 +42,7 @@ const parentItems = [
 function AdminLayout() {
   const { user } = useAuth();
   const items = user?.role === 'Admin'
-    ? [...adminItems, { label: 'Usuários', path: '/admin/users', icon: <UserCog size={20} />, color: 'violet' as const }]
+    ? [...adminItems, { label: 'Usuários', path: '/admin/users', icon: <UserCog size={20} />, color: 'teal' as const }]
     : adminItems;
 
   return (

@@ -38,3 +38,57 @@
 .no-scrollbar::-webkit-scrollbar {
   display: none;
 }
+
+/*
+ * Recorte na superfície da sidebar: a camada de vidro ganha um furo na posição do item
+ * ativo, e o shader do layout aparece cru dentro dele.
+ *
+ * A tinta do vidro é `bg-white/70` no próprio componente — a mesma dos cards do
+ * conteúdo —, então a borda da sidebar é RETA, como a de um card. Nada de gradiente de
+ * opacidade aqui: ele borrava a borda direita de TODAS as seções, inclusive as não
+ * selecionadas, e o vinco da seleção deixava de ter onde contrastar.
+ *
+ * São duas camadas de máscara: a primeira cobre o elemento inteiro, a segunda é o
+ * furo. `mask-composite: exclude` SUBTRAI a segunda da primeira — sem esse modo as
+ * máscaras se somam e não existe furo nenhum. O prefixo `-webkit-` fica junto com
+ * `xor`, que é a forma antiga do mesmo cálculo.
+ *
+ * A segunda camada é o furo em SVG (`--hole-mask`), com as curvas da esquerda voltadas
+ * para dentro do item e as da direita voltadas para FORA — é essa abertura que encosta
+ * nas seções vizinhas. Por isso a imagem é mais ALTA que o item, e `mask-size` usa
+ * exatamente o tamanho intrínseco dela: sem essa igualdade as curvas sairiam distorcidas.
+ *
+ * `--hole-x/y/w/h` são medidos em JS: o furo tem de acompanhar o item ativo, a
+ * rolagem do menu, a abertura da gaveta e o tamanho da janela. Sem medida (atributo
+ * ausente) o recorte não aparece e a sidebar fica no vidro contínuo.
+ */
+.sidebar-cutout[data-hole='on'] {
+  -webkit-mask-image: linear-gradient(#000, #000), var(--hole-mask);
+  mask-image: linear-gradient(#000, #000), var(--hole-mask);
+  -webkit-mask-size: 100% 100%, var(--hole-w, 0px) var(--hole-h, 0px);
+  mask-size: 100% 100%, var(--hole-w, 0px) var(--hole-h, 0px);
+  -webkit-mask-position: 0 0, var(--hole-x, 0px) var(--hole-y, 0px);
+  mask-position: 0 0, var(--hole-x, 0px) var(--hole-y, 0px);
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+
+  /* Troca de seção: o furo desliza do item anterior para o novo. */
+  transition: -webkit-mask-position 220ms ease, mask-position 220ms ease;
+}
+
+/*
+ * Rolagem e resize movem o furo a cada quadro. Com transição, o recorte correria
+ * atrás do cursor — por isso o JS marca estas passagens como instantâneas.
+ */
+.sidebar-cutout[data-hole='on'][data-hole-instant] {
+  transition: none;
+}
+
+/* O fundo é decorativo: quem pediu menos movimento não ganha animação no recorte. */
+@media (prefers-reduced-motion: reduce) {
+  .sidebar-cutout[data-hole='on'] {
+    transition: none;
+  }
+}

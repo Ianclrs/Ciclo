@@ -1,23 +1,33 @@
-import { useState, useEffect, type ReactNode } from 'react';
+import { useCallback, useState, useEffect, useLayoutEffect, useRef, type ReactNode } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { Button } from './Button';
 import { ShaderBackground } from './ShaderBackground';
 import { TopbarActions } from './TopbarActions';
+import { cutoutMask, type CutoutRect } from './sidebarCutout';
+import type { Accent } from './accentStyles';
 
 interface SidebarItem {
   label: string;
   path: string;
   icon: ReactNode;
-  color?: 'blue' | 'green' | 'amber' | 'red' | 'violet';
+  color?: Accent;
 }
 
-const colorMap: Record<string, { active: string; hover: string }> = {
-  blue:   { active: 'bg-blue-50 text-blue-700',     hover: 'hover:bg-blue-50 hover:text-blue-700' },
-  green:  { active: 'bg-green-50 text-green-700',   hover: 'hover:bg-green-50 hover:text-green-700' },
-  amber:  { active: 'bg-amber-50 text-amber-700',   hover: 'hover:bg-amber-50 hover:text-amber-700' },
-  red:    { active: 'bg-red-50 text-red-700',       hover: 'hover:bg-red-50 hover:text-red-700' },
-  violet: { active: 'bg-violet-50 text-violet-700', hover: 'hover:bg-violet-50 hover:text-violet-700' },
+/**
+ * O item ativo NÃO recebe fundo: ele fica dentro do recorte, onde o shader aparece cru.
+ * O destaque é a cor de acento no texto e no ícone — um pastel ali sumiria sobre o fundo vivo.
+ *
+ * A chave é `Accent`: uma cor só existe no menu se tiver estado definido aqui, então uma
+ * cor nova na paleta obriga a aparecer nesta tabela (e uma cor fora da paleta não compila).
+ */
+const colorMap: Record<Accent, { active: string; hover: string }> = {
+  violet: { active: 'text-violet-700', hover: 'hover:bg-violet-50 hover:text-violet-700' },
+  blue:   { active: 'text-blue-700',   hover: 'hover:bg-blue-50 hover:text-blue-700' },
+  teal:   { active: 'text-teal-700',   hover: 'hover:bg-teal-50 hover:text-teal-700' },
+  green:  { active: 'text-green-700',  hover: 'hover:bg-green-50 hover:text-green-700' },
+  amber:  { active: 'text-amber-700',  hover: 'hover:bg-amber-50 hover:text-amber-700' },
+  red:    { active: 'text-red-700',    hover: 'hover:bg-red-50 hover:text-red-700' },
 };
 
 interface SidebarProps {
@@ -33,6 +43,113 @@ export function Sidebar({ items, children, notificationsTo }: SidebarProps) {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, logout } = useAuth();
+  const desktopAsideRef = useRef<HTMLElement>(null);
+  const mobileAsideRef = useRef<HTMLElement>(null);
+
+  const instantTimer = useRef<number | null>(null);
+
+  /**
+   * Desliga a transição do furo por um instante. Rolagem e redimensionamento mexem
+   * na medida quadro a quadro: animar ali criaria atraso entre o dedo e o recorte.
+   */
+  const holdInstant = useCallback((surfaces: HTMLElement[]) => {
+    for (const surface of surfaces) surface.setAttribute('data-hole-instant', '');
+    if (instantTimer.current !== null) window.clearTimeout(instantTimer.current);
+    instantTimer.current = window.setTimeout(() => {
+      for (const surface of surfaces) surface.removeAttribute('data-hole-instant');
+      instantTimer.current = null;
+    }, 160);
+  }, []);
+
+  /**
+   * Recorta a camada de vidro na faixa do item ativo: começa no canto arredondado da
+   * pílula e vai até a borda direita da sidebar, abrindo o recorte para o fundo do
+   * conteúdo.
+   *
+   * As duas asides (desktop e mobile) renderizam o MESMO `navContent`, então a
+   * medição é feita por DOM dentro de cada uma — um ref compartilhado apontaria
+   * só para a última montada. `getBoundingClientRect` já considera a rolagem do
+   * menu e a posição da gaveta no mobile.
+   *
+   * `instant` desliga a transição nesta passagem; o padrão é animar, que é o que faz
+   * o recorte deslizar de um item para o outro.
+   */
+  const syncCutout = useCallback((instant = false) => {
+    const surfaces: HTMLElement[] = [];
+    const measurements: Array<{ surface: HTMLElement; rect: CutoutRect | null }> = [];
+
+    for (const aside of [desktopAsideRef.current, mobileAsideRef.current]) {
+      if (!aside) continue;
+
+      const surface = aside.querySelector<HTMLElement>('[data-sidebar-surface]');
+      if (!surface) continue;
+      surfaces.push(surface);
+
+      const active = aside.querySelector<HTMLElement>('[aria-current="page"]');
+      if (!active) {
+        measurements.push({ surface, rect: null });
+        continue;
+      }
+
+      const surfaceBox = surface.getBoundingClientRect();
+      const activeBox = active.getBoundingClientRect();
+      // A borda direita vem do MENU, não da superfície: a superfície anima a largura ao
+      // abrir/fechar, e medir ali produziria um furo de tamanho errado durante a animação.
+      // A largura do menu é fixa e a mesma da superfície quando a sidebar está aberta.
+      const navBox = aside.querySelector('nav')?.getBoundingClientRect();
+      measurements.push({
+        surface,
+        rect: {
+          x: activeBox.left - surfaceBox.left,
+          y: activeBox.top - surfaceBox.top,
+          width: (navBox ? navBox.right : activeBox.right) - activeBox.left,
+          height: activeBox.height,
+        },
+      });
+    }
+
+    // O atributo vem ANTES das medidas: na mesma recalculada de estilo a troca de
+    // posição já acontece sem transição.
+    if (instant) holdInstant(surfaces);
+
+    for (const { surface, rect } of measurements) {
+      if (!rect || rect.width <= 0 || rect.height <= 0) {
+        surface.removeAttribute('data-hole');
+        continue;
+      }
+      // A máscara é mais alta que o item: a abertura do lado direito cresce para fora,
+      // então posição e altura vêm da caixa calculada, não do retângulo medido.
+      const mask = cutoutMask(rect);
+      surface.style.setProperty('--hole-x', `${mask.box.x}px`);
+      surface.style.setProperty('--hole-y', `${mask.box.y}px`);
+      surface.style.setProperty('--hole-w', `${mask.box.width}px`);
+      surface.style.setProperty('--hole-h', `${mask.box.height}px`);
+      surface.style.setProperty('--hole-mask', mask.image);
+      surface.setAttribute('data-hole', 'on');
+    }
+  }, [holdInstant]);
+
+  // Remede animando quando o item ativo muda; sem animação ao rolar ou redimensionar.
+  useLayoutEffect(() => {
+    syncCutout();
+
+    const instantSync = () => syncCutout(true);
+    window.addEventListener('resize', instantSync);
+
+    const navs = [desktopAsideRef.current, mobileAsideRef.current]
+      .map((aside) => aside?.querySelector('nav'))
+      .filter((nav): nav is HTMLElement => Boolean(nav));
+    for (const nav of navs) nav.addEventListener('scroll', instantSync, { passive: true });
+
+    return () => {
+      window.removeEventListener('resize', instantSync);
+      for (const nav of navs) nav.removeEventListener('scroll', instantSync);
+    };
+  }, [syncCutout, location.pathname, desktopCollapsed, mobileOpen, items]);
+
+  useEffect(() => () => {
+    if (instantTimer.current !== null) window.clearTimeout(instantTimer.current);
+  }, []);
 
   // Fecha mobile ao trocar de rota
   useEffect(() => {
@@ -90,8 +207,9 @@ export function Sidebar({ items, children, notificationsTo }: SidebarProps) {
           <Link
             key={item.path}
             to={item.path}
-            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-              active ? colors.active : `text-stone-600 ${colors.hover}`
+            aria-current={active ? 'page' : undefined}
+            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors ${
+              active ? `${colors.active} font-semibold` : `font-medium text-stone-600 ${colors.hover}`
             }`}
           >
             <span className="shrink-0">{item.icon}</span>
@@ -124,12 +242,20 @@ export function Sidebar({ items, children, notificationsTo }: SidebarProps) {
 
       {/* ===== DESKTOP SIDEBAR — altura total, sem recorte da topbar ===== */}
       <aside
-        className={`relative z-10 hidden md:flex md:flex-col h-full bg-stone-200/70 backdrop-blur-md shadow-lg transition-all duration-300 ease-out overflow-hidden ${
+        ref={desktopAsideRef}
+        className={`relative z-10 hidden md:flex md:flex-col h-full transition-all duration-300 ease-out overflow-hidden ${
           desktopCollapsed ? 'md:w-0' : 'md:w-52'
         }`}
       >
+        {/* Camada de vidro na tinta dos cards (`bg-white/70`), sem sombra nem desfoque:
+            a borda reta é justamente o que o recorte do item ativo abre. */}
+        <div
+          data-sidebar-surface
+          aria-hidden="true"
+          className="sidebar-cutout bg-white/70 absolute inset-0"
+        />
         {/* Largura fixa: evita o texto reflowar durante a animação de abertura. */}
-        <div className="w-52 flex flex-col h-full">{navContent}</div>
+        <div className="relative w-52 flex flex-col h-full">{navContent}</div>
       </aside>
 
       {/* ===== COLUNA DE CONTEÚDO: topbar + main ===== */}
@@ -168,11 +294,17 @@ export function Sidebar({ items, children, notificationsTo }: SidebarProps) {
 
       {/* ===== MOBILE SIDEBAR OVERLAY — também em altura total ===== */}
       <aside
-        className={`fixed inset-y-0 left-0 z-50 w-64 max-w-[85vw] bg-stone-200/70 backdrop-blur-md flex flex-col shadow-lg transform transition-transform duration-300 ease-out md:hidden ${
+        ref={mobileAsideRef}
+        className={`fixed inset-y-0 left-0 z-50 w-64 max-w-[85vw] flex flex-col transform transition-transform duration-300 ease-out md:hidden ${
           mobileOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
-        {navContent}
+        <div
+          data-sidebar-surface
+          aria-hidden="true"
+          className="sidebar-cutout bg-white/70 absolute inset-0"
+        />
+        <div className="relative w-full flex flex-col h-full">{navContent}</div>
       </aside>
     </div>
   );
