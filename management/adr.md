@@ -104,3 +104,26 @@ A trilha de auditoria responde "quem fez o quê, quando e de onde" para operaç�
 - Corrigir um evento exige uma nova operação e uma nova entrada na trilha, não uma edição — o histórico permanece fiel.
 - A base legal registrada é a LGPD Art. 7º, II e IX (cumprimento de obrigação legal e legítimo interesse) e Art. 16 (conservação pelo tempo necessário à finalidade).
 - Alterar o piso de 90 dias ou o default de retenção exige nova decisão registrada e uma spec de evolução: a spec 110 está finalizada.
+
+---
+
+## ADR-005: Exposição de Métricas por Scrape Prometheus
+
+**Status:** Aceito (Spec 130)
+
+**Context:** A Spec 130 precisava expor métricas de requisição, erro e profundidade da fila em um projeto acadêmico sem infraestrutura de observabilidade (sem collector, sem backend de séries temporais). As alternativas eram OTLP/OpenTelemetry — que só produz valor com um collector — e instrumentação própria com `System.Diagnostics.Metrics`, que exigiria reimplementar formato de texto e registro.
+
+**Decision:**
+
+- **Um pacote:** `prometheus-net.AspNetCore` na API (e o pacote base `prometheus-net` em Infrastructure, de onde a métrica da fila é exposta), no formato de texto do Prometheus via `GET /metrics`.
+- **Endpoint anônimo, fora de `/api`**, sem rótulo de tenant, usuário, e-mail ou qualquer identificador de pessoa; os rótulos são apenas método, rota normalizada e código.
+- **Profundidade da fila** (`ciclo_email_queue_depth`, `ciclo_email_queue_capacity`) é lida do próprio `Channel` no callback de coleta, sem contador paralelo.
+- **Readiness** cobre banco e armazenamento; o canal de e-mail fica fora porque é inerte (`ConsoleEmailSender`) e bloquearia todo deploy.
+- **Alertas** ficam como limiares documentados no README; nenhuma integração (Slack, Alertmanager, e-mail) é criada.
+
+**Consequences:**
+
+- Qualquer host consegue raspar `/metrics` sem collector; não há dependência de backend externo.
+- Migrar para OTLP no futuro exige reinstrumentar as métricas — consequência aceita para um projeto acadêmico.
+- `/metrics` público exige restrição no proxy se o ambiente for exposto à internet; o endpoint não contém dado pessoal.
+- Quando existir provedor de e-mail real, o readiness pode ganhar um check de canal usando a mesma porta `IEmailQueueStatus`.

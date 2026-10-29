@@ -256,7 +256,7 @@ public sealed class ChannelEmailDispatcherTests
         var logger = new CapturingLogger<ChannelEmailDispatcher>();
         var dispatcher = new ChannelEmailDispatcher(logger);
 
-        for (var i = 0; i < ChannelEmailDispatcher.Capacity; i++)
+        for (var i = 0; i < ChannelEmailDispatcher.QueueCapacity; i++)
         {
             dispatcher.Enqueue(new EmailMessage($"pai-{i}@test.com", "Pai", "Assunto", "Corpo"));
         }

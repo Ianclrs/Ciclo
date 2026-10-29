@@ -1,4 +1,5 @@
 using System.Threading.Channels;
+using Ciclo.Core.Interfaces;
 using Microsoft.Extensions.Logging;
 
 namespace Ciclo.Infrastructure.Email;
@@ -31,9 +32,9 @@ public interface IEmailDispatcher
 /// ainda não foi enviado. O canal de e-mail hoje é inerte (<see cref="ConsoleEmailSender"/>), e
 /// tornar a entrega durável (coluna de pendência + varredura) é decisão de produto, não deste item.
 /// </summary>
-internal sealed class ChannelEmailDispatcher : IEmailDispatcher
+internal sealed class ChannelEmailDispatcher : IEmailDispatcher, IEmailQueueStatus
 {
-    internal const int Capacity = 1000;
+    internal const int QueueCapacity = 1000;
 
     private readonly Channel<EmailMessage> _channel;
     private readonly ILogger<ChannelEmailDispatcher> _logger;
@@ -41,7 +42,7 @@ internal sealed class ChannelEmailDispatcher : IEmailDispatcher
     public ChannelEmailDispatcher(ILogger<ChannelEmailDispatcher> logger)
     {
         _logger = logger;
-        _channel = Channel.CreateBounded<EmailMessage>(new BoundedChannelOptions(Capacity)
+        _channel = Channel.CreateBounded<EmailMessage>(new BoundedChannelOptions(QueueCapacity)
         {
             // Wait + somente TryWrite: é esta combinação que faz a fila cheia devolver `false`
             // imediatamente. Com DropWrite, TryWrite devolveria `true` mesmo descartando a
@@ -63,9 +64,15 @@ internal sealed class ChannelEmailDispatcher : IEmailDispatcher
         _logger.LogError(
             "Email dispatch queue is full ({Capacity} pending); the email to {Email} was dropped. "
             + "The in-app notification remains.",
-            Capacity, message.ToEmail);
+            QueueCapacity, message.ToEmail);
 #pragma warning restore CA1848, CA1873
     }
+
+    /// <summary>Mensagens aguardando envio, lidas do canal no momento da consulta.</summary>
+    public int Depth => _channel.Reader.Count;
+
+    /// <summary>Capacidade configurada do canal.</summary>
+    public int Capacity => QueueCapacity;
 
     internal IAsyncEnumerable<EmailMessage> ReadAllAsync(CancellationToken cancellationToken)
         => _channel.Reader.ReadAllAsync(cancellationToken);

@@ -1,3 +1,4 @@
+using Ciclo.Core.Interfaces;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Ciclo.Infrastructure.Email;
@@ -18,6 +19,12 @@ public static class EmailDispatchSetup
     {
         services.AddSingleton<ChannelEmailDispatcher>();
         services.AddSingleton<IEmailDispatcher>(sp => sp.GetRequiredService<ChannelEmailDispatcher>());
+
+        // Spec 130 — a mesma instância responde pelo estado da fila; a métrica que a expõe
+        // vive na API (dependência de borda) e lê este estado no momento da coleta.
+        services.AddSingleton<IEmailQueueStatus>(sp => (IEmailQueueStatus)sp.GetRequiredService<IEmailDispatcher>());
+        services.AddSingleton<EmailQueueMetrics>();
+
         services.AddHostedService<EmailDispatchService>();
 
         return services;

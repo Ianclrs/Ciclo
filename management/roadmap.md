@@ -31,7 +31,7 @@
 | 100 | Frontend Application (React + PWA) | audited | V10 |
 | 110 | auditoria-de-operacoes | verified | V11 |
 | 120 | ciclo-de-vida-de-identidade | planned | V12 |
-| 130 | observabilidade-operacional | planned | V13 |
+| 130 | observabilidade-operacional | verified | V13 |
 | 140 | comunicacao-proativa | planned | V14 |
 | 150 | estrutura-academica-e-desempenho | planned | V15 |
 | 160 | rematricula-em-lote | planned | V16 |

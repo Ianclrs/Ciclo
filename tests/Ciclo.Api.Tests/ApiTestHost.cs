@@ -1,6 +1,11 @@
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Ciclo.Infrastructure.Data;
 
 namespace Ciclo.Api.Tests;
 
@@ -37,6 +42,22 @@ public sealed class ApiTestHost : WebApplicationFactory<Program>
         builder.UseSetting("Jwt:Issuer", "Ciclo");
         builder.UseSetting("Jwt:Audience", "Ciclo");
         builder.UseSetting("FileStorage:EncryptionKey", Convert.ToBase64String(new byte[32]));
+
+        // Spec 130 — a sonda de readiness grava em RootPath. Usar um diretório temporário evita
+        // criar `uploads/` na raiz do repositório a cada execução da suíte.
+        builder.UseSetting(
+            "FileStorage:RootPath",
+            Path.Combine(Path.GetTempPath(), "ciclo-tests", "storage"));
+
+        // Spec 130 — o host de teste não fala com PostgreSQL. Readiness e /Health/db precisam
+        // de um provider que responda; o InMemory não é relacional e o check trata isso.
+        builder.ConfigureServices(services =>
+        {
+            services.RemoveAll<DbContextOptions<AppDbContext>>();
+            services.RemoveAll<IDbContextOptionsConfiguration<AppDbContext>>();
+            services.AddDbContext<AppDbContext>(options =>
+                options.UseInMemoryDatabase($"api-test-host-{Guid.NewGuid():N}"));
+        });
     }
 }
 

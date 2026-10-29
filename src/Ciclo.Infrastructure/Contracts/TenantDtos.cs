@@ -18,3 +18,9 @@ public record RegisterSchoolRequest(
     string AdminPassword);
 
 public record RegisterSchoolResponse(Guid TenantId, string Slug, string Country);
+
+/// <summary>
+/// Identificação do colégio do usuário logado. Vive no recurso de tenant (e não no UserDto):
+/// é dado da escola, não do usuário, e não deve se repetir em cada listagem de usuários.
+/// </summary>
+public record TenantSummaryDto(Guid Id, string Name, string Slug);

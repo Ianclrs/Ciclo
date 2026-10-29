@@ -36,4 +36,28 @@ public class TenantsController : ControllerBase
             return ProblemResponse.FromCode(ex.Message, ex.StatusCode);
         }
     }
+
+    /// <summary>Identificação do colégio do usuário logado (chip da topbar).</summary>
+    [HttpGet("me")]
+    [Authorize]
+    public async Task<IActionResult> GetCurrent()
+    {
+        try
+        {
+            return Ok(await _tenantService.GetCurrentAsync(GetTenantId()));
+        }
+        catch (AuthException ex)
+        {
+            return ProblemResponse.FromCode(ex.Message, ex.StatusCode);
+        }
+    }
+
+    private Guid GetTenantId()
+    {
+        var tenantIdStr = User.FindFirst("tenant_id")?.Value;
+        if (string.IsNullOrEmpty(tenantIdStr) || !Guid.TryParse(tenantIdStr, out var tenantId))
+            throw new AuthException("tenant_not_resolved", 401);
+
+        return tenantId;
+    }
 }

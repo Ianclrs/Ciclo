@@ -1,3 +1,4 @@
+using Ciclo.Core.Auditing;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Ciclo.Api.Middleware;
@@ -20,6 +21,11 @@ internal static class ProblemResponse
     /// mudar; o <c>code</c> é contrato.
     /// </summary>
     internal const string CodeExtension = "code";
+
+    /// <summary>
+    /// Spec 130 — identificador do request, para que o relato do usuário leve direto ao log.
+    /// </summary>
+    internal const string CorrelationExtension = "correlationId";
 
     /// <summary>
     /// Resposta de erro de domínio a partir do código da exceção (M3).
@@ -54,6 +60,12 @@ internal static class ProblemResponse
             Title = title
         };
         problem.Extensions[CodeExtension] = code;
+
+        if (context.Items[AuditCorrelation.ItemsKey] is string correlationId
+            && !string.IsNullOrWhiteSpace(correlationId))
+        {
+            problem.Extensions[CorrelationExtension] = correlationId;
+        }
 
         context.Response.StatusCode = status;
         return context.Response.WriteAsJsonAsync(problem, options: null, contentType: ContentType);

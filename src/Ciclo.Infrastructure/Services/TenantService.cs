@@ -13,6 +13,9 @@ namespace Ciclo.Infrastructure.Services;
 public interface ITenantService
 {
     Task<RegisterSchoolResponse> RegisterSchoolAsync(RegisterSchoolRequest request);
+
+    /// <summary>Colégio do usuário logado (identificação na interface).</summary>
+    Task<TenantSummaryDto> GetCurrentAsync(Guid tenantId);
 }
 
 /// <summary>
@@ -115,6 +118,17 @@ public class TenantService : ITenantService
 #pragma warning restore CA1848, CA1873
 
         return new RegisterSchoolResponse(tenant.Id, tenant.Slug, tenant.Country);
+    }
+
+    public async Task<TenantSummaryDto> GetCurrentAsync(Guid tenantId)
+    {
+        var tenant = await _dbContext.Tenants
+            .AsNoTracking()
+            .Where(t => t.Id == tenantId)
+            .Select(t => new TenantSummaryDto(t.Id, t.Name, t.Slug))
+            .FirstOrDefaultAsync();
+
+        return tenant ?? throw new AuthException("tenant_not_found", 404);
     }
 
     private static string NormalizeCountry(string? country)

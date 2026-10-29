@@ -11,6 +11,8 @@
     <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.13" />
     <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="10.0.13" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.13" />
+    <!-- Spec 130: métricas da fila (mesmo pacote base usado pela API via AspNetCore). -->
+    <PackageReference Include="prometheus-net" Version="8.2.1" />
   </ItemGroup>
 
   <ItemGroup>

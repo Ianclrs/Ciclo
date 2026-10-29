@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using Ciclo.Infrastructure.Data;
 
 namespace Ciclo.Api.Controllers;
@@ -20,7 +21,8 @@ public class HealthController : ControllerBase
     [HttpGet("db")]
     public async Task<IActionResult> GetDb(AppDbContext db)
     {
-        var canConnect = await db.Database.CanConnectAsync();
+        // Provider não relacional (InMemory nos testes) não tem conexão a verificar.
+        var canConnect = !db.Database.IsRelational() || await db.Database.CanConnectAsync();
         return canConnect
             ? Ok(new { status = "Healthy", database = "Connected" })
             : StatusCode(503, new { status = "Unhealthy", database = "Disconnected" });

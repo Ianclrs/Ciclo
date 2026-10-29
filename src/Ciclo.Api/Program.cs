@@ -4,6 +4,8 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Serilog;
+using Prometheus;
+using Ciclo.Core.Auditing;
 using Ciclo.Core.Entities;
 using Ciclo.Core.Interfaces;
 using Ciclo.Infrastructure;
@@ -14,9 +16,12 @@ using Ciclo.Infrastructure.Services;
 using Ciclo.Infrastructure.Storage;
 using Ciclo.Infrastructure.Tenancy;
 using Ciclo.Infrastructure.Email;
+using Ciclo.Api.Filters;
+using Ciclo.Api.Health;
 using Ciclo.Api.Middleware;
 using Ciclo.Api.RateLimiting;
 using Ciclo.Infrastructure.Data.Seeders;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 
 Log.Logger = new LoggerConfiguration()
     .WriteTo.Console(formatProvider: CultureInfo.InvariantCulture)
@@ -29,10 +34,20 @@ try
     // Serilog
     builder.Host.UseSerilog((context, services, configuration) =>
         configuration.ReadFrom.Configuration(context.Configuration)
-            .WriteTo.Console(formatProvider: CultureInfo.InvariantCulture));
+            // Spec 130: o template expõe a correlação; em mensagens fora de request o campo
+            // fica vazio (nenhuma exceção é lançada por propriedade ausente).
+            .WriteTo.Console(
+                outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] [{CorrelationId}] {Message:lj}{NewLine}{Exception}",
+                formatProvider: CultureInfo.InvariantCulture));
 
     // Services
-    builder.Services.AddControllers();
+    builder.Services.AddControllers(options =>
+        options.Filters.Add<ProblemDetailsCorrelationFilter>());
+
+    // Spec 130 — readiness: banco e armazenamento. E-mail fica fora de propósito (canal inerte).
+    builder.Services.AddHealthChecks()
+        .AddCheck<DatabaseHealthCheck>("db", tags: ["ready"])
+        .AddCheck<StorageHealthCheck>("storage", tags: ["ready"]);
     builder.Services.AddEndpointsApiExplorer();
     builder.Services.AddSwaggerGen();
     builder.Services.AddInfrastructure(builder.Configuration);
@@ -173,6 +188,10 @@ try
 
     var app = builder.Build();
 
+    // Spec 130 — resolve o adaptador uma vez para registrar o callback de coleta do gauge; sem
+    // isso o singleton nunca seria construído e a métrica da fila não apareceria no scrape.
+    _ = app.Services.GetRequiredService<EmailQueueMetrics>();
+
     // Global exception handling (Spec 90)
     app.UseMiddleware<ExceptionMiddleware>();
 
@@ -183,18 +202,54 @@ try
         app.UseSwaggerUI();
     }
 
-    app.UseSerilogRequestLogging();
+    // Spec 130 — o evento de conclusão é emitido depois que o LogContext do request é descartado,
+    // então a correlação é lida de HttpContext.Items (resolvida pelo CorrelationMiddleware).
+    app.UseSerilogRequestLogging(options =>
+    {
+        options.EnrichDiagnosticContext = (diagnostic, http) =>
+        {
+            if (http.Items[AuditCorrelation.ItemsKey] is string correlationId)
+            {
+                diagnostic.Set("CorrelationId", correlationId);
+            }
+        };
+    });
+
+    // Spec 130 — resolve a correlação uma única vez por request: grava em Items e no cabeçalho
+    // de resposta e empurra LogContext para todo o restante do pipeline (inclusive o evento de
+    // conclusão do Serilog, que lê o valor de Items no EnrichDiagnosticContext acima).
+    app.UseMiddleware<CorrelationMiddleware>();
 
     // Rate limiting (Spec 30) — protege os endpoints anônimos de força bruta e varredura.
     // Fica antes da autenticação de propósito: rejeitar cedo evita gastar trabalho com quem
     // está abusando. As políticas são declaradas nos próprios endpoints ([EnableRateLimiting]).
     app.UseRateLimiter();
 
+    // Spec 130 — métricas HTTP (requisição, erro e latência) com os rótulos padrão do pacote.
+    // Fica antes da autenticação para que 401/403 também sejam contados.
+    app.UseHttpMetrics();
+
     // Auth pipeline (Spec 30)
     app.UseAuthentication();
     app.UseMiddleware<TenantMiddleware>();     // Spec 20 — tenant resolution from JWT
     app.UseMiddleware<AuditContextMiddleware>(); // Spec 110 — ator, origem e correlação
     app.UseAuthorization();
+
+    // Spec 130 — scrape Prometheus, fora de /api (como /health) e sem dado pessoal.
+    app.MapMetrics("/metrics").AllowAnonymous();
+
+    // Spec 130 — liveness sem dependências; readiness com banco e armazenamento.
+    app.MapHealthChecks("/health/live", new HealthCheckOptions
+    {
+        Predicate = _ => false,
+        ResponseWriter = HealthResponseWriter.WriteAsync
+    }).AllowAnonymous();
+
+    app.MapHealthChecks("/health/ready", new HealthCheckOptions
+    {
+        Predicate = registration => registration.Tags.Contains("ready"),
+        ResponseWriter = HealthResponseWriter.WriteAsync
+    }).AllowAnonymous();
 
     app.MapControllers();
 
