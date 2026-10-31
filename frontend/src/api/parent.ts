@@ -1,5 +1,5 @@
 import api from './client';
-import type { Student, Document, ParentDashboard, ChildDetail, Grade } from '../types';
+import type { Student, Document, ParentDashboard, ChildDetail, Grade, ReportCard } from '../types';
 
 export async function getDashboard(): Promise<ParentDashboard> {
   const res = await api.get('/api/parent/dashboard');
@@ -30,5 +30,16 @@ export async function uploadChildDocument(id: string, formData: FormData): Promi
 
 export async function getChildGrades(id: string): Promise<Grade[]> {
   const res = await api.get(`/api/parent/children/${id}/grades`);
+  return res.data;
+}
+
+/**
+ * Boletim completo do aluno (Spec 150 FR-007).
+ *
+ * `grades` continua sendo o resumo por componente; esta rota devolve a nota por avaliação, a
+ * recuperação e a situação de cada componente.
+ */
+export async function getChildReportCard(id: string): Promise<ReportCard> {
+  const res = await api.get(`/api/parent/children/${id}/report-card`);
   return res.data;
 }

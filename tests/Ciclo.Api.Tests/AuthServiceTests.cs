@@ -621,6 +621,14 @@ public sealed class AuthServiceTests : IDisposable
             .FirstAsync(u => u.Email == "invited@test.com");
         // Sem senha: não há como autenticar antes de aceitar o convite.
         Assert.False(await _userManager.HasPasswordAsync(stored));
+
+        // Spec 120: o convite é persistido como hash com prazo — o token em claro não fica no banco.
+        var invitation = await _dbContext.Invitations.IgnoreQueryFilters()
+            .SingleAsync(i => i.UserId == stored.Id);
+        Assert.NotEqual(inviteToken, invitation.TokenHash);
+        Assert.Matches("^[0-9a-f]{64}$", invitation.TokenHash);
+        Assert.Null(invitation.UsedAt);
+        Assert.True(invitation.ExpiresAt > DateTime.UtcNow);
     }
 
     [Fact]
@@ -643,12 +651,14 @@ public sealed class AuthServiceTests : IDisposable
             TestConstants.TenantId,
             UserRole.Admin);
 
-        // Antes de aceitar, o login não é possível (não há senha).
-        await Assert.ThrowsAsync<AuthException>(() =>
+        // Antes de aceitar, o primeiro login fica bloqueado pelo convite pendente.
+        var blocked = await Assert.ThrowsAsync<AuthException>(() =>
             _authService.LoginAsync(new LoginRequest("accept@test.com", "NewPassword1!")));
+        Assert.Equal("invitation_pending", blocked.Message);
+        Assert.Equal(403, blocked.StatusCode);
 
-        await _authService.ResetPasswordAsync(
-            new ResetPasswordRequest("accept@test.com", inviteToken, "NewPassword1!"));
+        await _authService.AcceptInviteAsync(
+            new AcceptInviteRequest("accept@test.com", inviteToken, "NewPassword1!"));
 
         var login = await _authService.LoginAsync(
             new LoginRequest("accept@test.com", "NewPassword1!"));

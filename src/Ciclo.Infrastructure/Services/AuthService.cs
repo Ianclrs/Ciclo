@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -21,6 +23,7 @@ public interface IAuthService
     Task RevokeTokenAsync(string refreshToken);
     Task<string?> ForgotPasswordAsync(string email);
     Task ResetPasswordAsync(ResetPasswordRequest request);
+    Task AcceptInviteAsync(AcceptInviteRequest request);
     Task<AuthResponse> GenerateAuthResponseForUser(User user);
 
     // M11 — gestão de usuários e verificação de e-mail
@@ -133,6 +136,16 @@ public class AuthService : IAuthService
 
         if (!user.IsActive)
             throw new AuthException("account_inactive", 403);
+
+        // Convite pendente e nao expirado e a evidencia de que a posse da caixa ainda nao foi
+        // provada: o primeiro login fica bloqueado ate o aceite. A checagem ocorre antes de
+        // qualquer tentativa de senha, portanto nao incrementa AccessFailedCount nem LockoutEnd.
+        var now = DateTime.UtcNow;
+        var hasPendingInvitation = await _dbContext.Invitations
+            .IgnoreQueryFilters()
+            .AnyAsync(i => i.UserId == user.Id && i.UsedAt == null && i.ExpiresAt > now);
+        if (hasPendingInvitation)
+            throw new AuthException("invitation_pending", 403);
 
         // Bloqueio por excesso de tentativas (5 tentativas / 30 minutos)
         if (await _userManager.IsLockedOutAsync(user))
@@ -259,24 +272,13 @@ public class AuthService : IAuthService
         {
             token.RevokedAt = revokedAt;
 
-            if (reason is null)
-            {
-                _audit.Record(new AuditEntry(
-                    AuditActions.SessionRevoked,
-                    AuditTargetTypes.Session,
-                    token.Id,
-                    new { RevokedAt = (DateTime?)null },
-                    new { RevokedAt = token.RevokedAt }));
-            }
-            else
-            {
-                _audit.Record(new AuditEntry(
-                    AuditActions.SessionRevoked,
-                    AuditTargetTypes.Session,
-                    token.Id,
-                    new { RevokedAt = (DateTime?)null },
-                    new { RevokedAt = token.RevokedAt, Reason = reason }));
-            }
+            // O motivo só aparece no snapshot quando existe: a serialização da trilha omite nulos.
+            _audit.Record(new AuditEntry(
+                AuditActions.SessionRevoked,
+                AuditTargetTypes.Session,
+                token.Id,
+                new { RevokedAt = (DateTime?)null },
+                new { RevokedAt = token.RevokedAt, Reason = reason }));
         }
 
         await _dbContext.SaveChangesAsync();
@@ -338,6 +340,77 @@ public class AuthService : IAuthService
 #pragma warning restore CA1848, CA1873
     }
 
+    /// <summary>
+    /// Spec 120: aceite do convite. Consome o convite pelo hash, define a primeira senha da conta
+    /// criada por convite e confirma o e-mail na mesma operação — aceitar é a prova de posse da
+    /// caixa, e por isso o mesmo ato ativa a conta.
+    /// </summary>
+    public async Task AcceptInviteAsync(AcceptInviteRequest request)
+    {
+        var email = request.Email?.Trim().ToLowerInvariant();
+        if (string.IsNullOrEmpty(email) || string.IsNullOrWhiteSpace(request.Token))
+            throw new AuthException("invite_invalid", 400);
+
+        var user = await _dbContext.Users
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(u => u.Email == email);
+
+        // E-mail inexistente e token desconhecido respondem o mesmo código: não se revela se a
+        // caixa existe.
+        if (user is null)
+            throw new AuthException("invite_invalid", 400);
+
+        if (!user.IsActive)
+            throw new AuthException("account_inactive", 403);
+
+        _tenantContext.SetTenant(user.TenantId);
+
+        var now = DateTime.UtcNow;
+        var invitation = await _dbContext.Invitations
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(i =>
+                i.UserId == user.Id && i.TokenHash == HashInvitationToken(request.Token));
+
+        if (invitation is null)
+            throw new AuthException("invite_invalid", 400);
+
+        if (invitation.UsedAt is not null)
+            throw new AuthException("invite_used", 400);
+
+        if (invitation.ExpiresAt <= now)
+            throw new AuthException("invite_expired", 400);
+
+        if (string.IsNullOrEmpty(request.NewPassword))
+            throw new AuthException("invalid_password", 400);
+
+        // A conta de convite nasce sem PasswordHash: AddPassword define a primeira senha e já a
+        // persiste. Falha de política não altera nada — o convite continua pendente.
+        var password = await _userManager.AddPasswordAsync(user, request.NewPassword);
+        if (!password.Succeeded)
+            throw new AuthException("invalid_password", 400);
+
+        invitation.UsedAt = now;
+        user.EmailConfirmed = true;
+
+        // O token apresentado é o único que provou a posse da caixa; os demais convites pendentes
+        // do usuário morrem com o aceite.
+        var otherPending = await _dbContext.Invitations
+            .IgnoreQueryFilters()
+            .Where(i => i.UserId == user.Id && i.Id != invitation.Id
+                && i.UsedAt == null && i.ExpiresAt > now)
+            .ToListAsync();
+
+        foreach (var stale in otherPending)
+            stale.UsedAt = now;
+
+        var updated = await _userManager.UpdateAsync(user);
+        if (!updated.Succeeded)
+            throw new AuthException(
+                string.Join(", ", updated.Errors.Select(e => e.Description)), 400);
+
+        await _dbContext.SaveChangesAsync();
+    }
+
 
     public Task<AuthResponse> GenerateAuthResponseForUser(User user)
     {
@@ -346,6 +419,38 @@ public class AuthService : IAuthService
 
     /// <summary>B4: retenção dos tokens revogados — auditoria de reuso sem crescimento sem fim.</summary>
     private const int RevokedTokenRetentionDays = 30;
+
+    /// <summary>
+    /// Spec 120: validade do convite. Sete dias é o prazo para o convidado provar a posse da
+    /// caixa; passado isso o convite não serve mais e o Admin emite outro. A expiração é avaliada
+    /// na leitura, sem job de limpeza.
+    /// </summary>
+    private const int InvitationLifetimeDays = 7;
+
+    /// <summary>
+    /// Spec 120: segredo do convite. 32 bytes de entropia em Base64Url — o valor em claro existe
+    /// apenas na resposta ao Admin e nunca é persistido.
+    /// </summary>
+    private static string GenerateInvitationToken()
+    {
+        var bytes = RandomNumberGenerator.GetBytes(32);
+
+        return Convert.ToBase64String(bytes)
+            .Replace('+', '-')
+            .Replace('/', '_')
+            .TrimEnd('=');
+    }
+
+    /// <summary>
+    /// Spec 120: única representação persistida do convite — SHA-256 em hexadecimal minúsculo.
+    /// O serviço valida token vazio antes de chamar; nulo é erro de programação.
+    /// </summary>
+    private static string HashInvitationToken(string token)
+    {
+        ArgumentNullException.ThrowIfNull(token);
+
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(token))).ToLowerInvariant();
+    }
 
     /// <summary>
     /// Duração do refresh token quando a pessoa NÃO pediu para ser lembrada. O cookie que o
@@ -415,9 +520,9 @@ public class AuthService : IAuthService
     }
 
     /// <summary>
-    /// M11 — convite. A conta nasce SEM SENHA e sem e-mail confirmado; o convite carrega um token
-    /// de definição de senha. Aceitar o convite (reset de senha) é o que prova a posse da caixa
-    /// de e-mail e ativa a conta — por isso não é preciso bloquear login de quem já tem senha.
+    /// M11/120 — convite. A conta nasce SEM SENHA e sem e-mail confirmado; o convite é um agregado
+    /// próprio (<see cref="UserInvitation"/>) que guarda apenas o hash do token e a expiração.
+    /// Aceitar o convite é o que prova a posse da caixa de e-mail e ativa a conta.
     /// </summary>
     public async Task<(UserDto User, string InviteToken)> InviteUserAsync(
         InviteUserRequest request, Guid tenantId, UserRole actorRole)
@@ -428,30 +533,67 @@ public class AuthService : IAuthService
             throw new AuthException("invalid_role", 400);
 
         var email = request.Email.Trim().ToLowerInvariant();
-        await EmailUniqueness.EnsureAvailableAsync(_dbContext, email);
+        var now = DateTime.UtcNow;
         _tenantContext.SetTenant(tenantId);
 
-        var user = new User
+        var user = await _dbContext.Users
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(u => u.Email == email);
+
+        if (user is null)
         {
-            TenantId = tenantId,
-            Email = email,
-            UserName = email,
-            Name = request.Name,
-            Role = request.Role,
-            IsActive = true,
-            EmailConfirmed = false,
-            CreatedAt = DateTime.UtcNow
-        };
+            user = new User
+            {
+                TenantId = tenantId,
+                Email = email,
+                UserName = email,
+                Name = request.Name,
+                Role = request.Role,
+                IsActive = true,
+                EmailConfirmed = false,
+                CreatedAt = now
+            };
 
-        // Sem senha: até aceitar o convite, o usuário não tem como autenticar.
-        var created = await _userManager.CreateAsync(user);
-        if (!created.Succeeded)
-            throw new AuthException(
-                string.Join(", ", created.Errors.Select(e => e.Description)), 400);
+            // Sem senha: até aceitar o convite, o usuário não tem como autenticar.
+            var created = await _userManager.CreateAsync(user);
+            if (!created.Succeeded)
+                throw new AuthException(
+                    string.Join(", ", created.Errors.Select(e => e.Description)), 400);
 
-        await _userManager.AddToRoleAsync(user, user.Role.ToString());
+            await _userManager.AddToRoleAsync(user, user.Role.ToString());
+        }
+        else
+        {
+            // E-mail de outro colégio, ou conta já ativa com senha: a regra de e-mail único é do
+            // dono dela (EmailUniqueness) e o caminho é o e-mail em uso. Conta do mesmo colégio
+            // ainda sem senha é justamente o caso do reconvite — por isso não é recusada aqui.
+            if (user.TenantId != tenantId || user.PasswordHash is not null)
+                await EmailUniqueness.EnsureAvailableAsync(_dbContext, email);
 
-        var inviteToken = await _userManager.GeneratePasswordResetTokenAsync(user);
+            // Rotação: o reconvite invalida os convites pendentes, e o token novo passa a ser o
+            // único que abre a conta — dois tokens válidos ao mesmo tempo seriam dois caminhos.
+            var pending = await _dbContext.Invitations
+                .IgnoreQueryFilters()
+                .Where(i => i.UserId == user.Id && i.UsedAt == null && i.ExpiresAt > now)
+                .ToListAsync();
+
+            foreach (var previous in pending)
+                previous.UsedAt = now;
+        }
+
+        var inviteToken = GenerateInvitationToken();
+        _dbContext.Invitations.Add(new UserInvitation
+        {
+            Id = Guid.NewGuid(),
+            UserId = user.Id,
+            TenantId = user.TenantId,
+            TokenHash = HashInvitationToken(inviteToken),
+            CreatedAt = now,
+            ExpiresAt = now.AddDays(InvitationLifetimeDays)
+        });
+
+        await _dbContext.SaveChangesAsync();
+
         return (ToDto(user), inviteToken);
     }
 
@@ -511,6 +653,12 @@ public class AuthService : IAuthService
         if (!result.Succeeded)
             throw new AuthException(
                 string.Join(", ", result.Errors.Select(e => e.Description)), 400);
+
+        // Desativar precisa encerrar as sessões: um refresh token já emitido renovaria a
+        // sessão do usuário desativado por até 30 dias, anulando o efeito da desativação.
+        // A revogação só acontece depois da desativação persistida com sucesso.
+        if (!isActive)
+            await RevokeAllActiveTokensAsync(user.Id, "account_deactivated");
 
         return ToDto(user);
     }

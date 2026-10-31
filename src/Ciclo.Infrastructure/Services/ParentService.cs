@@ -14,6 +14,7 @@ public interface IParentService
     Task<List<DocumentDto>> GetChildDocumentsAsync(Guid parentId, Guid studentId, Guid tenantId);
     Task<DocumentDto> UploadDocumentAsync(Guid parentId, Guid studentId, Stream fileStream, string fileName, string contentType, Guid documentTypeId, Guid tenantId);
     Task<List<GradeDto>> GetChildGradesAsync(Guid parentId, Guid studentId, Guid tenantId);
+    Task<ReportCardDto> GetChildReportCardAsync(Guid parentId, Guid studentId, Guid tenantId, CancellationToken cancellationToken = default);
 }
 
 public class ParentService : IParentService
@@ -126,7 +127,8 @@ public class ParentService : IParentService
                 e.MotivoRejeicao, e.CreatedAt, e.ApprovedAt))
             .FirstOrDefaultAsync();
 
-        return new ChildDetailDto(student, documents, currentEnrollment, []);
+        return new ChildDetailDto(
+            student, documents, currentEnrollment, ToGradeDtos(await LoadReportCardAsync(studentId, CancellationToken.None)));
     }
 
     // ── FR-004: Child Documents ──────────────────────────────────────
@@ -157,13 +159,115 @@ public class ParentService : IParentService
             fileStream, fileName, contentType, studentId, documentTypeId, tenantId, parentId, UserRole.Parent);
     }
 
-    // ── FR-006: Grades (placeholder) ─────────────────────────────────
+    // ── FR-006 / FR-007: Grades and report card ──────────────────────
+    //
+    // O vínculo responsável-aluno é a única porta: nenhuma leitura de nota acontece sem
+    // VerifyParentChildLinkAsync, e a turma vem do vínculo por referência (SchoolClassId),
+    // nunca da string espelho.
 
     public async Task<List<GradeDto>> GetChildGradesAsync(Guid parentId, Guid studentId, Guid tenantId)
     {
         await VerifyParentChildLinkAsync(parentId, studentId);
-        return [];
+
+        return ToGradeDtos(await LoadReportCardAsync(studentId, CancellationToken.None));
     }
+
+    public async Task<ReportCardDto> GetChildReportCardAsync(
+        Guid parentId, Guid studentId, Guid tenantId, CancellationToken cancellationToken = default)
+    {
+        await VerifyParentChildLinkAsync(parentId, studentId);
+
+        return await LoadReportCardAsync(studentId, cancellationToken);
+    }
+
+    /// <summary>
+    /// Monta o boletim do aluno a partir da turma vinculada. Sem turma não existe avaliação a
+    /// ler: devolve boletim vazio com turma e ano nulos, sem lançar. As notas ausentes entram
+    /// como <c>null</c> na avaliação e não pesam na média — o componente sem nenhuma nota sai
+    /// como <c>sem_nota</c>.
+    /// </summary>
+    private async Task<ReportCardDto> LoadReportCardAsync(Guid studentId, CancellationToken cancellationToken)
+    {
+        var student = await _db.Students
+            .Where(s => s.Id == studentId)
+            .Select(s => new { s.Id, s.Turma, s.AnoLetivo, s.SchoolClassId })
+            .FirstOrDefaultAsync(cancellationToken)
+            ?? throw new AccessDeniedException("not_linked_to_student");
+
+        if (student.SchoolClassId is null)
+            return new ReportCardDto(student.Id, null, null, []);
+
+        var assessments = await _db.Assessments
+            .Where(a => a.SchoolClassId == student.SchoolClassId)
+            .Select(a => new AssessmentRecord(
+                a.Id, a.Title, a.Weight, a.Date, a.IsRecovery, a.CurriculumComponentId, a.CurriculumComponent.Name))
+            .ToListAsync(cancellationToken);
+
+        if (assessments.Count == 0)
+            return new ReportCardDto(student.Id, student.Turma, student.AnoLetivo, []);
+
+        var gradeByAssessment = await _db.Grades
+            .Where(g => g.StudentId == studentId)
+            .Select(g => new { g.AssessmentId, g.Value })
+            .ToDictionaryAsync(g => g.AssessmentId, g => g.Value, cancellationToken);
+
+        var entries = assessments
+            .GroupBy(a => new { a.CurriculumComponentId, a.Componente })
+            .OrderBy(group => group.Key.Componente, StringComparer.OrdinalIgnoreCase)
+            .Select(group =>
+            {
+                // Só avaliação com nota participa da média: nota não lançada não é zero.
+                var scores = group
+                    .Where(a => gradeByAssessment.ContainsKey(a.Id))
+                    .Select(a => new AssessmentScore(gradeByAssessment[a.Id], a.Weight, a.IsRecovery))
+                    .ToList();
+
+                var regularAverage = GradeCalculation.ComputeRegularAverage(scores);
+
+                // A média de recuperação usa o mesmo cálculo do dono, com a marca de recuperação
+                // removida — duplicar a fórmula de média ponderada aqui seria um segundo dono.
+                var recoveryAverage = GradeCalculation.ComputeRegularAverage(
+                    scores.Where(score => score.IsRecovery).Select(score => score with { IsRecovery = false }));
+
+                var finalAverage = GradeCalculation.ComputeFinalAverage(regularAverage, recoveryAverage);
+
+                return new ReportCardEntryDto(
+                    group.Key.Componente,
+                    regularAverage,
+                    recoveryAverage,
+                    finalAverage,
+                    GradeCalculation.ResolveSituation(finalAverage),
+                    group
+                        .OrderBy(a => a.Date)
+                        .ThenBy(a => a.Title, StringComparer.OrdinalIgnoreCase)
+                        .Select(a => new ReportCardScoreDto(
+                            a.Title,
+                            a.Weight,
+                            gradeByAssessment.TryGetValue(a.Id, out var grade) ? grade : null,
+                            a.Date,
+                            a.IsRecovery))
+                        .ToList());
+            })
+            .ToList();
+
+        return new ReportCardDto(student.Id, student.Turma, student.AnoLetivo, entries);
+    }
+
+    /// <summary>Resumo por componente do boletim — o mesmo shape que a aba de notas já consome.</summary>
+    private static List<GradeDto> ToGradeDtos(ReportCardDto reportCard) =>
+        reportCard.Componentes
+            .Select(entry => new GradeDto(entry.Componente, entry.MediaFinal, null))
+            .ToList();
+
+    /// <summary>Projeção da avaliação com o nome do componente, para agrupar sem segunda consulta.</summary>
+    private sealed record AssessmentRecord(
+        Guid Id,
+        string Title,
+        decimal Weight,
+        DateOnly Date,
+        bool IsRecovery,
+        Guid CurriculumComponentId,
+        string Componente);
 
     // ── FR-007: Access Control ───────────────────────────────────────
 

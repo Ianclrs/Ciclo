@@ -77,6 +77,23 @@ public sealed class CorrelationTests
         Assert.False(problem.Extensions.ContainsKey(ProblemResponse.CorrelationExtension));
     }
 
+    [Fact]
+    public async Task WriteAsync_IncludesCorrelationIdInTheBody()
+    {
+        var context = new DefaultHttpContext();
+        context.Items[AuditCorrelation.ItemsKey] = "corr-write";
+        context.Response.Body = new MemoryStream();
+
+        await ProblemResponse.WriteAsync(context, 401, "unauthorized", "unauthorized");
+
+        context.Response.Body.Position = 0;
+        var body = await new StreamReader(context.Response.Body).ReadToEndAsync();
+
+        Assert.Equal(401, context.Response.StatusCode);
+        Assert.Contains(ProblemResponse.CorrelationExtension, body);
+        Assert.Contains("corr-write", body);
+    }
+
     private static ActionExecutedContext Executed(HttpContext http, ProblemDetails problem)
     {
         var actionContext = new ActionContext(http, new RouteData(), new ActionDescriptor());

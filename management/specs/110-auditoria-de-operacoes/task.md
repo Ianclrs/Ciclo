@@ -68,7 +68,7 @@ Tasks MUST be executed sequentially in numerical order. Each task depends on the
 - [ ] Build 0 erros / 0 avisos.
 - [ ] `grep -n "SaveChanges" src/Ciclo.Infrastructure/Auditing/AuditTrail.cs` não retorna nada.
 - [ ] `grep -n "catch" src/Ciclo.Infrastructure/Auditing/AuditTrail.cs` não retorna nada.
-**Status:** [ ] pending
+**Status:** [x] done
 
 ### Task 4: Migration `AddAuditEvents` com gatilhos append-only
 
@@ -86,7 +86,7 @@ Tasks MUST be executed sequentially in numerical order. Each task depends on the
 - [ ] Build 0 erros / 0 avisos (código de migration é `generated_code`; o `.editorconfig` já o exclui de analisadores de estilo).
 - [ ] `MigrationHistoryTests` passa, incluindo `HasPendingModelChanges() == false`.
 - [ ] `grep -c "audit_events_no_update\|audit_events_no_delete\|audit_events_append_only_guard" src/Ciclo.Infrastructure/Migrations/*_AddAuditEvents.cs` retorna 3 ou mais.
-**Status:** [ ] pending
+**Status:** [x] done
 
 ### Task 5: Middleware de captura e wiring no `Program`
 
@@ -104,7 +104,7 @@ Tasks MUST be executed sequentially in numerical order. Each task depends on the
 - [ ] Build 0 erros / 0 avisos.
 - [ ] `ApiAuthorizationPipelineTests`, `ApiRateLimitingPipelineTests` e `HealthControllerTests` passam (o host sobe com o middleware novo).
 - [ ] `Health_EchoesTheCorrelationIdHeader` será criado na Task 15; manualmente, `curl -i http://localhost:5264/health` mostra `X-Correlation-Id`.
-**Status:** [ ] pending
+**Status:** [x] done
 
 ### Task 6: Instrumentar decisões de matrícula
 
@@ -122,7 +122,7 @@ Tasks MUST be executed sequentially in numerical order. Each task depends on the
 - [ ] Build 0 erros / 0 avisos.
 - [ ] `grep -c "_audit.Record" src/Ciclo.Infrastructure/Services/EnrollmentService.cs` retorna 3.
 - [ ] `grep -c "enrollment.approved" src/Ciclo.Infrastructure/Services/EnrollmentService.cs` retorna 0 (usa constante).
-**Status:** [ ] pending
+**Status:** [x] done
 
 ### Task 7: Instrumentar verificação documental
 
@@ -138,7 +138,7 @@ Tasks MUST be executed sequentially in numerical order. Each task depends on the
 **Validation:**
 - [ ] Build 0 erros / 0 avisos.
 - [ ] `grep -c "_audit.Record" src/Ciclo.Infrastructure/Services/DocumentService.cs` retorna 1.
-**Status:** [ ] pending
+**Status:** [x] done
 
 ### Task 8: Instrumentar revogação de sessão
 
@@ -155,7 +155,7 @@ Tasks MUST be executed sequentially in numerical order. Each task depends on the
 - [ ] Build 0 erros / 0 avisos.
 - [ ] `grep -c "_audit.Record" src/Ciclo.Infrastructure/Services/AuthService.cs` retorna 2.
 - [ ] `AuthServiceTests` compila e passa após a Task 12.
-**Status:** [ ] pending
+**Status:** [x] done
 
 ### Task 9: Contratos de leitura, CSV e serviço de consulta
 
@@ -175,7 +175,7 @@ Tasks MUST be executed sequentially in numerical order. Each task depends on the
 - [ ] Build 0 erros / 0 avisos (atenção a CA1861 e SYSLIB1045).
 - [ ] `grep -c "AsNoTracking" src/Ciclo.Infrastructure/Services/AuditQueryService.cs` retorna 1.
 - [ ] `grep -c "IgnoreQueryFilters" src/Ciclo.Infrastructure/Services/AuditQueryService.cs` retorna 0.
-**Status:** [ ] pending
+**Status:** [x] done
 
 ### Task 10: Controlador de auditoria (consulta e exportação)
 
@@ -193,7 +193,7 @@ Tasks MUST be executed sequentially in numerical order. Each task depends on the
 - [ ] `ApiRouteConventionTests` passa (rota sob `api/`).
 - [ ] `ApiAuthorizationTests` passa (nenhuma rota anônima nova).
 - [ ] `grep -c "HttpPut\|HttpDelete\|HttpPatch" src/Ciclo.Api/Controllers/AuditController.cs` retorna 0.
-**Status:** [ ] pending
+**Status:** [x] done
 
 ### Task 11: Expurgo de retenção
 
@@ -209,7 +209,7 @@ Tasks MUST be executed sequentially in numerical order. Each task depends on the
 - [ ] Build 0 erros / 0 avisos.
 - [ ] `grep -c "IgnoreQueryFilters" src/Ciclo.Infrastructure/Auditing/AuditRetentionPurger.cs` retorna 1.
 - [ ] O host de teste (`HealthControllerTests`) continua subindo sem tentar conectar ao banco.
-**Status:** [ ] pending
+**Status:** [x] done
 
 ### Task 12: Atualizar testes existentes para os novos construtores
 
@@ -226,7 +226,7 @@ Tasks MUST be executed sequentially in numerical order. Each task depends on the
 **Validation:**
 - [ ] Build 0 erros / 0 avisos.
 - [ ] Suíte completa passa com a contagem anterior acrescida de zero testes (somente adaptação).
-**Status:** [ ] pending
+**Status:** [x] done
 
 ### Task 13: Testes de escrita, imutabilidade, correlação, ator e configuração
 
@@ -244,7 +244,7 @@ Tasks MUST be executed sequentially in numerical order. Each task depends on the
 - [ ] Build 0 erros / 0 avisos.
 - [ ] Suíte completa verde.
 - [ ] Os testes de imutabilidade falham se `GuardAuditImmutability()` for removido (controle negativo executado na Task 17).
-**Status:** [ ] pending
+**Status:** [x] done
 
 ### Task 14: Testes de cobertura das operações sensíveis e de atomicidade
 
@@ -262,7 +262,7 @@ Tasks MUST be executed sequentially in numerical order. Each task depends on the
 - [ ] Build 0 erros / 0 avisos.
 - [ ] Suíte completa verde.
 - [ ] `FailedTransition_WritesNoEvent` falha se o registro for movido para antes da validação de transição (controle negativo na Task 17).
-**Status:** [ ] pending
+**Status:** [x] done
 
 ### Task 15: Testes de consulta, exportação, isolamento e correlação no pipeline
 
@@ -280,7 +280,7 @@ Tasks MUST be executed sequentially in numerical order. Each task depends on the
 - [ ] Build 0 erros / 0 avisos.
 - [ ] Suíte completa verde.
 - [ ] `Query_DoesNotReturnEventsFromAnotherTenant` falha se o `Where` de tenant for removido do modelo (controle negativo na Task 17).
-**Status:** [ ] pending
+**Status:** [x] done
 
 ### Task 16: Testes de retenção
 
@@ -297,7 +297,7 @@ Tasks MUST be executed sequentially in numerical order. Each task depends on the
 - [ ] Build 0 erros / 0 avisos.
 - [ ] Suíte completa verde.
 - [ ] `Purge_DeletesOnlyEventsOlderThanRetention` falha se `IgnoreQueryFilters()` for removido (controle negativo na Task 17).
-**Status:** [ ] pending
+**Status:** [x] done
 
 ### Task 17: Controles negativos e evidência
 
@@ -314,7 +314,7 @@ Tasks MUST be executed sequentially in numerical order. Each task depends on the
 **Validation:**
 - [ ] Os quatro controles falharam antes da restauração e a suíte voltou a verde depois.
 - [ ] Nenhuma alteração temporária permaneceu na árvore (`git diff` apenas com as mudanças intencionais do spec).
-**Status:** [ ] pending
+**Status:** [x] done
 
 ### Task 18: ADR-004, validação com PostgreSQL real e gates finais
 

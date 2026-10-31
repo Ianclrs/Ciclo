@@ -55,7 +55,12 @@ api.interceptors.response.use(
     }
     // Não tentar refresh em endpoints anônimos de autenticação:
     // o 401 do login é só "credenciais inválidas" e deve aparecer na tela.
-    const anonymousAuthEndpoints = ['/api/auth/login', '/api/auth/forgot-password', '/api/auth/reset-password'];
+    const anonymousAuthEndpoints = [
+      '/api/auth/login',
+      '/api/auth/forgot-password',
+      '/api/auth/reset-password',
+      '/api/auth/accept-invite',
+    ];
     if (anonymousAuthEndpoints.includes(original.url)) {
       return Promise.reject(error);
     }

@@ -12,9 +12,16 @@ public sealed class AuditContextMiddleware
 
     public async Task InvokeAsync(HttpContext context, AuditActor actor)
     {
-        var correlationId = AuditCorrelation.Resolve(
-            context.Request.Headers[AuditCorrelation.HeaderName].ToString(),
-            context.TraceIdentifier);
+        // A correlação já foi resolvida uma única vez na borda (Spec 130, CorrelationMiddleware) e
+        // publicada em Items; reutilizá-la evita recompilar o padrão de validação a cada requisição
+        // e garante que log, resposta e evento de auditoria carreguem o mesmo valor. O fallback
+        // existe para execução fora desse pipeline (testes, chamada direta do middleware).
+        var correlationId =
+            context.Items[AuditCorrelation.ItemsKey] is string resolved && resolved.Length > 0
+                ? resolved
+                : AuditCorrelation.Resolve(
+                    context.Request.Headers[AuditCorrelation.HeaderName].ToString(),
+                    context.TraceIdentifier);
 
         actor.SetCorrelationId(correlationId);
         actor.Capture(

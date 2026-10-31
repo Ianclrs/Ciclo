@@ -1,0 +1,41 @@
+# Spec 140: comunicacao-proativa — Design
+
+## Design Approach
+
+<!-- SPEC-NEW-SKELETON-FILL -->
+
+## Architecture Decisions
+
+<!-- SPEC-NEW-SKELETON-FILL -->
+
+## Component / Module Breakdown
+
+### Component: Fill component name
+
+**Purpose:** Fill what this component does.
+**Interface:** Fill the exact API signature.
+**Internal Logic:** Fill step-by-step internals.
+**Dependencies:** Fill dependencies.
+**Error Handling:** Fill error handling.
+
+<!-- SPEC-NEW-SKELETON-FILL -->
+
+## Data Flow
+
+<!-- SPEC-NEW-SKELETON-FILL -->
+
+## Data Structures
+
+<!-- SPEC-NEW-SKELETON-FILL -->
+
+## File / Module Layout
+
+<!-- SPEC-NEW-SKELETON-FILL -->
+
+## Testing Strategy
+
+<!-- SPEC-NEW-SKELETON-FILL -->
+
+## Migration / Rollback
+
+<!-- SPEC-NEW-SKELETON-FILL -->

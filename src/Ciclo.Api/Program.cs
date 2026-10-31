@@ -183,6 +183,10 @@ try
     // Parent Portal services (Spec 90)
     builder.Services.AddScoped<IParentService, ParentService>();
 
+    // Estrutura acadêmica e lançamento de notas (Spec 150). Sem este registro o
+    // `AcademicController` não é ativado e toda rota `api/academic` responde 500.
+    builder.Services.AddScoped<IAcademicService, AcademicService>();
+
     // Rate limiting (Spec 30) — políticas aplicadas por atributo nos endpoints anônimos.
     builder.Services.AddCicloRateLimiting();
 

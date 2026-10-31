@@ -1,9 +1,12 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Ciclo.Core.Auditing;
 using Ciclo.Core.Entities;
 using Ciclo.Core.Interfaces;
+using Ciclo.Core.Notifications;
 using Ciclo.Infrastructure.Contracts;
 using Ciclo.Infrastructure.Data;
+using Ciclo.Infrastructure.Notifications;
 using Ciclo.Infrastructure.Security;
 
 namespace Ciclo.Infrastructure.Services;

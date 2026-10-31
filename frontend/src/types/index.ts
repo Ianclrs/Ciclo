@@ -153,3 +153,68 @@ export interface ChildDetail {
   currentEnrollment: Enrollment | null;
   grades: Grade[];
 }
+
+/* ── Spec 150: estrutura acadêmica e boletim ────────────────────────────────
+   Campos exatamente como a API os serializa (camelCase). `startDate`, `endDate`
+   e `date` são `DateOnly` no backend e chegam como `YYYY-MM-DD`, sem hora e sem
+   fuso — por isso são formatados por `formatDateOnly`, nunca por `formatDate`. */
+
+export interface AcademicYear {
+  id: string;
+  year: number;
+  startDate: string;
+  endDate: string;
+  isActive: boolean;
+}
+
+export interface SchoolClass {
+  id: string;
+  name: string;
+  academicYearId: string;
+  /** Ano letivo resolvido pelo backend, para a tela não precisar cruzar listas. */
+  year: number;
+}
+
+export interface CurriculumComponent {
+  id: string;
+  name: string;
+  code: string;
+  isActive: boolean;
+}
+
+export interface Assessment {
+  id: string;
+  schoolClassId: string;
+  curriculumComponentId: string;
+  title: string;
+  weight: number;
+  date: string;
+  isRecovery: boolean;
+}
+
+/** Situações possíveis de um componente no boletim (vocabulário do backend). */
+export type ReportCardStatus = 'aprovado' | 'recuperacao' | 'reprovado' | 'sem_nota';
+
+export interface ReportCardScore {
+  avaliacao: string;
+  peso: number;
+  nota: number | null;
+  data: string;
+  recuperacao: boolean;
+}
+
+export interface ReportCardEntry {
+  componente: string;
+  mediaRegular: number | null;
+  notaRecuperacao: number | null;
+  mediaFinal: number | null;
+  situacao: ReportCardStatus;
+  avaliacoes: ReportCardScore[];
+}
+
+export interface ReportCard {
+  alunoId: string;
+  turma: string | null;
+  anoLetivo: number | null;
+  componentes: ReportCardEntry[];
+}

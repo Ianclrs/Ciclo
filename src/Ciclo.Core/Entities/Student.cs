@@ -11,6 +11,11 @@ public class Student : ITenantScoped
     public string? Cpf { get; set; }
     public string Turma { get; set; } = string.Empty;
     public int AnoLetivo { get; set; }
+
+    // Spec 150 — vínculo por referência. Turma e AnoLetivo continuam existindo como espelho de
+    // compatibilidade do contrato de StudentDto; a autoridade é a entidade apontada aqui.
+    public Guid? AcademicYearId { get; set; }
+    public Guid? SchoolClassId { get; set; }
     public StudentStatus Status { get; set; } = StudentStatus.Ativo;
     public string? Observacoes { get; set; }
     // Foto do aluno como data URL (Base64), já redimensionada pelo navegador antes do envio.
@@ -20,6 +25,8 @@ public class Student : ITenantScoped
 
     // Navigation
     public Tenant Tenant { get; set; } = null!;
+    public AcademicYear? AcademicYear { get; set; }
+    public SchoolClass? SchoolClass { get; set; }
     public ICollection<StudentParent> StudentParents { get; set; } = [];
 }
 

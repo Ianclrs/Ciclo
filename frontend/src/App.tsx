@@ -5,7 +5,7 @@ import { ProtectedRoute } from './components/ProtectedRoute';
 import { SplashGate } from './components/SplashGate';
 import { Sidebar } from './components/Sidebar';
 import DocumentTitle from './components/DocumentTitle';
-import { LayoutDashboard, Users, FileText, Bell, GraduationCap, UserCog } from 'lucide-react';
+import { LayoutDashboard, Users, FileText, Bell, GraduationCap, UserCog, BookOpen } from 'lucide-react';
 import { useAuth } from './hooks/useAuth';
 import AuthPage from './pages/AuthPage';
 import ForgotPasswordPage from './pages/ForgotPasswordPage';
@@ -19,6 +19,8 @@ import DocumentVerification from './pages/admin/DocumentVerification';
 import NotificationList from './pages/admin/NotificationList';
 import NotificationCreate from './pages/admin/NotificationCreate';
 import UserManagement from './pages/admin/UserManagement';
+import AcademicStructure from './pages/admin/AcademicStructure';
+import GradeEntry from './pages/admin/GradeEntry';
 import ParentDashboard from './pages/parent/ParentDashboard';
 import ChildDetail from './pages/parent/ChildDetail';
 import ChildDocuments from './pages/parent/ChildDocuments';
@@ -29,6 +31,7 @@ const adminItems = [
   { label: 'Alunos', path: '/admin/students', icon: <Users size={20} />, color: 'blue' as const },
   { label: 'Matrículas', path: '/admin/enrollments', icon: <GraduationCap size={20} />, color: 'green' as const },
   { label: 'Documentos', path: '/admin/documents', icon: <FileText size={20} />, color: 'amber' as const },
+  { label: 'Acadêmico', path: '/admin/academico', icon: <BookOpen size={20} />, color: 'cyan' as const },
   { label: 'Notificações', path: '/admin/notifications', icon: <Bell size={20} />, color: 'red' as const },
 ];
 
@@ -54,6 +57,8 @@ function AdminLayout() {
           <Route path="enrollments" element={<EnrollmentList />} />
           <Route path="enrollments/:id" element={<EnrollmentDetail />} />
           <Route path="documents" element={<DocumentVerification />} />
+          <Route path="academico" element={<AcademicStructure />} />
+          <Route path="notas" element={<GradeEntry />} />
           <Route path="notifications" element={<NotificationList />} />
           <Route path="notifications/create" element={<NotificationCreate />} />
           <Route path="users" element={<UserManagement />} />

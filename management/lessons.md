@@ -174,3 +174,15 @@ O xUnit executa classes diferentes em coleções paralelas. `WebApplicationFacto
 Se o host for realmente necessário em mais de uma classe, compartilhar **uma** factory via `ICollectionFixture` e marcar as classes com a mesma `[Collection]`, para serializá-las.
 
 **Takeaway:** `WebApplicationFactory<Program>` é estado global do processo, não um objeto isolado. Antes de criar a segunda classe que usa o host, decidir entre teste por reflexão ou collection fixture compartilhada.
+
+## L8: Selo de task e build verde não provam registro no DI
+
+**Contexto:** Spec 150, task 4 ("Controlador administrativo e registro de dependência") selada como `done`. O controlador existia, compilava, e os testes de contrato por reflexão conferiam rota e autorização — todos verdes.
+
+**Symptom:** Toda rota `api/academic` respondia **500** com `Unable to resolve service for type 'IAcademicService' while attempting to activate 'AcademicController'`. O registro `AddScoped<IAcademicService, AcademicService>()` nunca existiu em `Program.cs`.
+
+**Cause:** Os gates da task provavam que o *tipo* e as *rotas* existiam, não que o container sabia construí-lo. Teste de reflexão sobre atributos não exercita o container; o build também não.
+
+**Solution:** `builder.Services.AddScoped<IAcademicService, AcademicService>()` em `Program.cs`, ao lado de `IParentService`.
+
+**Takeaway:** quando a task promete "registro de dependência", a prova precisa de uma chamada real (uma requisição ao endpoint, ou uma resolução no `IServiceProvider` do host). Verificar existência de arquivo/classe é evidência de outra coisa.

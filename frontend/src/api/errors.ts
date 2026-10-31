@@ -80,6 +80,25 @@ const CODE_MESSAGES: Record<string, string> = {
   data_nascimento_too_old: 'A data de nascimento é antiga demais.',
   school_name_required: 'Informe o nome do colégio.',
   type_name_required: 'Informe o nome do tipo de documento.',
+
+  // Estrutura acadêmica e notas (Spec 150). Um texto por código que a tela pode encontrar;
+  // sem isto o usuário via o texto genérico da página e não sabia o que corrigir.
+  academic_year_not_found: 'Ano letivo não encontrado.',
+  academic_year_already_exists: 'Já existe um ano letivo com este ano.',
+  academic_year_invalid: 'Ano letivo inválido.',
+  academic_year_range_invalid: 'As datas do ano letivo são inválidas.',
+  academic_year_in_use: 'Este ano letivo tem turmas e não pode ser excluído.',
+  school_class_not_found: 'Turma não encontrada.',
+  class_name_already_exists: 'Já existe uma turma com este nome neste ano letivo.',
+  school_class_in_use: 'Esta turma tem alunos ou avaliações e não pode ser excluída.',
+  component_not_found: 'Componente curricular não encontrado.',
+  component_code_already_exists: 'Já existe um componente com este código.',
+  component_in_use: 'Este componente tem avaliações e não pode ser excluído.',
+  assessment_title_already_exists: 'Já existe uma avaliação com este título nesta turma e componente.',
+  assessment_weight_invalid: 'O peso da avaliação deve ser maior que zero.',
+  assessment_has_grades: 'Esta avaliação já tem notas lançadas e não pode ser excluída.',
+  student_not_in_class: 'Este aluno não pertence à turma desta avaliação.',
+  grade_out_of_range: 'A nota deve estar entre 0 e 10.',
 };
 
 /** Código de erro devolvido pela API, se houver. */

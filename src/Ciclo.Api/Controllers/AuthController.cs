@@ -186,6 +186,26 @@ public class AuthController : ControllerBase
         }
     }
 
+    /// <summary>
+    /// Spec 120: aceite do convite. Endpoint anônimo porque o convidado ainda não tem senha; o
+    /// token de uso único é a credencial que prova a posse da caixa de e-mail.
+    /// </summary>
+    [HttpPost("accept-invite")]
+    [AllowAnonymous]
+    [EnableRateLimiting(RateLimitPolicies.Auth)]
+    public async Task<IActionResult> AcceptInvite([FromBody] AcceptInviteRequest request)
+    {
+        try
+        {
+            await _authService.AcceptInviteAsync(request);
+            return NoContent();
+        }
+        catch (AuthException ex)
+        {
+            return ProblemResponse.FromCode(ex.Message, ex.StatusCode);
+        }
+    }
+
     /// <summary>M11: confirma o e-mail com o token enviado ao usuário.</summary>
     [HttpPost("confirm-email")]
     [AllowAnonymous]

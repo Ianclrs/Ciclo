@@ -22,6 +22,7 @@ public class AppDbContext : IdentityDbContext<User, IdentityRole<Guid>, Guid>
 
     public DbSet<Tenant> Tenants { get; set; } = null!;
     public DbSet<RefreshToken> RefreshTokens { get; set; } = null!;
+    public DbSet<UserInvitation> Invitations { get; set; } = null!;
     public DbSet<Student> Students { get; set; } = null!;
     public DbSet<StudentParent> StudentParents { get; set; } = null!;
     public DbSet<EnrollmentPeriod> EnrollmentPeriods { get; set; } = null!;
@@ -31,6 +32,12 @@ public class AppDbContext : IdentityDbContext<User, IdentityRole<Guid>, Guid>
     public DbSet<Notification> Notifications { get; set; } = null!;
     public DbSet<UserNotification> UserNotifications { get; set; } = null!;
     public DbSet<AuditEvent> AuditEvents { get; set; } = null!;
+    public DbSet<NotificationDelivery> NotificationDeliveries { get; set; } = null!;
+    public DbSet<AcademicYear> AcademicYears { get; set; } = null!;
+    public DbSet<SchoolClass> SchoolClasses { get; set; } = null!;
+    public DbSet<CurriculumComponent> CurriculumComponents { get; set; } = null!;
+    public DbSet<Assessment> Assessments { get; set; } = null!;
+    public DbSet<Grade> Grades { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -108,6 +115,23 @@ public class AppDbContext : IdentityDbContext<User, IdentityRole<Guid>, Guid>
                 .OnDelete(DeleteBehavior.Cascade);
         });
 
+        // UserInvitation entity configuration (Spec 120)
+        builder.Entity<UserInvitation>(entity =>
+        {
+            entity.HasKey(i => i.Id);
+            entity.Property(i => i.TokenHash).HasMaxLength(64).IsRequired();
+
+            // Único por hash: um convite é um segredo de uso único, e o hash só pode apontar
+            // para uma linha — aceitar o token tem de resolver exatamente um convite.
+            entity.HasIndex(i => i.TokenHash).IsUnique();
+            entity.HasIndex(i => i.UserId);
+
+            entity.HasOne(i => i.User)
+                .WithMany()
+                .HasForeignKey(i => i.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
         // Student entity configuration
         builder.Entity<Student>(entity =>
         {
@@ -129,6 +153,94 @@ public class AppDbContext : IdentityDbContext<User, IdentityRole<Guid>, Guid>
             entity.HasOne(s => s.Tenant)
                 .WithMany()
                 .HasForeignKey(s => s.TenantId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // Spec 150 — vínculo acadêmico por referência. Restrict nas duas chaves: excluir
+            // uma turma ou um ano em uso seria perder a identidade dos alunos pendurados nele.
+            entity.HasOne(s => s.AcademicYear)
+                .WithMany()
+                .HasForeignKey(s => s.AcademicYearId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(s => s.SchoolClass)
+                .WithMany(c => c.Students)
+                .HasForeignKey(s => s.SchoolClassId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // AcademicYear configuration (Spec 150)
+        builder.Entity<AcademicYear>(entity =>
+        {
+            entity.HasKey(y => y.Id);
+            entity.Property(y => y.Year).IsRequired();
+            entity.Property(y => y.IsActive).HasDefaultValue(true);
+
+            entity.HasIndex(y => new { y.TenantId, y.Year }).IsUnique();
+        });
+
+        // SchoolClass configuration (Spec 150)
+        builder.Entity<SchoolClass>(entity =>
+        {
+            entity.HasKey(c => c.Id);
+            entity.Property(c => c.Name).HasMaxLength(50).IsRequired();
+
+            entity.HasIndex(c => new { c.TenantId, c.AcademicYearId, c.Name }).IsUnique();
+
+            entity.HasOne(c => c.AcademicYear)
+                .WithMany(y => y.Classes)
+                .HasForeignKey(c => c.AcademicYearId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // CurriculumComponent configuration (Spec 150)
+        builder.Entity<CurriculumComponent>(entity =>
+        {
+            entity.HasKey(cc => cc.Id);
+            entity.Property(cc => cc.Name).HasMaxLength(100).IsRequired();
+            entity.Property(cc => cc.Code).HasMaxLength(20).IsRequired();
+            entity.Property(cc => cc.IsActive).HasDefaultValue(true);
+
+            entity.HasIndex(cc => new { cc.TenantId, cc.Code }).IsUnique();
+        });
+
+        // Assessment configuration (Spec 150)
+        builder.Entity<Assessment>(entity =>
+        {
+            entity.HasKey(a => a.Id);
+            entity.Property(a => a.Title).HasMaxLength(100).IsRequired();
+            entity.Property(a => a.Weight).HasPrecision(5, 2).HasDefaultValue(1m);
+
+            entity.HasIndex(a => new { a.TenantId, a.SchoolClassId, a.CurriculumComponentId, a.Title })
+                .IsUnique();
+
+            entity.HasOne(a => a.SchoolClass)
+                .WithMany()
+                .HasForeignKey(a => a.SchoolClassId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(a => a.CurriculumComponent)
+                .WithMany()
+                .HasForeignKey(a => a.CurriculumComponentId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // Grade configuration (Spec 150)
+        builder.Entity<Grade>(entity =>
+        {
+            entity.HasKey(g => g.Id);
+            entity.Property(g => g.Value).HasPrecision(5, 2);
+
+            // Chave natural do lançamento: é o que torna o upsert idempotente.
+            entity.HasIndex(g => new { g.AssessmentId, g.StudentId }).IsUnique();
+
+            entity.HasOne(g => g.Assessment)
+                .WithMany()
+                .HasForeignKey(g => g.AssessmentId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(g => g.Student)
+                .WithMany()
+                .HasForeignKey(g => g.StudentId)
                 .OnDelete(DeleteBehavior.Restrict);
         });
 
@@ -301,6 +413,30 @@ public class AppDbContext : IdentityDbContext<User, IdentityRole<Guid>, Guid>
             entity.HasOne<Tenant>()
                 .WithMany()
                 .HasForeignKey(e => e.TenantId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // NotificationDelivery configuration (Spec 140)
+        builder.Entity<NotificationDelivery>(entity =>
+        {
+            entity.HasKey(d => d.Id);
+            entity.Property(d => d.IdempotencyKey).HasMaxLength(200).IsRequired();
+            entity.Property(d => d.Erro).HasMaxLength(500);
+            entity.Property(d => d.Kind).HasConversion<int>();
+            entity.Property(d => d.Channel).HasConversion<int>();
+            entity.Property(d => d.State).HasConversion<int>();
+
+            // Chave natural da entrega: o índice único é o árbitro da idempotência,
+            // inclusive entre duas instâncias que processem o mesmo gatilho.
+            entity.HasIndex(d => new { d.TenantId, d.IdempotencyKey, d.RecipientUserId, d.Channel })
+                .IsUnique()
+                .HasDatabaseName("IX_NotificationDeliveries_Idempotency");
+            entity.HasIndex(d => new { d.RecipientUserId, d.CreatedAt })
+                .HasDatabaseName("IX_NotificationDeliveries_Recipient");
+
+            entity.HasOne(d => d.Tenant)
+                .WithMany()
+                .HasForeignKey(d => d.TenantId)
                 .OnDelete(DeleteBehavior.Restrict);
         });
 

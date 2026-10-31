@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { Card } from '../../components/Card';
+import { Badge } from '../../components/Badge';
 import { PageHeader } from '../../components/PageHeader';
 import { StatusBadge } from '../../components/StatusBadge';
 import { StudentAvatar } from '../../components/StudentAvatar';
@@ -9,9 +10,10 @@ import { ArrowLeft, FileText } from 'lucide-react';
 import * as api from '../../api/parent';
 import { apiErrorMessage } from '../../api/errors';
 import { LoadError } from '../../components/LoadError';
-import { PageSkeleton } from '../../components/Skeleton';
+import { PageSkeleton, SkeletonRows } from '../../components/Skeleton';
 import { formatDate } from '../../utils/format';
-import type { ChildDetail } from '../../types';
+import { formatGrade, situacaoLabel, situacaoVariant } from '../../domain/academic';
+import type { ChildDetail, ReportCard } from '../../types';
 
 export default function ChildDetail() {
   const { id } = useParams();
@@ -19,6 +21,10 @@ export default function ChildDetail() {
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [tab, setTab] = useState<'info' | 'docs' | 'grades'>('info');
+  // `undefined` = boletim ainda não pedido. O carregamento é derivado desse estado, em vez de um
+  // `setLoading(true)` síncrono dentro do efeito — que dispara uma segunda renderização à toa.
+  const [report, setReport] = useState<ReportCard | undefined>(undefined);
+  const [reportError, setReportError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!id) return;
@@ -36,6 +42,25 @@ export default function ChildDetail() {
     return () => { active = false; };
   }, [id, reloadKey]);
 
+  // O boletim só é buscado quando a aba é aberta (Spec 150 FR-007): carregá-lo junto do detalhe
+  // faria toda visita à ficha pagar uma consulta que a maioria não usa.
+  useEffect(() => {
+    if (tab !== 'grades' || !id) return;
+    let active = true;
+    api
+      .getChildReportCard(id)
+      .then((data) => {
+        if (!active) return;
+        setReport(data);
+        setReportError(null);
+      })
+      .catch((err) => {
+        if (!active) return;
+        setReportError(apiErrorMessage(err, 'Não foi possível carregar o boletim.'));
+      });
+    return () => { active = false; };
+  }, [tab, id, reloadKey]);
+
   if (error) {
     return (
       <div>
@@ -46,6 +71,8 @@ export default function ChildDetail() {
   }
 
   if (!child) return <PageSkeleton />;
+
+  const reportLoading = tab === 'grades' && report === undefined && reportError === null;
 
   return (
     <div>
@@ -101,9 +128,50 @@ export default function ChildDetail() {
       )}
 
       {tab === 'grades' && (
-        <Card tone="glass" title="Notas">
-          {child.grades.length === 0 ? <p className="text-gray-500">Nenhuma nota disponível.</p> : (
-            <ul className="divide-y text-sm">{child.grades.map((g, i) => <li key={i} className="py-2 flex justify-between"><span>{g.disciplina}</span><span className="font-medium">{g.nota ?? '—'}</span></li>)}</ul>
+        <Card tone="glass" title="Boletim">
+          {reportError ? (
+            <LoadError
+              message={reportError}
+              onRetry={() => {
+                // `report` volta a "não pedido": o retry mostra o esqueleto e refaz a consulta.
+                setReport(undefined);
+                setReportError(null);
+                setReloadKey((k) => k + 1);
+              }}
+            />
+          ) : reportLoading ? (
+            <SkeletonRows rows={4} />
+          ) : !report || report.componentes.length === 0 ? (
+            <p className="text-gray-500">Nenhuma nota disponível.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b text-left">
+                    <th className="py-2 whitespace-nowrap">Componente</th>
+                    <th className="py-2 whitespace-nowrap">Média regular</th>
+                    <th className="py-2 whitespace-nowrap">Recuperação</th>
+                    <th className="py-2 whitespace-nowrap">Média final</th>
+                    <th className="py-2 whitespace-nowrap">Situação</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {report.componentes.map((entry) => (
+                    <tr key={entry.componente} className="border-b">
+                      <td className="py-2 font-medium whitespace-nowrap">{entry.componente}</td>
+                      <td className="py-2">{formatGrade(entry.mediaRegular)}</td>
+                      <td className="py-2">{formatGrade(entry.notaRecuperacao)}</td>
+                      <td className="py-2 font-medium">{formatGrade(entry.mediaFinal)}</td>
+                      <td className="py-2">
+                        <Badge variant={situacaoVariant(entry.situacao)}>
+                          {situacaoLabel(entry.situacao)}
+                        </Badge>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </Card>
       )}

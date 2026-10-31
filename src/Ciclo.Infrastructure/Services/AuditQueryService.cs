@@ -30,7 +30,7 @@ public sealed class AuditQueryService : IAuditQueryService
     private const int MaxRangeDays = 400;
     private const int DefaultPageSize = 50;
     private const int MaxPageSize = 200;
-    private const int ExportLimit = 10000;
+    public const int MaxExportRows = 10000;
 
     private static readonly Expression<Func<AuditEvent, AuditEventDto>> Projection = e =>
         new AuditEventDto(
@@ -83,7 +83,7 @@ public sealed class AuditQueryService : IAuditQueryService
         var (from, to) = NormalizeRange(filter);
         var query = BuildQuery(filter, from, to);
 
-        if (await query.CountAsync(cancellationToken) > ExportLimit)
+        if (await query.CountAsync(cancellationToken) > MaxExportRows)
             throw new AuditException("export_exceeds_limit", 400);
 
         var items = await query

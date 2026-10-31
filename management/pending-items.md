@@ -183,6 +183,83 @@ O verificador de task deveria exigir evidência de mudança nos `expectedFiles` 
 
 ---
 
+## P-005 — Runtime: validador de sintaxe TS não resolve `typescript` e reverte toda mutação `.ts`/`.tsx`
+
+**Estado:** ABERTO — não há contorno por arquivo do projeto; bloqueia a spec 150 (task 6 é 100% `.ts`/`.tsx`)
+**Descoberto:** 2026-10-31 (execução `b0d4d484`, spec 150, task 6)
+**Dono:** runtime do DsCode (resolução de módulo)
+**Impacto:** qualquer `.ts`/`.tsx` novo ou alterado é recusado com `UNCHECKABLE`, e a mutação é revertida (`deleted-as-new`) — nenhuma spec com frontend avança
+
+### Comportamento observado
+
+```
+error: Mutation validation failed immediately after file changes:
+- frontend/src/api/academic.ts: syntax: UNCHECKABLE: typescript is not resolvable,
+  syntax check skipped (fail-closed).
+```
+
+O arquivo foi criado e, na mesma transação, **apagado** pelo rollback.
+
+### O que já foi tentado (e não bastou)
+
+**1. Junction na raiz** (`node_modules/typescript` → `frontend/node_modules/typescript`, 2026-10-31 20:13Z). `require.resolve` da raiz passou a funcionar, mas a execução seguinte (`52b89b95`, 20:15Z) falhou **igual**. Duas explicações possíveis, ambas fora do alcance de um arquivo do projeto:
+
+- o validador recusa resolução que atravessa symlink/junction (o contrato do runtime proíbe symlink traversal);
+- o resultado negativo é memoizado no processo que iniciou a sessão — a primeira tentativa (`b0d4d484`, 20:12Z) aconteceu **antes** do junction, e o processo do TUI não foi reiniciado.
+
+**2. Cópia real do pacote na raiz** (2026-10-31 20:16Z, `node_modules/typescript`, 24 MB, ignorado pelo git). Elimina a variável do symlink: `require.resolve('typescript')` da raiz devolve `C:/Users/tempu/OneDrive/SE/node_modules/typescript/lib/typescript.js` (6.0.3) e `npm run build` do frontend continua ✅.
+
+**Falhou igual duas vezes com a cópia presente:** `77ad491d` (20:18:28Z, `academic.ts`) e `b301de57` (20:24:24Z, `types/index.ts`). Isso **refuta** a hipótese da raiz, do symlink e da memoização — a cópia foi removida em 20:35Z por não resolver nada.
+
+### Causa atual (após refutar a raiz)
+
+A resolução do validador não consulta o `node_modules` do projeto, qualquer que seja a base testada. Os outros caminhos de leitura do runtime tratam `node_modules` como diretório excluído (`glob`/`grep` o filtram por padrão e o `.gitignore` o ignora na linha 294), o que é consistente com um validador que enxerga o FS pela mesma camada filtrada: o pacote existe no disco, mas não existe para o resolvedor.
+
+Bases medidas com `require.resolve` (todas irrelevantes, para registro):
+
+| Base | Resultado |
+|---|---|
+| raiz, **com a cópia presente** | resolve ✅ (mas o validador falhou nas 2 execuções seguintes) |
+| `frontend/` | resolve ✅ |
+| `C:/Users/tempu/OneDrive/.dscode/` (diretório do `dscode.exe`) | `MODULE_NOT_FOUND` |
+
+Também não existe chave de configuração para desligar ou relaxar o check: `.dscode/settings.json` contém apenas `model`, `modelInstances` e `trust`, e o binário não embute nenhuma chave `mutationValidation*`/`syntaxCheck*`.
+
+### Ação recomendada no runtime
+
+Resolver o compilador a partir do diretório do arquivo validado (ou de um `package.json` ascendente), com a raiz apenas como último recurso; aceitar resolução por symlink dentro da própria raiz do projeto; e, quando não resolver, reportar como limitação de ambiente **sem reverter a mutação** — o rollback apaga trabalho válido por um defeito do validador.
+
+### Caminhos possíveis (decisão do dono do projeto)
+
+1. **Atualizar/reinstalar o DsCode** e repetir `/spec-implement 150` — é o que corrige o dono do defeito.
+2. **Reduzir escopo**: a task 6 é a única pendente e é toda frontend; as tasks 1–5 e 7 estão seladas. A spec fica em `verified` até o runtime aceitar `.ts`.
+3. **Entrega manual da task 6** com evidência (tsc/lint/testes/build), sem selo do pipeline — mesmo regime da spec 110 sob P-001/P-002.
+
+### O que NÃO fazer
+
+- Criar `package.json` na raiz só para o validador: muda a raiz do build (o deploy usa `frontend` como Root Directory) e exige reinstalação.
+- Copiar o pacote para a raiz ou criar junction ali: **já testado e inútil** (20:13Z junction, 20:16Z cópia real; 3 execuções falharam). Não repetir.
+- Versionar `node_modules/`.
+- Instalar `typescript` ao lado do `dscode.exe`: é fora do projeto e não corrige o dono do defeito (resolução de módulo do runtime).
+
+### Entrega manual da task 6 (2026-10-31)
+
+Decisão do dono do projeto: entregar a task 6 **fora do pipeline**, com evidência, mantendo a spec em `verified` — mesmo regime da spec 110 sob P-001/P-002. O selo continua pendente até o runtime aceitar mutação `.ts`.
+
+**Arquivos entregues:** `frontend/src/api/academic.ts` (18 funções), `frontend/src/domain/academic.ts` (regras puras: situação, faixa 0–10, `DateOnly` sem fuso), `frontend/src/types/index.ts` (7 tipos), `pages/admin/AcademicStructure.tsx` (4 seções com criar/editar/excluir), `pages/admin/GradeEntry.tsx`, `App.tsx` (rotas + item de menu), `api/parent.ts` (`getChildReportCard`), `pages/parent/ChildDetail.tsx` (aba de notas pelo boletim), `api/errors.ts` (16 códigos acadêmicos), `tests/academic.test.ts` (7 casos), `tests/manual/academic-routes-probe.mjs` (sonda CDP).
+
+**Gates:** `tsc` ✅ · lint **0 erros** (2 avisos pré-existentes) · frontend **92/92** · `npm run build` ✅ · backend **384/384** · `dotnet build` **0 erros**.
+
+**Medido no Chrome real** (API em Development, `vite dev`): `/admin/academico` monta as 4 seções com os dados; `/admin/notas` mostra só o roster da turma (`2 alunos`), avaliação `Prova 1 · 10/03/2026 · peso 2`, recusa `11` com "A nota deve estar entre 0 e 10." e grava `7,5` com toast; turma sem avaliação mostra estado vazio explícito e **nenhum** `role="alert"`; boletim do responsável exibe `Matemática · 7,5 · — · 7,5 · Aprovado`.
+
+**Defeito encontrado no caminho (corrigido):** a task 4 estava selada mas `AddScoped<IAcademicService, AcademicService>()` nunca foi adicionado a `Program.cs` — toda rota `api/academic` respondia **500**. Registro adicionado; ver **L8** em `lessons.md`.
+
+**Nota de escopo:** a migração `AddAcademicStructure` foi aplicada no banco de dev pelo startup em Development (é o caminho normal do projeto), e a sonda criou dados de exemplo no tenant demo: componente `Matemática`, avaliação `Prova 1` em `1º Ano A` e nota `7,5` de Ana Clara.
+
+---
+
+
+
 ## Reporte pronto — defeitos do runtime (P-001 e P-002)
 
 > **Versão pronta para colar como issue:** `management/cross-session/runtime-issue-task-ledger.md`

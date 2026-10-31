@@ -1,4 +1,7 @@
+using System.Text;
 using Ciclo.Api.Middleware;
+using Ciclo.Core.Auditing;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Ciclo.Api.Tests;

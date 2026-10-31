@@ -22,6 +22,81 @@ namespace Ciclo.Infrastructure.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("Ciclo.Core.Entities.AcademicYear", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateOnly>("EndDate")
+                        .HasColumnType("date");
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true);
+
+                    b.Property<DateOnly>("StartDate")
+                        .HasColumnType("date");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Year")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "Year")
+                        .IsUnique();
+
+                    b.ToTable("AcademicYears");
+                });
+
+            modelBuilder.Entity("Ciclo.Core.Entities.Assessment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("CurriculumComponentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateOnly>("Date")
+                        .HasColumnType("date");
+
+                    b.Property<bool>("IsRecovery")
+                        .HasColumnType("boolean");
+
+                    b.Property<Guid>("SchoolClassId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<decimal>("Weight")
+                        .ValueGeneratedOnAdd()
+                        .HasPrecision(5, 2)
+                        .HasColumnType("numeric(5,2)")
+                        .HasDefaultValue(1m);
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CurriculumComponentId");
+
+                    b.HasIndex("SchoolClassId");
+
+                    b.HasIndex("TenantId", "SchoolClassId", "CurriculumComponentId", "Title")
+                        .IsUnique();
+
+                    b.ToTable("Assessments");
+                });
+
             modelBuilder.Entity("Ciclo.Core.Entities.AuditEvent", b =>
                 {
                     b.Property<Guid>("Id")
@@ -83,6 +158,38 @@ namespace Ciclo.Infrastructure.Migrations
                     b.HasIndex("TenantId", "TargetType", "TargetId");
 
                     b.ToTable("AuditEvents");
+                });
+
+            modelBuilder.Entity("Ciclo.Core.Entities.CurriculumComponent", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true);
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "Code")
+                        .IsUnique();
+
+                    b.ToTable("CurriculumComponents");
                 });
 
             modelBuilder.Entity("Ciclo.Core.Entities.Document", b =>
@@ -269,6 +376,38 @@ namespace Ciclo.Infrastructure.Migrations
                     b.ToTable("EnrollmentPeriods");
                 });
 
+            modelBuilder.Entity("Ciclo.Core.Entities.Grade", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("AssessmentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("RecordedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("StudentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("Value")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("numeric(5,2)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StudentId");
+
+                    b.HasIndex("AssessmentId", "StudentId")
+                        .IsUnique();
+
+                    b.ToTable("Grades");
+                });
+
             modelBuilder.Entity("Ciclo.Core.Entities.Notification", b =>
                 {
                     b.Property<Guid>("Id")
@@ -306,6 +445,54 @@ namespace Ciclo.Infrastructure.Migrations
                     b.ToTable("Notifications");
                 });
 
+            modelBuilder.Entity("Ciclo.Core.Entities.NotificationDelivery", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Channel")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Erro")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("IdempotencyKey")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("RecipientUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("SentAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("State")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RecipientUserId", "CreatedAt")
+                        .HasDatabaseName("IX_NotificationDeliveries_Recipient");
+
+                    b.HasIndex("TenantId", "IdempotencyKey", "RecipientUserId", "Channel")
+                        .IsUnique()
+                        .HasDatabaseName("IX_NotificationDeliveries_Idempotency");
+
+                    b.ToTable("NotificationDeliveries");
+                });
+
             modelBuilder.Entity("Ciclo.Core.Entities.RefreshToken", b =>
                 {
                     b.Property<Guid>("Id")
@@ -338,10 +525,40 @@ namespace Ciclo.Infrastructure.Migrations
                     b.ToTable("RefreshTokens");
                 });
 
+            modelBuilder.Entity("Ciclo.Core.Entities.SchoolClass", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("AcademicYearId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AcademicYearId");
+
+                    b.HasIndex("TenantId", "AcademicYearId", "Name")
+                        .IsUnique();
+
+                    b.ToTable("SchoolClasses");
+                });
+
             modelBuilder.Entity("Ciclo.Core.Entities.Student", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("AcademicYearId")
                         .HasColumnType("uuid");
 
                     b.Property<int>("AnoLetivo")
@@ -371,6 +588,9 @@ namespace Ciclo.Infrastructure.Migrations
                         .HasMaxLength(1000)
                         .HasColumnType("character varying(1000)");
 
+                    b.Property<Guid?>("SchoolClassId")
+                        .HasColumnType("uuid");
+
                     b.Property<int>("Status")
                         .HasColumnType("integer");
 
@@ -388,6 +608,10 @@ namespace Ciclo.Infrastructure.Migrations
                         .HasDefaultValueSql("now()");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("AcademicYearId");
+
+                    b.HasIndex("SchoolClassId");
 
                     b.HasIndex("TenantId");
 
@@ -577,6 +801,42 @@ namespace Ciclo.Infrastructure.Migrations
                     b.ToTable("Users", (string)null);
                 });
 
+            modelBuilder.Entity("Ciclo.Core.Entities.UserInvitation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTime?>("UsedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique();
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("Invitations");
+                });
+
             modelBuilder.Entity("Ciclo.Core.Entities.UserNotification", b =>
                 {
                     b.Property<Guid>("Id")
@@ -734,6 +994,25 @@ namespace Ciclo.Infrastructure.Migrations
                     b.ToTable("AspNetUserTokens", (string)null);
                 });
 
+            modelBuilder.Entity("Ciclo.Core.Entities.Assessment", b =>
+                {
+                    b.HasOne("Ciclo.Core.Entities.CurriculumComponent", "CurriculumComponent")
+                        .WithMany()
+                        .HasForeignKey("CurriculumComponentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Ciclo.Core.Entities.SchoolClass", "SchoolClass")
+                        .WithMany()
+                        .HasForeignKey("SchoolClassId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("CurriculumComponent");
+
+                    b.Navigation("SchoolClass");
+                });
+
             modelBuilder.Entity("Ciclo.Core.Entities.AuditEvent", b =>
                 {
                     b.HasOne("Ciclo.Core.Entities.Tenant", null)
@@ -819,7 +1098,37 @@ namespace Ciclo.Infrastructure.Migrations
                     b.Navigation("Tenant");
                 });
 
+            modelBuilder.Entity("Ciclo.Core.Entities.Grade", b =>
+                {
+                    b.HasOne("Ciclo.Core.Entities.Assessment", "Assessment")
+                        .WithMany()
+                        .HasForeignKey("AssessmentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Ciclo.Core.Entities.Student", "Student")
+                        .WithMany()
+                        .HasForeignKey("StudentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Assessment");
+
+                    b.Navigation("Student");
+                });
+
             modelBuilder.Entity("Ciclo.Core.Entities.Notification", b =>
+                {
+                    b.HasOne("Ciclo.Core.Entities.Tenant", "Tenant")
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Tenant");
+                });
+
+            modelBuilder.Entity("Ciclo.Core.Entities.NotificationDelivery", b =>
                 {
                     b.HasOne("Ciclo.Core.Entities.Tenant", "Tenant")
                         .WithMany()
@@ -841,13 +1150,38 @@ namespace Ciclo.Infrastructure.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("Ciclo.Core.Entities.SchoolClass", b =>
+                {
+                    b.HasOne("Ciclo.Core.Entities.AcademicYear", "AcademicYear")
+                        .WithMany("Classes")
+                        .HasForeignKey("AcademicYearId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("AcademicYear");
+                });
+
             modelBuilder.Entity("Ciclo.Core.Entities.Student", b =>
                 {
+                    b.HasOne("Ciclo.Core.Entities.AcademicYear", "AcademicYear")
+                        .WithMany()
+                        .HasForeignKey("AcademicYearId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Ciclo.Core.Entities.SchoolClass", "SchoolClass")
+                        .WithMany("Students")
+                        .HasForeignKey("SchoolClassId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("Ciclo.Core.Entities.Tenant", "Tenant")
                         .WithMany()
                         .HasForeignKey("TenantId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+
+                    b.Navigation("AcademicYear");
+
+                    b.Navigation("SchoolClass");
 
                     b.Navigation("Tenant");
                 });
@@ -880,6 +1214,17 @@ namespace Ciclo.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("Tenant");
+                });
+
+            modelBuilder.Entity("Ciclo.Core.Entities.UserInvitation", b =>
+                {
+                    b.HasOne("Ciclo.Core.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("Ciclo.Core.Entities.UserNotification", b =>
@@ -952,6 +1297,11 @@ namespace Ciclo.Infrastructure.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Ciclo.Core.Entities.AcademicYear", b =>
+                {
+                    b.Navigation("Classes");
+                });
+
             modelBuilder.Entity("Ciclo.Core.Entities.EnrollmentPeriod", b =>
                 {
                     b.Navigation("Enrollments");
@@ -960,6 +1310,11 @@ namespace Ciclo.Infrastructure.Migrations
             modelBuilder.Entity("Ciclo.Core.Entities.Notification", b =>
                 {
                     b.Navigation("UserNotifications");
+                });
+
+            modelBuilder.Entity("Ciclo.Core.Entities.SchoolClass", b =>
+                {
+                    b.Navigation("Students");
                 });
 
             modelBuilder.Entity("Ciclo.Core.Entities.Student", b =>

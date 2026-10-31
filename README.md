@@ -250,6 +250,11 @@ e relata arquivos ausentes (registros órfãos) separadamente de falhas de decif
 A correlação de uma requisição aparece em três lugares com o mesmo valor: cabeçalho
 `X-Correlation-Id` da resposta, campo `[<id>]` do log e extensão `correlationId` do corpo de erro.
 
+**Endpoints antigos continuam válidos.** `GET /Health` e `GET /Health/db` não mudaram de contrato
+(`200` com `{"status":"Healthy"}`) e seguem atendendo qualquer host já configurado. A migração para
+`/health/live` e `/health/ready` é **configuração de host**, não alteração de código: enquanto o probe
+antigo estiver apontado, nada quebra.
+
 #### Limiares de alerta
 
 | Sinal | Limiar | Ação |

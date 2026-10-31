@@ -25,6 +25,7 @@ public class ApiAuthorizationTests
     [
         "Health",
         "Health/db",
+        "api/auth/accept-invite",
         "api/auth/confirm-email",
         "api/auth/forgot-password",
         "api/auth/login",

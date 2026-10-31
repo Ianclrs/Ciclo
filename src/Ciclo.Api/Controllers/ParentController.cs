@@ -85,13 +85,23 @@ public class ParentController : ControllerBase
         }
     }
 
-    /// <summary>FR-006: Get grades for a child (placeholder).</summary>
+    /// <summary>FR-006: Get grades for a child (resumo por componente).</summary>
     [HttpGet("children/{id:guid}/grades")]
     public async Task<IActionResult> GetChildGrades(Guid id)
     {
         var (userId, _) = GetUserInfo();
         var tenantId = GetTenantId();
         var result = await _service.GetChildGradesAsync(userId, id, tenantId);
+        return Ok(result);
+    }
+
+    /// <summary>FR-007: Boletim do filho — média regular, recuperação e situação por componente.</summary>
+    [HttpGet("children/{id:guid}/report-card")]
+    public async Task<IActionResult> GetChildReportCard(Guid id, CancellationToken cancellationToken)
+    {
+        var (userId, _) = GetUserInfo();
+        var tenantId = GetTenantId();
+        var result = await _service.GetChildReportCardAsync(userId, id, tenantId, cancellationToken);
         return Ok(result);
     }
 

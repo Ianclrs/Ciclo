@@ -1,0 +1,211 @@
+<!-- PIPELINE-CONTRACT: Task completion is determined by "**Status:** [x] done" at the end of each "### Task N" section.
+     Checkboxes "- [ ]" under "**Validation:**" are human verification guides — the pipeline ignores them completely.
+     To mark a task as done, add "**Status:** [x] done". To mark it as pending, use "**Status:** [ ] pending". -->
+# Spec 150: estrutura-academica-e-desempenho — Implementation Tasks
+
+## Planned Scaffolds
+
+- `src/Ciclo.Core/Entities/AcademicYear.cs`
+- `src/Ciclo.Core/Entities/SchoolClass.cs`
+- `src/Ciclo.Core/Entities/CurriculumComponent.cs`
+- `src/Ciclo.Core/Entities/Assessment.cs`
+- `src/Ciclo.Core/Entities/Grade.cs`
+- `src/Ciclo.Infrastructure/Contracts/AcademicDtos.cs`
+- `src/Ciclo.Infrastructure/Services/AcademicService.cs`
+- `src/Ciclo.Infrastructure/Services/GradeCalculation.cs`
+- `src/Ciclo.Infrastructure/Migrations/AcademicStructureBackfill.cs`
+- `src/Ciclo.Api/Controllers/AcademicController.cs`
+- `tests/Ciclo.Api.Tests/AcademicStructureTests.cs`
+- `tests/Ciclo.Api.Tests/GradeCalculationTests.cs`
+- `tests/Ciclo.Api.Tests/AcademicMigrationTests.cs`
+- `frontend/src/api/academic.ts`
+- `frontend/src/pages/admin/AcademicStructure.tsx`
+- `frontend/src/pages/admin/GradeEntry.tsx`
+
+## Task Order
+
+Tasks MUST be executed sequentially in numerical order. Each task depends on the completion of all preceding tasks.
+
+## Tasks
+
+### Task 1: Modelo acadêmico no domínio e vínculo do aluno
+
+**Objective:** Criar as cinco entidades acadêmicas, mapear tudo no `AppDbContext` e fazer o caminho de escrita de aluno resolver turma e ano em referências, preservando as colunas espelho.
+**Requirements Covered:** FR-001, FR-002
+**Design References:** Design Approach; ADR-150-2; Componentes `AcademicYear`, `SchoolClass`, `CurriculumComponent`, `Assessment`, `Grade`, `Student` e `AppDbContext`; Componente `Resolvedor de vínculo acadêmico em StudentService`; Data Structures.
+**Actions:**
+1. Criar `src/Ciclo.Core/Entities/AcademicYear.cs`, `src/Ciclo.Core/Entities/SchoolClass.cs`, `src/Ciclo.Core/Entities/CurriculumComponent.cs`, `src/Ciclo.Core/Entities/Assessment.cs` e `src/Ciclo.Core/Entities/Grade.cs` com exatamente as propriedades declaradas nos Componentes correspondentes de `design.md`; todas implementam `ITenantScoped` seguindo o padrão de `src/Ciclo.Core/Entities/Student.cs`.
+2. Em `src/Ciclo.Core/Entities/Student.cs`, acrescentar `public Guid? AcademicYearId`, `public Guid? SchoolClassId`, a navegação `public AcademicYear? AcademicYear` e a navegação `public SchoolClass? SchoolClass`; manter `public string Turma` e `public int AnoLetivo` inalterados.
+3. Em `src/Ciclo.Infrastructure/Data/AppDbContext.cs`, acrescentar `DbSet<AcademicYear>`, `DbSet<SchoolClass>`, `DbSet<CurriculumComponent>`, `DbSet<Assessment>` e `DbSet<Grade>` e, dentro do `OnModelCreating` existente, configurar comprimentos máximos, precisão decimal, os cinco índices únicos e as chaves estrangeiras com `DeleteBehavior.Restrict` conforme a seção Data Structures. Não adicionar filtro de tenant manual: o laço existente já cobre `ITenantScoped`.
+4. Em `src/Ciclo.Infrastructure/Services/StudentService.cs`, implementar `private async Task ResolveAcademicStructureAsync(Student student, CancellationToken cancellationToken)` com o algoritmo do componente correspondente e chamá-lo em `CreateAsync` e em `UpdateAsync` imediatamente antes do `SaveChangesAsync`. Não alterar as assinaturas públicas de `IStudentService` nem o mapeamento de `StudentDto`.
+5. Confirmar que os códigos de erro `class_name_required`, `class_name_already_exists`, `academic_year_not_found`, `academic_year_range_invalid`, `academic_year_already_exists`, `assessment_weight_invalid` e `assessment_title_already_exists` estão definidos como literais no domínio ou no serviço que os dispara.
+**Expected Files:**
+- `src/Ciclo.Core/Entities/AcademicYear.cs`
+- `src/Ciclo.Core/Entities/SchoolClass.cs`
+- `src/Ciclo.Core/Entities/CurriculumComponent.cs`
+- `src/Ciclo.Core/Entities/Assessment.cs`
+- `src/Ciclo.Core/Entities/Grade.cs`
+- `src/Ciclo.Core/Entities/Student.cs`
+- `src/Ciclo.Infrastructure/Data/AppDbContext.cs`
+- `src/Ciclo.Infrastructure/Services/StudentService.cs`
+**Validation:**
+- [ ] `dotnet build` conclui sem erro nos três projetos de `src/`.
+- [ ] Criar um aluno informando `Turma = "5A"` e `AnoLetivo = 2026` produz um `AcademicYear` com `Year = 2026`, um `SchoolClass` com `Name = "5A"` e um aluno com `AcademicYearId` e `SchoolClassId` preenchidos.
+- [ ] Criar um segundo aluno com a mesma turma e o mesmo ano não duplica `AcademicYear` nem `SchoolClass`.
+- [ ] Criar um aluno com `Turma` vazia não cria estrutura e deixa os dois identificadores nulos.
+- [ ] `StudentDto` continua expondo `turma` e `anoLetivo` preenchidos.
+- [ ] `npx tsc --noEmit` e `dotnet test` continuam passando nos testes existentes.
+**Status:** [ ] pending
+
+### Task 2: Migração com backfill do vínculo acadêmico
+
+**Objective:** Criar a migração EF Core que materializa as tabelas acadêmicas, adiciona as colunas de vínculo ao aluno e executa o backfill dos dados legados.
+**Requirements Covered:** FR-003
+**Design References:** ADR-150-3; Componente `AppDbContext`; Data Structures; Data Flow seção Backfill; Migration / Rollback.
+**Actions:**
+1. Criar `src/Ciclo.Infrastructure/Migrations/AcademicStructureBackfill.cs` com `public static class AcademicStructureBackfill` e `public const string Sql` contendo, nesta ordem: inserção em `AcademicYears` a partir dos pares distintos `(TenantId, AnoLetivo)` com `AnoLetivo > 0`; inserção em `SchoolClasses` a partir das triplas distintas `(TenantId, AnoLetivo, Turma)` com `Turma` não vazia após `trim`, juntando pelo ano criado; `UPDATE "Students"` juntando por tenant, ano e turma normalizada para preencher `AcademicYearId` e `SchoolClassId`. O SQL deve ser idempotente por construção (só roda dentro da migração, uma vez).
+2. Gerar a migração com `dotnet ef migrations add AcademicStructure --project src/Ciclo.Infrastructure --startup-project src/Ciclo.Api` e ajustar o `Up()` para a ordem: criação das cinco tabelas, adição das duas colunas e das chaves estrangeiras em `Students`, e por último `migrationBuilder.Sql(AcademicStructureBackfill.Sql);`.
+3. Implementar o `Down()` removendo as duas colunas de `Students` e as cinco tabelas na ordem inversa de dependência, sem tocar em `Turma` nem em `AnoLetivo`.
+4. Regenerar o snapshot com `dotnet ef migrations add` já refletindo o modelo final e confirmar que `src/Ciclo.Infrastructure/Migrations/AppDbContextModelSnapshot.cs` contém as cinco tabelas novas.
+**Expected Files:**
+- `src/Ciclo.Infrastructure/Migrations/AcademicStructureBackfill.cs`
+- `src/Ciclo.Infrastructure/Migrations/AppDbContextModelSnapshot.cs`
+**Validation:**
+- [ ] `dotnet build` conclui sem erro.
+- [ ] O arquivo de backfill contém as três operações exigidas e nenhuma remoção de coluna.
+- [ ] A migração gerada referencia `AcademicStructureBackfill.Sql` e compila.
+- [ ] Nenhuma coluna `Turma` ou `AnoLetivo` de `Students` é removida no `Up()`.
+**Status:** [ ] pending
+
+### Task 3: Contratos, roles e serviço de estrutura acadêmica
+
+**Objective:** Criar os DTOs da estrutura, as constantes de role e o `AcademicService` com as dezoito operações, incluindo o lançamento idempotente de nota.
+**Requirements Covered:** FR-004, FR-005
+**Design References:** ADR-150-4; ADR-150-6; Componentes `AcademicService` e `AcademicDtos`; NFR-002.
+**Actions:**
+1. Criar `src/Ciclo.Infrastructure/Contracts/AcademicDtos.cs` com os treze registros listados no componente `AcademicDtos`.
+2. Em `src/Ciclo.Infrastructure/Security/AccessPolicy.cs`, acrescentar dentro de `Roles` as constantes `AcademicStructureRead = "Admin,Staff"`, `AcademicStructureManage = "Admin"` e `GradeManage = "Admin,Staff"`, no mesmo formato das existentes.
+3. Criar `src/Ciclo.Infrastructure/Services/AcademicService.cs` com `IAcademicService` e `AcademicService : IAcademicService` e o construtor `AcademicService(AppDbContext db)`, implementando exatamente as assinaturas do componente `AcademicService` de `design.md`.
+4. Implementar as validações: `Year` positivo e único por tenant, `EndDate` maior ou igual a `StartDate`, `SchoolClass.Name` não vazio e único por ano, `CurriculumComponent.Code` não vazio e único por tenant, `Assessment.Weight` maior que zero e `Title` não vazio e único por turma e componente, `Grade.Value` entre 0 e 10.
+5. Implementar `UpsertGradeAsync` conforme a lógica descrita: validar faixa, carregar avaliação, validar que o aluno pertence à turma da avaliação, localizar a nota por avaliação e aluno, criar ou atualizar `Value` e `RecordedAt` com `DateTime.UtcNow`, salvar uma única vez e devolver `GradeDto` com `Disciplina` igual ao nome do componente, `Nota` igual ao valor e `Observacoes` nulo.
+6. Implementar `ListClassStudentsAsync` devolvendo `List<StudentDto>` dos alunos cujo `SchoolClassId` é o da turma.
+7. Implementar as três operações `Delete*` de forma que dependentes bloqueiem a exclusão com `academic_year_in_use`, `school_class_in_use`, `component_in_use` e `assessment_has_grades`, verificando dependentes antes do `Remove`.
+8. Traduzir `DbUpdateException` de índice único no código de conflito correspondente e deixar qualquer outra exceção subir sem tradução.
+**Expected Files:**
+- `src/Ciclo.Infrastructure/Contracts/AcademicDtos.cs`
+- `src/Ciclo.Infrastructure/Security/AccessPolicy.cs`
+- `src/Ciclo.Infrastructure/Services/AcademicService.cs`
+**Validation:**
+- [ ] `dotnet build` conclui sem erro.
+- [ ] O serviço compila com as dezoito assinaturas do contrato e nenhuma operação chama `SaveChangesAsync` mais de uma vez.
+- [ ] `grade_out_of_range` e `assessment_weight_invalid` aparecem como literais no serviço.
+- [ ] Nenhum método do serviço chama `IgnoreQueryFilters`.
+- [ ] Os testes existentes que enumeram as constantes de `AccessPolicy.Roles` continuam passando.
+**Status:** [ ] pending
+
+### Task 4: Controlador administrativo e registro de dependência
+
+**Objective:** Expor as dezoito rotas em `api/academic` com as autorizações dedicadas e registrar o serviço no contêiner.
+**Requirements Covered:** FR-004, FR-005
+**Design References:** Componente `AcademicController`; ADR-150-6.
+**Actions:**
+1. Criar `src/Ciclo.Api/Controllers/AcademicController.cs` com `[ApiController]`, `[Route("api/academic")]`, herança de `ControllerBase`, construtor `AcademicController(IAcademicService academicService)` e a tabela de rotas do componente `AcademicController` de `design.md`, com `[Authorize(Roles = AccessPolicy.Roles.X)]` por action.
+2. Aplicar `AccessPolicy.Roles.AcademicStructureRead` nas leituras de estrutura, `AccessPolicy.Roles.AcademicStructureManage` nas escritas de estrutura e `AccessPolicy.Roles.GradeManage` no lançamento de nota e na listagem de roster.
+3. Aceitar os filtros opcionais por query string em `GET api/academic/classes` e `GET api/academic/assessments`.
+4. Registrar `IAcademicService` em `src/Ciclo.Api/Program.cs` com `AddScoped`, no mesmo bloco onde `IParentService` e `IStudentService` são registrados.
+5. Não adicionar `try/catch` no controlador; deixar a exceção de domínio subir para o middleware existente.
+**Expected Files:**
+- `src/Ciclo.Api/Controllers/AcademicController.cs`
+- `src/Ciclo.Api/Program.cs`
+**Validation:**
+- [ ] `dotnet build` conclui sem erro.
+- [ ] `GET api/academic/years` autenticado com a role administrativa responde 200 com a lista.
+- [ ] `POST api/academic/years` sem a role administrativa responde 403.
+- [ ] `PUT api/academic/assessments/{id}/grades/{studentId}` grava e a segunda chamada para o mesmo par atualiza a mesma linha.
+- [ ] `GET api/academic/classes/{id}/students` devolve apenas alunos daquela turma.
+**Status:** [ ] pending
+
+### Task 5: Cálculo do boletim e leitura no portal dos pais
+
+**Objective:** Implementar a classe pura de cálculo e substituir a lista vazia de notas, entregando o boletim por aluno no portal dos pais.
+**Requirements Covered:** FR-006, FR-007
+**Design References:** ADR-150-1; ADR-150-5; Componentes `GradeCalculation` e `ParentService (alterado)`; Data Flow seção Boletim no portal.
+**Actions:**
+1. Criar `src/Ciclo.Infrastructure/Services/GradeCalculation.cs` com `AssessmentScore`, as constantes `ApprovalThreshold` e `RecoveryThreshold` e os métodos `ComputeRegularAverage`, `ComputeFinalAverage`, `ResolveSituation` e `Round`, exatamente como no componente `GradeCalculation`.
+2. Em `src/Ciclo.Infrastructure/Contracts/ParentDtos.cs`, acrescentar `ReportCardDto`, `ReportCardEntryDto` e `ReportCardScoreDto` conforme Data Structures, sem alterar `GradeDto`.
+3. Em `src/Ciclo.Infrastructure/Services/ParentService.cs`, substituir o retorno de lista vazia em `GetChildGradesAsync` pela consulta real: verificar vínculo, carregar turma, componentes com avaliação na turma e notas do aluno, calcular `MediaFinal` com `GradeCalculation` e devolver uma linha por componente ordenada por nome.
+4. Ajustar `GetChildDetailAsync` para delegar a `GetChildGradesAsync` no campo `Grades` de `ChildDetailDto`, removendo a lista vazia.
+5. Acrescentar `GetChildReportCardAsync` a `IParentService` e `ParentService` com o algoritmo do componente correspondente, chamando `VerifyParentChildLinkAsync` antes de qualquer leitura de nota.
+6. Em `src/Ciclo.Api/Controllers/ParentController.cs`, acrescentar `[HttpGet("children/{id:guid}/report-card")]` mantendo a autorização de classe `AccessPolicy.Roles.ParentOnly` e sem alterar a rota `grades` existente.
+**Expected Files:**
+- `src/Ciclo.Infrastructure/Services/GradeCalculation.cs`
+- `src/Ciclo.Infrastructure/Contracts/ParentDtos.cs`
+- `src/Ciclo.Infrastructure/Services/ParentService.cs`
+- `src/Ciclo.Api/Controllers/ParentController.cs`
+**Validation:**
+- [ ] `dotnet build` conclui sem erro.
+- [ ] `GetChildGradesAsync` devolve uma linha por componente com nota lançada para aluno com turma e notas.
+- [ ] `GetChildGradesAsync` devolve lista vazia apenas para aluno sem turma.
+- [ ] O boletim devolve `situacao` igual a `sem_nota` para componente sem nota e `aprovado` para média final maior ou igual a 6.
+- [ ] O responsável sem vínculo com o aluno recebe a mesma resposta praticada hoje pelo serviço.
+- [ ] `GradeDto` mantém os campos `Disciplina`, `Nota` e `Observacoes`.
+**Status:** [ ] pending
+
+### Task 6: Telas administrativas e boletim no frontend
+
+**Objective:** Entregar o cadastro da estrutura acadêmica, o lançamento de notas e o boletim no portal dos pais.
+**Requirements Covered:** FR-008
+**Design References:** Componentes `Frontend academic.ts`, `Frontend AcademicStructure e GradeEntry` e `Frontend ChildDetail (alterado)`.
+**Actions:**
+1. Criar `frontend/src/api/academic.ts` com as dezoito funções listadas no componente, reutilizando o cliente HTTP e o tratamento de erro já usados em `frontend/src/api/students.ts`.
+2. Acrescentar em `frontend/src/types/index.ts` os tipos `AcademicYear`, `SchoolClass`, `CurriculumComponent`, `Assessment`, `ReportCard`, `ReportCardEntry` e `ReportCardScore`, usando os nomes camelCase dos campos serializados pela API.
+3. Criar `frontend/src/pages/admin/AcademicStructure.tsx` com as quatro seções de cadastro, edição e exclusão.
+4. Criar `frontend/src/pages/admin/GradeEntry.tsx` com seleção de turma e avaliação, roster via `listClassStudents` e gravação por aluno via `upsertGrade`, bloqueando nota fora de 0 a 10 no formulário.
+5. Registrar as rotas `/admin/academico` e `/admin/notas` em `frontend/src/App.tsx` dentro do grupo administrativo existente.
+6. Acrescentar `getChildReportCard(id)` em `frontend/src/api/parent.ts` chamando `GET /api/parent/children/{id}/report-card`.
+7. Alterar a aba `grades` de `frontend/src/pages/parent/ChildDetail.tsx` para consumir `getChildReportCard` e renderizar componente, média regular, nota de recuperação, média final e o rótulo da situação mapeado de `aprovado`, `recuperacao`, `reprovado` e `sem_nota`.
+**Expected Files:**
+- `frontend/src/api/academic.ts`
+- `frontend/src/types/index.ts`
+- `frontend/src/pages/admin/AcademicStructure.tsx`
+- `frontend/src/pages/admin/GradeEntry.tsx`
+- `frontend/src/App.tsx`
+- `frontend/src/api/parent.ts`
+- `frontend/src/pages/parent/ChildDetail.tsx`
+**Validation:**
+- [ ] `npm run build` no diretório `frontend` conclui sem erro de tipo.
+- [ ] As rotas `/admin/academico` e `/admin/notas` abrem as duas telas novas.
+- [ ] A tela de lançamento lista apenas os alunos da turma selecionada e recusa nota fora de 0 a 10.
+- [ ] A aba de notas do portal exibe média final e rótulo da situação por componente.
+- [ ] Lista vazia de estrutura ou de boletim mostra estado vazio explícito, não erro.
+**Status:** [ ] pending
+
+### Task 7: Testes de autorização, cálculo e migração
+
+**Objective:** Provar as sete primeiras FR com os três arquivos de teste do escopo declarado e manter os testes existentes verdes.
+**Requirements Covered:** FR-001, FR-002, FR-003, FR-004, FR-005, FR-006, FR-007
+**Design References:** Testing Strategy.
+**Actions:**
+1. Criar `tests/Ciclo.Api.Tests/AcademicStructureTests.cs` seguindo o padrão de `tests/Ciclo.Api.Tests/StudentMappingAndParentDashboardTests.cs` com `[Fact]` para cada cenário listado em Testing Strategy para esse arquivo.
+2. Criar `tests/Ciclo.Api.Tests/GradeCalculationTests.cs` com `[Theory]`/`[Fact]` cobrindo média ponderada, ausência de nota, recuperação menor e maior, recuperação isolada, os limiares 6 e 4, as quatro situações, o arredondamento e a substituição da lista vazia em `GetChildGradesAsync`.
+3. Criar `tests/Ciclo.Api.Tests/AcademicMigrationTests.cs` instanciando um `MigrationBuilder` novo, executando `Up` de `AcademicStructureBackfill` e afirmando as três operações e a ausência de remoção de coluna ou tabela.
+4. Executar a suíte completa e ajustar somente o necessário em `tests/Ciclo.Api.Tests/AccessPolicyTests.cs`, `tests/Ciclo.Api.Tests/AuditInstrumentationTests.cs`, `tests/Ciclo.Api.Tests/AuditOperationCoverageTests.cs`, `tests/Ciclo.Api.Tests/DocumentComplianceTests.cs`, `tests/Ciclo.Api.Tests/EnrollmentJourneyTests.cs`, `tests/Ciclo.Api.Tests/ListFilterTests.cs`, `tests/Ciclo.Api.Tests/ProactiveNotificationTests.cs` e `tests/Ciclo.Api.Tests/StudentMappingAndParentDashboardTests.cs`, sem enfraquecer nenhuma asserção existente.
+**Expected Files:**
+- `tests/Ciclo.Api.Tests/AcademicStructureTests.cs`
+- `tests/Ciclo.Api.Tests/GradeCalculationTests.cs`
+- `tests/Ciclo.Api.Tests/AcademicMigrationTests.cs`
+- `tests/Ciclo.Api.Tests/AccessPolicyTests.cs`
+- `tests/Ciclo.Api.Tests/AuditInstrumentationTests.cs`
+- `tests/Ciclo.Api.Tests/AuditOperationCoverageTests.cs`
+- `tests/Ciclo.Api.Tests/DocumentComplianceTests.cs`
+- `tests/Ciclo.Api.Tests/EnrollmentJourneyTests.cs`
+- `tests/Ciclo.Api.Tests/ListFilterTests.cs`
+- `tests/Ciclo.Api.Tests/ProactiveNotificationTests.cs`
+- `tests/Ciclo.Api.Tests/StudentMappingAndParentDashboardTests.cs`
+**Validation:**
+- [ ] `dotnet test` conclui com todos os testes verdes, incluindo os pré-existentes.
+- [ ] Existe um teste que prova o isolamento por tenant devolvendo não encontrado para identificador de outro tenant.
+- [ ] Existe um teste que prova a rejeição de nota fora de 0 a 10 e de aluno fora da turma.
+- [ ] Existe um teste que prova o backfill com anos e turmas distintos e a junção de atualização dos alunos.
+- [ ] Nenhum teste existente foi removido ou teve asserção enfraquecida.
+**Status:** [ ] pending

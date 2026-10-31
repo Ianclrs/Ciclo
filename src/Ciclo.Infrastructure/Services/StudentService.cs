@@ -123,6 +123,7 @@ public class StudentService : IStudentService
         };
 
         _db.Students.Add(student);
+        await ResolveAcademicStructureAsync(student, default);
         await _db.SaveChangesAsync();
 
         return await ProjectAsync(student.Id)
@@ -161,6 +162,7 @@ public class StudentService : IStudentService
         student.Foto = request.Foto;
         student.UpdatedAt = DateTime.UtcNow;
 
+        await ResolveAcademicStructureAsync(student, default);
         await _db.SaveChangesAsync();
 
         return await ProjectAsync(student.Id)
@@ -267,6 +269,62 @@ public class StudentService : IStudentService
             .ToListAsync();
 
         return enrollments;
+    }
+
+    /// <summary>
+    /// Spec 150 — turma e ano chegam como texto no contrato atual, mas passam a ser persistidos
+    /// como referência. Turma vazia ou ano não positivo deixam os dois vínculos nulos, sem criar
+    /// estrutura. Roda antes do <c>SaveChangesAsync</c> da operação: falha aqui não deixa aluno
+    /// gravado pela metade.
+    /// </summary>
+    private async Task ResolveAcademicStructureAsync(Student student, CancellationToken cancellationToken)
+    {
+        var turma = student.Turma.Trim();
+        student.Turma = turma;
+
+        if (student.AnoLetivo <= 0 || turma.Length == 0)
+        {
+            student.AcademicYearId = null;
+            student.SchoolClassId = null;
+            return;
+        }
+
+        var academicYear = await _db.AcademicYears
+            .FirstOrDefaultAsync(y => y.Year == student.AnoLetivo, cancellationToken);
+
+        if (academicYear is null)
+        {
+            academicYear = new AcademicYear
+            {
+                Id = Guid.NewGuid(),
+                TenantId = student.TenantId,
+                Year = student.AnoLetivo,
+                StartDate = new DateOnly(student.AnoLetivo, 1, 1),
+                EndDate = new DateOnly(student.AnoLetivo, 12, 31),
+            };
+            _db.AcademicYears.Add(academicYear);
+        }
+
+        var schoolClass = await _db.SchoolClasses
+            .FirstOrDefaultAsync(
+                c => c.AcademicYearId == academicYear.Id && c.Name == turma,
+                cancellationToken);
+
+        if (schoolClass is null)
+        {
+            schoolClass = new SchoolClass
+            {
+                Id = Guid.NewGuid(),
+                TenantId = student.TenantId,
+                Name = turma,
+                AcademicYearId = academicYear.Id,
+                AcademicYear = academicYear,
+            };
+            _db.SchoolClasses.Add(schoolClass);
+        }
+
+        student.AcademicYearId = academicYear.Id;
+        student.SchoolClassId = schoolClass.Id;
     }
 
     /// <summary>

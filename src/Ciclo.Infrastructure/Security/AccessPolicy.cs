@@ -52,6 +52,12 @@ public static class AccessPolicy
 
         public const string ParentOnly = "Parent";
 
+        // Estrutura acadêmica (Spec 150): leitura para Admin/Staff, cadastro só para Admin e
+        // lançamento de nota para Admin/Staff. Nenhum papel novo é criado.
+        public const string AcademicStructureRead = "Admin,Staff";
+        public const string AcademicStructureManage = "Admin";
+        public const string GradeManage = "Admin,Staff";
+
         public const string UserRead = "Admin";
         public const string UserManage = "Admin";
     }

@@ -98,7 +98,7 @@ Tasks MUST be executed sequentially in numerical order. Each task depends on the
 - `src/Ciclo.Api/Program.cs`
 - `tests/Ciclo.Api.Tests/ProblemResponseTests.cs`
 **Validation:** Build 0/0; login inválido (`401 invalid_credentials`) retorna `correlationId` no corpo; requisição sem token (`401 unauthorized`) retorna `correlationId` no corpo; nenhum controller foi alterado.
-**Status:** [ ] pending
+**Status:** [x] done
 
 ### Task 5: Porta de status da fila de e-mail
 
@@ -117,7 +117,7 @@ Tasks MUST be executed sequentially in numerical order. Each task depends on the
 - `src/Ciclo.Infrastructure/Email/EmailDispatchSetup.cs`
 - `tests/Ciclo.Api.Tests/EmailDispatchTests.cs`
 **Validation:** Build 0/0; teste manual: enfileirar 3 mensagens sem worker → `Depth` é 3; `Capacity` continua 1000.
-**Status:** [ ] pending
+**Status:** [x] done
 
 ### Task 6: Gauge da fila no Prometheus
 
@@ -132,7 +132,7 @@ Tasks MUST be executed sequentially in numerical order. Each task depends on the
 - `src/Ciclo.Infrastructure/Email/EmailQueueMetrics.cs`
 - `src/Ciclo.Infrastructure/Email/EmailDispatchSetup.cs`
 **Validation:** Build 0/0; `curl localhost:5264/metrics` contém `ciclo_email_queue_depth` e `ciclo_email_queue_capacity`; o valor de capacidade é 1000.
-**Status:** [ ] pending
+**Status:** [x] done
 
 ### Task 7: Health checks de banco e armazenamento
 
@@ -152,7 +152,7 @@ Tasks MUST be executed sequentially in numerical order. Each task depends on the
 - `src/Ciclo.Api/Health/HealthResponseWriter.cs`
 - `src/Ciclo.Api/Program.cs`
 **Validation:** Build 0/0; `curl -i localhost:5264/health/live` → 200 e `{"status":"Healthy"}`; `curl -i localhost:5264/health/ready` → 200 com `db` e `storage` saudáveis; `curl -i localhost:5264/Health` e `/Health/db` continuam 200.
-**Status:** [ ] pending
+**Status:** [x] done
 
 ### Task 8: Documentação operacional e ADR
 
@@ -169,7 +169,7 @@ Tasks MUST be executed sequentially in numerical order. Each task depends on the
 - `README.md`
 - `management/adr.md`
 **Validation:** README contém “Limiares de alerta” com `http_requests_received_total` e `ciclo_email_queue_depth`; `management/adr.md` contém `ADR-005`.
-**Status:** [ ] pending
+**Status:** [x] done
 
 ### Task 9: Testes automatizados da observabilidade
 
@@ -188,7 +188,7 @@ Tasks MUST be executed sequentially in numerical order. Each task depends on the
 - `tests/Ciclo.Api.Tests/HealthCheckTests.cs`
 - `tests/Ciclo.Api.Tests/ObservabilityEndpointTests.cs`
 **Validation:** Build 0/0; suíte completa verde com os novos testes; `/metrics` no teste contém `ciclo_email_queue_depth`.
-**Status:** [ ] pending
+**Status:** [x] done
 
 ### Task 10: Controles negativos, smoke real e fechamento dos gates
 
@@ -207,4 +207,4 @@ Tasks MUST be executed sequentially in numerical order. Each task depends on the
 - `src/Ciclo.Api/Health/StorageHealthCheck.cs`
 - `src/Ciclo.Infrastructure/Email/EmailDispatcher.cs`
 **Validation:** Os três controles falharam antes da restauração e a suíte voltou a verde depois; smoke real confirmou os três endpoints e a correlação no log e no corpo de erro; build 0 erros / 0 avisos; suíte completa verde; `git status` mostra apenas as mudanças intencionais do spec.
-**Status:** [ ] pending
+**Status:** [x] done

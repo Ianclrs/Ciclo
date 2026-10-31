@@ -20,8 +20,9 @@ public static class EmailDispatchSetup
         services.AddSingleton<ChannelEmailDispatcher>();
         services.AddSingleton<IEmailDispatcher>(sp => sp.GetRequiredService<ChannelEmailDispatcher>());
 
-        // Spec 130 — a mesma instância responde pelo estado da fila; a métrica que a expõe
-        // vive na API (dependência de borda) e lê este estado no momento da coleta.
+        // Spec 130 — a mesma instância responde pelo estado da fila. A métrica que a expõe
+        // (<see cref="EmailQueueMetrics"/>) registra o callback de coleta na construção e lê
+        // este estado no scrape; a API resolve a instância no startup para que o callback exista.
         services.AddSingleton<IEmailQueueStatus>(sp => (IEmailQueueStatus)sp.GetRequiredService<IEmailDispatcher>());
         services.AddSingleton<EmailQueueMetrics>();
 

@@ -49,3 +49,9 @@ public record InviteUserRequest(string Email, string Name, UserRole Role);
 public record ChangeUserRoleRequest(UserRole Role);
 public record SetUserActiveRequest(bool IsActive);
 public record ConfirmEmailRequest(string Email, string Token);
+
+/// <summary>
+/// Spec 120 — aceite do convite. Define a primeira senha da conta criada por convite (que nasce
+/// sem senha) e confirma o e-mail. O token chega em claro pelo link; o banco guarda só o hash.
+/// </summary>
+public sealed record AcceptInviteRequest(string Email, string Token, string NewPassword);
