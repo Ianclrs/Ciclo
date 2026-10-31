@@ -8,6 +8,7 @@ import { StudentAvatar } from '../../components/StudentAvatar';
 import { Button } from '../../components/Button';
 import { Input } from '../../components/Input';
 import { ArrowLeft } from 'lucide-react';
+import { PageSkeleton } from '../../components/Skeleton';
 import * as api from '../../api/students';
 import { apiErrorMessage } from '../../api/errors';
 import type { Student } from '../../types';
@@ -34,7 +35,7 @@ export default function StudentDetail() {
     catch (err) { toast.error(apiErrorMessage(err, 'Não foi possível desvincular o responsável.')); }
   };
 
-  if (!student) return <p>Carregando...</p>;
+  if (!student) return <PageSkeleton />;
 
   return (
     <div>

@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import { ArrowUpRight, type LucideIcon } from 'lucide-react';
 import { Card } from './Card';
+import { Skeleton } from './Skeleton';
 import { accentBar, accentChip, type Accent } from './accentStyles';
 
 interface StatCardProps {
@@ -45,15 +46,20 @@ export function StatCard({
 
       <p className="mt-4 text-sm font-medium text-gray-600">{label}</p>
       {loading ? (
-        <span className="mt-1.5 block h-8 w-16 rounded bg-gray-200 animate-pulse" />
+        <Skeleton className="mt-1 h-[30px] w-16" />
       ) : (
         <p className="mt-1 text-3xl font-bold leading-none text-gray-900 tabular-nums">{value}</p>
       )}
 
       {detail && (
         <div className="mt-4 border-t border-gray-200/70 pt-3">
+          {/* O esqueleto repete a estrutura real (linha de texto + barra): reservando menos
+              altura, o card cresce quando os dados chegam e empurra o que está abaixo. */}
           {loading ? (
-            <span className="block h-3 w-2/3 rounded bg-gray-200 animate-pulse" />
+            <>
+              <Skeleton className="h-4 w-2/3" />
+              {percent !== null && <Skeleton className="mt-2 h-1.5 w-full" />}
+            </>
           ) : (
             <>
               <p className="text-xs text-gray-600">{detail}</p>

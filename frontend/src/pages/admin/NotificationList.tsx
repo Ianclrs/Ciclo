@@ -9,6 +9,7 @@ import { Pagination } from '../../components/Pagination';
 import * as api from '../../api/notifications';
 import { apiErrorMessage } from '../../api/errors';
 import { LoadError } from '../../components/LoadError';
+import { Skeleton } from '../../components/Skeleton';
 import { formatDateTime } from '../../utils/format';
 import type { Notification } from '../../types';
 
@@ -86,8 +87,8 @@ export default function NotificationList() {
           <ul className="space-y-4">
             {[0, 1, 2, 3].map((i) => (
               <li key={i}>
-                <span className="block h-4 w-1/3 rounded bg-gray-200 animate-pulse" />
-                <span className="mt-2 block h-3 w-2/3 rounded bg-gray-100 animate-pulse" />
+                <Skeleton className="h-4 w-1/3" />
+                <Skeleton className="mt-2 h-3 w-2/3" />
               </li>
             ))}
           </ul>

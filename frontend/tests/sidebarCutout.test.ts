@@ -111,21 +111,24 @@ test('a sidebar mede o item ativo e publica as medidas na superfície', async ()
   assert.match(source, /aria-current=\{active \? 'page' : undefined\}/, 'o link ativo não marca `aria-current`');
 });
 
-test('o item ativo não pinta fundo: o destaque é o próprio furo', async () => {
+test('nem item ativo nem hover pintam fundo: o destaque é o próprio furo', async () => {
   const source = await readText('src/components/Sidebar.tsx');
   const palette = await readText('src/components/accentStyles.ts');
   const colorMap = source.match(/const colorMap[^=]*=\s*\{[\s\S]*?\n\};/)?.[0];
 
   assert.ok(colorMap, 'colorMap não encontrado');
-  const activeStyles = [...colorMap.matchAll(/active:\s*'([^']*)'/g)].map((m) => m[1]);
-  const accentCount = [...(palette.match(/export type Accent = ([^;]+);/)?.[1] ?? '').matchAll(/'(\w+)'/g)].length;
-  assert.equal(activeStyles.length, accentCount, 'toda cor da paleta precisa de estado ativo no menu');
+  const styles = (key: 'active' | 'hover') =>
+    [...colorMap.matchAll(new RegExp(`${key}:\\s*'([^']*)'`, 'g'))].map((m) => m[1]);
 
-  for (const style of activeStyles) {
+  const accentCount = [...(palette.match(/export type Accent = ([^;]+);/)?.[1] ?? '').matchAll(/'(\w+)'/g)].length;
+  assert.equal(styles('active').length, accentCount, 'toda cor da paleta precisa de estado ativo no menu');
+  assert.equal(styles('hover').length, accentCount, 'toda cor da paleta precisa de estado de hover no menu');
+
+  for (const style of [...styles('active'), ...styles('hover')]) {
     assert.doesNotMatch(
       style,
       /\bbg-/,
-      `o estilo ativo "${style}" pinta fundo e esconde o recorte`,
+      `o estilo "${style}" pinta fundo e esconde (ou compete com) o recorte`,
     );
   }
 });

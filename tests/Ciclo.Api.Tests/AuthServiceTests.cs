@@ -273,6 +273,54 @@ public sealed class AuthServiceTests : IDisposable
         Assert.Equal("login@test.com", result.User.Email);
     }
 
+    /// <summary>
+    /// "Lembrar o acesso" é uma decisão de DURAÇÃO no servidor, gravada no próprio refresh
+    /// token: 30 dias com a marca, 1 dia sem. E a rotação precisa herdar a decisão — se o
+    /// refresh reemitisse como sessão curta, a pessoa perderia o "lembrar" na primeira
+    /// renovação, um defeito que só apareceria horas depois do login.
+    /// </summary>
+    [Fact]
+    public async Task LoginAsync_RememberMe_SetsLongLivedTokenAndRefreshKeepsIt()
+    {
+        await _authService.RegisterAsync(
+            new RegisterRequest("remember@test.com", "Password1!", "Remember User", TestConstants.TenantId));
+
+        var result = await _authService.LoginAsync(
+            new LoginRequest("remember@test.com", "Password1!", RememberMe: true));
+
+        var stored = await _dbContext.RefreshTokens.FirstAsync(rt => rt.Token == result.RefreshToken);
+        var span = stored.ExpiresAt - stored.CreatedAt;
+        Assert.True(span > TimeSpan.FromDays(20), $"esperava ~30 dias, veio {span}");
+
+        var refreshed = await _authService.RefreshTokenAsync(result.RefreshToken);
+        Assert.True(refreshed.RememberMe, "a rotação rebaixou uma sessão lembrada");
+
+        var rotatedStored = await _dbContext.RefreshTokens
+            .FirstAsync(rt => rt.Token == refreshed.RefreshToken);
+        Assert.True(
+            rotatedStored.ExpiresAt - rotatedStored.CreatedAt > TimeSpan.FromDays(20),
+            "o token rotacionado perdeu a duração longa");
+    }
+
+    [Fact]
+    public async Task LoginAsync_WithoutRememberMe_KeepsShortLivedSession()
+    {
+        await _authService.RegisterAsync(
+            new RegisterRequest("session@test.com", "Password1!", "Session User", TestConstants.TenantId));
+
+        var result = await _authService.LoginAsync(
+            new LoginRequest("session@test.com", "Password1!"));
+
+        var stored = await _dbContext.RefreshTokens.FirstAsync(rt => rt.Token == result.RefreshToken);
+        var span = stored.ExpiresAt - stored.CreatedAt;
+        // Tolerância de folga: `ExpiresAt` é calculado depois de `CreatedAt`, então a duração
+        // de 1 dia vem com alguns nanossegundos a mais. O que importa é estar longe de 30.
+        Assert.True(span < TimeSpan.FromDays(2), $"esperava ~1 dia, veio {span}");
+
+        var refreshed = await _authService.RefreshTokenAsync(result.RefreshToken);
+        Assert.False(refreshed.RememberMe, "a rotação promoveu uma sessão curta a sessão lembrada");
+    }
+
     [Fact]
     public async Task LoginAsync_InvalidPassword_ThrowsAuthException()
     {

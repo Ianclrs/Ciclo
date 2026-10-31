@@ -4,6 +4,7 @@ import { getUsers } from '../api/users';
 import { getStudents } from '../api/students';
 import { apiErrorMessage } from '../api/errors';
 import { roleLabel } from '../domain/userAdmin';
+import { Skeleton } from './Skeleton';
 import { matches } from '../utils/search';
 import type { ManagedUser, Student } from '../types';
 
@@ -89,7 +90,7 @@ export function UserPicker({
         <div className={listClass}>
           {[0, 1, 2].map((i) => (
             <div key={i} className="px-3 py-2">
-              <span className="block h-4 w-1/2 rounded bg-gray-200 animate-pulse" />
+              <Skeleton className="h-4 w-1/2" />
             </div>
           ))}
         </div>

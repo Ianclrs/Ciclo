@@ -227,6 +227,7 @@ export default function StudentList() {
           data={students}
           keyExtractor={(student) => student.id}
           loading={loading}
+          loadingRows={PAGE_SIZE}
           emptyMessage={
             failed
               ? 'Não foi possível carregar os alunos. Tente novamente.'

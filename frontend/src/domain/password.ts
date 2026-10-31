@@ -1,7 +1,7 @@
 /**
  * Regra de senha espelhada do Identity (`Password1!` é o formato dos testes do backend).
- * Antes vivia só dentro de `RegisterPage`; o cadastro de responsável usa a mesma regra,
- * então ela passou a ter um dono único.
+ * Antes vivia só dentro do formulário de cadastro de colégio; o de responsável usa a mesma
+ * regra, então ela passou a ter um dono único.
  */
 export function passwordError(password: string): string | null {
   if (password.length < 8) return 'A senha deve ter no mínimo 8 caracteres.';

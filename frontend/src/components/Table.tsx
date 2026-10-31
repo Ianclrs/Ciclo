@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { Skeleton } from './Skeleton';
 
 interface Column<T> {
   header: string;
@@ -13,9 +14,15 @@ interface TableProps<T> {
   emptyMessage?: string;
   /** Mantém o cabeçalho visível e mostra linhas de esqueleto no lugar dos dados. */
   loading?: boolean;
+  /**
+   * Quantas linhas de esqueleto desenhar. Deve ser o tamanho da página: com um número menor,
+   * a tabela carrega curta e cresce de uma vez quando os dados chegam — medido como pulo de
+   * altura visível na troca de seção.
+   */
+  loadingRows?: number;
 }
 
-const SKELETON_ROWS = 5;
+const DEFAULT_LOADING_ROWS = 5;
 
 export function Table<T>({
   columns,
@@ -23,6 +30,7 @@ export function Table<T>({
   keyExtractor,
   emptyMessage = 'Nenhum resultado encontrado.',
   loading = false,
+  loadingRows = DEFAULT_LOADING_ROWS,
 }: TableProps<T>) {
   return (
     <div className="overflow-x-auto">
@@ -43,11 +51,11 @@ export function Table<T>({
         </thead>
         <tbody>
           {loading &&
-            Array.from({ length: SKELETON_ROWS }, (_, rowIndex) => (
+            Array.from({ length: loadingRows }, (_, rowIndex) => (
               <tr key={`skeleton-${rowIndex}`} className="border-b border-gray-100 last:border-0">
                 {columns.map((_, colIndex) => (
                   <td key={colIndex} className="py-4">
-                    <span className="block h-4 w-full max-w-[180px] rounded bg-gray-100 animate-pulse" />
+                    <Skeleton className="h-4 w-full max-w-[180px]" />
                   </td>
                 ))}
               </tr>

@@ -9,6 +9,7 @@ import { Button } from '../../components/Button';
 import { StatCard } from '../../components/StatCard';
 import { RecentNotifications } from '../../components/RecentNotifications';
 import { useAuth } from '../../hooks/useAuth';
+import { Skeleton } from '../../components/Skeleton';
 import * as api from '../../api/parent';
 import * as notifApi from '../../api/notifications';
 import type { Grade, ParentDashboard as ParentDashboardData } from '../../types';
@@ -28,7 +29,7 @@ function formatAverage(media: number): string {
 
 function PerformanceLine({ value, loading }: { value: Performance | null | undefined; loading: boolean }) {
   if (loading) {
-    return <span className="mt-4 block h-4 w-32 rounded bg-gray-200 animate-pulse" />;
+    return <Skeleton className="mt-4 h-4 w-32" />;
   }
   // null (falha na busca) e undefined (ainda não buscado) são ambos "indisponível".
   if (value === null || value === undefined) {

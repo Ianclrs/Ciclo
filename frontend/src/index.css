@@ -1,5 +1,14 @@
 @import "tailwindcss";
 
+/*
+ * Fonte da marca, carregada em `index.html`. É um token próprio (`font-brand`) e NÃO uma
+ * troca do `--font-sans`: o resto do app mantém a fonte do sistema, e a fonte nova vale
+ * apenas onde é aplicada de propósito (hoje, a tela de login).
+ */
+@theme {
+  --font-brand: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
+}
+
 @keyframes gradient-shift {
   0%, 100% { background-position: 0% 50%; }
   50% { background-position: 100% 50%; }
@@ -24,6 +33,47 @@
 }
 .animate-drawer {
   animation: drawer-open 0.28s ease-out;
+}
+
+/*
+ * Troca de seção na área de conteúdo: a seção nova desliza 8px para o lugar. Roda na
+ * montagem, então quem exibe as seções remonta a camada por rota (`key={pathname}`).
+ *
+ * NÃO existe rampa de opacidade aqui, e isso é deliberado. Medido no app real
+ * (`tests/manual/section-switch-probe.mjs`): começando em `opacity: 0`, a área de conteúdo
+ * ficava invisível ou translúcida por ~195 ms em TODA troca de seção — e era exatamente isso
+ * que aparecia como piscada. O conteúdo agora nasce opaco no primeiro quadro (medido:
+ * zero quadros translúcidos) e só o deslocamento anima.
+ */
+@keyframes section-enter {
+  from { transform: translateY(8px); }
+  to   { transform: translateY(0); }
+}
+.section-enter {
+  animation: section-enter 180ms ease-out both;
+}
+
+/*
+ * Esqueleto de carregamento (`Skeleton.tsx`). O atraso de 150 ms é deliberado: em rede local
+ * a resposta chega antes disso, e um cinza que aparece e desaparece num quadro é justamente a
+ * piscada que o esqueleto deveria evitar. Antes do atraso a caixa fica invisível, mas já
+ * ocupa o espaço — o layout não pula nem quando o dado vem rápido.
+ *
+ * São duas animações porque `opacity` é o mesmo canal: a primeira segura o invisível e
+ * entrega o valor final; a segunda pulsa a partir dali.
+ */
+@keyframes skeleton-appear {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes skeleton-pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.55; }
+}
+.skeleton {
+  animation:
+    skeleton-appear 0s linear 150ms both,
+    skeleton-pulse 1.6s ease-in-out 150ms infinite;
 }
 
 /*
@@ -86,9 +136,72 @@
   transition: none;
 }
 
-/* O fundo é decorativo: quem pediu menos movimento não ganha animação no recorte. */
+/* O fundo, a troca de seção e o pulso do esqueleto são decorativos: sem movimento. */
 @media (prefers-reduced-motion: reduce) {
   .sidebar-cutout[data-hole='on'] {
     transition: none;
   }
+  .section-enter {
+    animation: none;
+  }
+  /* O atraso de aparição continua: ele evita a piscada, não é movimento. */
+  .skeleton {
+    animation: skeleton-appear 0s linear 150ms both;
+  }
+  .animate-float,
+  .animate-float-delayed {
+    animation: none;
+  }
+}
+
+/*
+ * Superfícies de vidro das telas públicas (login). Vivem em CSS, e não como utilitários
+ * repetidos, porque o mesmo par aparece em vários elementos da MESMA tela e precisa mudar
+ * junto.
+ *
+ * `.glass-card` NÃO usa `backdrop-filter`, e isso é deliberado: estes cards FLUTUAM
+ * (`animate-float`, que anima `transform`). No Chrome, filtrar o fundo de um elemento que se
+ * move faz o conteúdo — inclusive o TEXTO — ser rasterizado em outra camada, e o resultado
+ * aparece borrado durante todo o movimento. O shader atrás é ruído pastel de baixa
+ * frequência, então o desfoque de 20 px era quase invisível: tirá-lo não muda a leitura e
+ * devolve texto nítido. A transparência subiu um pouco para compensar a falta do filtro.
+ *
+ * `.glass-pill` mantém o desfoque porque fica parado (cabeçalho), onde o defeito não ocorre.
+ */
+.glass-card {
+  background: rgba(255, 255, 255, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  box-shadow: 0 16px 36px -8px rgba(15, 23, 42, 0.06);
+}
+
+.glass-pill {
+  background: rgba(255, 255, 255, 0.65);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+  border: 1px solid rgba(255, 255, 255, 0.85);
+}
+
+/*
+ * Flutuação lenta dos cards institucionais do painel direito. O `translate3d` promove o card
+ * à própria camada: o texto viaja junto com o card, em vez de ser redesenhado a cada quadro —
+ * que é a outra metade do texto borrado em movimento.
+ *
+ * O `will-change` é obrigatório, não enfeite: o minificador de CSS do build reduz
+ * `translate3d(0, -8px, 0)` a `translateY(-8px)` (medi no CSS compilado), e com isso a
+ * promoção de camada desaparece. `will-change: transform` promove a camada por conta própria
+ * e sobrevive à minificação.
+ */
+@keyframes float-slow {
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  50%      { transform: translate3d(0, -8px, 0); }
+}
+.animate-float {
+  animation: float-slow 6s ease-in-out infinite;
+  will-change: transform;
+  backface-visibility: hidden;
+}
+.animate-float-delayed {
+  animation: float-slow 7s ease-in-out 2s infinite;
+  will-change: transform;
+  backface-visibility: hidden;
 }

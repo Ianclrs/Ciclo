@@ -11,6 +11,7 @@ import { ArrowLeft } from 'lucide-react';
 import * as api from '../../api/enrollments';
 import { apiErrorMessage } from '../../api/errors';
 import { LoadError } from '../../components/LoadError';
+import { PageSkeleton } from '../../components/Skeleton';
 import { formatDate } from '../../utils/format';
 import type { Enrollment } from '../../types';
 
@@ -60,7 +61,7 @@ export default function EnrollmentDetail() {
     );
   }
 
-  if (!enrollment) return <p>Carregando...</p>;
+  if (!enrollment) return <PageSkeleton />;
 
   return (
     <div>

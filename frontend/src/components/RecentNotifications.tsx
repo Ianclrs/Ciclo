@@ -5,6 +5,7 @@ import { Card } from './Card';
 import { CardHeading } from './CardHeading';
 import { Badge } from './Badge';
 import { Button } from './Button';
+import { Skeleton } from './Skeleton';
 import * as api from '../api/notifications';
 import type { Notification } from '../types';
 
@@ -82,12 +83,14 @@ export function RecentNotifications({ viewAllTo }: { viewAllTo: string }) {
         </div>
       ) : items === null ? (
         <ul className="space-y-3">
-          {[0, 1, 2].map((i) => (
+          {/* Mesmas linhas que a lista real carrega (`LIMIT`). Menos esqueleto do que item faz
+              o cartão crescer ao receber os dados; medido, 3 linhas dobrava o layout shift. */}
+          {Array.from({ length: LIMIT }, (_, i) => (
             <li key={i} className="flex items-start gap-3">
               <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-gray-200" />
               <div className="min-w-0 flex-1">
-                <span className="block h-4 w-2/3 rounded bg-gray-200 animate-pulse" />
-                <span className="mt-2 block h-3 w-full rounded bg-gray-100 animate-pulse" />
+                <Skeleton className="h-4 w-2/3" />
+                <Skeleton className="mt-2 h-3 w-full" />
               </div>
             </li>
           ))}

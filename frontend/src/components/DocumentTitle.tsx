@@ -10,6 +10,11 @@ interface PageTitleRule {
 const PAGE_TITLE_RULES: PageTitleRule[] = [
   { prefix: '/login', title: 'Login' },
   { prefix: '/auth/google', title: 'Login' },
+  // O casamento aceita prefixo com barra, então `/register/parent` também casaria com
+  // `/register`. A rota mais específica vem antes — e os nomes são os mesmos que aparecem
+  // ao lado da logo na tela de entrada (`PANEL_COPY` em `AuthPage`).
+  { prefix: '/register/parent', title: 'Conta de responsável' },
+  { prefix: '/register', title: 'Cadastro de colégio' },
   { prefix: '/admin/students', title: 'Alunos' },
   { prefix: '/admin/enrollments', title: 'Matrículas' },
   { prefix: '/admin/documents', title: 'Documentos' },

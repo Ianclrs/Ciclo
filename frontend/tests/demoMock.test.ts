@@ -32,6 +32,29 @@ test('login com e-mail desconhecido é 401 (não entra com dados de outro papel)
   assert.equal(state.sessionUserId, null);
 });
 
+test('cadastro de responsável na demonstração devolve sessão, não só o id', () => {
+  const state = fresh();
+  const result = handleRequest(state, 'POST', '/api/auth/register/parent', {}, {
+    schoolSlug: 'colegio-modelo',
+    name: 'Marta Almeida',
+    email: 'Marta@Teste.local',
+    password: 'Senha1!abc',
+  });
+
+  assert.equal(result.status, 201);
+  const data = result.data as { accessToken: string; user: { id: string; role: string; email: string } };
+  // O contrato de `registerParent` em `src/api/auth.ts` é `{ accessToken, user }`. Devolver só
+  // o `id` deixava o fluxo sem sessão e a rota protegida devolvia a pessoa ao login em silêncio.
+  assert.match(data.accessToken, /^demo-token-/);
+  assert.equal(data.user.role, 'Parent');
+  assert.equal(data.user.email, 'marta@teste.local', 'o e-mail deve ser normalizado');
+  assert.equal(state.sessionUserId, data.user.id);
+
+  // A sessão criada responde em `/auth/me`, que é o passo seguinte do fluxo.
+  const me = handleRequest(state, 'GET', '/api/auth/me');
+  assert.equal(me.status, 200);
+});
+
 test('lista de alunos pagina e totaliza como o backend', () => {
   const state = fresh();
   const first = handleRequest(state, 'GET', '/api/students', { page: 1, pageSize: 5 });

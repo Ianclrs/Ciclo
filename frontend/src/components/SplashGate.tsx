@@ -54,7 +54,7 @@ export function SplashGate({ children }: { children: ReactNode }) {
       role="button"
       tabIndex={0}
       aria-label="Continuar para o login"
-      className="min-h-screen flex items-center justify-center bg-[#eceff2] px-4 relative overflow-hidden cursor-pointer select-none"
+      className="min-h-screen flex items-center justify-center bg-[#eceff2] px-4 relative overflow-hidden cursor-pointer select-none font-brand"
     >
       <ShaderBackground />
 

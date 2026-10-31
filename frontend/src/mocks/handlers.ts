@@ -117,7 +117,22 @@ export function handleRequest(
   }
 
   if (verb === 'POST' && url === '/api/auth/register/parent') {
-    return { status: 201, data: { id: newId('user') } };
+    // O contrato real devolve `{ accessToken, user }` e já abre a sessão. Devolver só o `id`
+    // fazia o cadastro parecer quebrado na demonstração: sem token, `/auth/me` respondia 401,
+    // e a rota protegida devolvia a pessoa à tela de login sem mensagem nenhuma.
+    const email = text(body.email).toLowerCase();
+    const user = {
+      id: newId('user'),
+      email,
+      name: text(body.name),
+      role: 'Parent' as const,
+      tenantId: state.tenant.id,
+      emailConfirmed: true,
+      isActive: true,
+    };
+    state.users.push(user);
+    state.sessionUserId = user.id;
+    return { status: 201, data: { accessToken: `demo-token-${user.id}`, user } };
   }
 
   // ---------- tenant ----------

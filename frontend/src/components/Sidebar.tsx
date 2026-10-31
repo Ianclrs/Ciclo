@@ -5,6 +5,7 @@ import { Button } from './Button';
 import { ShaderBackground } from './ShaderBackground';
 import { TopbarActions } from './TopbarActions';
 import { cutoutMask, type CutoutRect } from './sidebarCutout';
+import { clearJustLoggedIn, wasJustLoggedIn } from '../utils/sessionMarks';
 import type { Accent } from './accentStyles';
 
 interface SidebarItem {
@@ -15,19 +16,20 @@ interface SidebarItem {
 }
 
 /**
- * O item ativo NÃO recebe fundo: ele fica dentro do recorte, onde o shader aparece cru.
- * O destaque é a cor de acento no texto e no ícone — um pastel ali sumiria sobre o fundo vivo.
+ * Nem o item ativo nem o hover pintam fundo: o item ativo fica dentro do recorte, onde o
+ * shader aparece cru, e um pastel de hover ao lado dele competia com o próprio vinco.
+ * O destaque é só a cor de acento no texto e no ícone.
  *
  * A chave é `Accent`: uma cor só existe no menu se tiver estado definido aqui, então uma
  * cor nova na paleta obriga a aparecer nesta tabela (e uma cor fora da paleta não compila).
  */
 const colorMap: Record<Accent, { active: string; hover: string }> = {
-  violet: { active: 'text-violet-700', hover: 'hover:bg-violet-50 hover:text-violet-700' },
-  blue:   { active: 'text-blue-700',   hover: 'hover:bg-blue-50 hover:text-blue-700' },
-  teal:   { active: 'text-teal-700',   hover: 'hover:bg-teal-50 hover:text-teal-700' },
-  green:  { active: 'text-green-700',  hover: 'hover:bg-green-50 hover:text-green-700' },
-  amber:  { active: 'text-amber-700',  hover: 'hover:bg-amber-50 hover:text-amber-700' },
-  red:    { active: 'text-red-700',    hover: 'hover:bg-red-50 hover:text-red-700' },
+  violet: { active: 'text-violet-700', hover: 'hover:text-violet-700' },
+  blue:   { active: 'text-blue-700',   hover: 'hover:text-blue-700' },
+  teal:   { active: 'text-teal-700',   hover: 'hover:text-teal-700' },
+  green:  { active: 'text-green-700',  hover: 'hover:text-green-700' },
+  amber:  { active: 'text-amber-700',  hover: 'hover:text-amber-700' },
+  red:    { active: 'text-red-700',    hover: 'hover:text-red-700' },
 };
 
 interface SidebarProps {
@@ -39,7 +41,13 @@ interface SidebarProps {
 
 export function Sidebar({ items, children, notificationsTo }: SidebarProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [desktopCollapsed, setDesktopCollapsed] = useState(true);
+  /**
+   * Recolhida é o padrão (a barra some e sobra a tela). Exceção: logo depois do login, quando
+   * a marca de sessão nova manda abrir — quem acabou de entrar precisa ver o menu, não procurar
+   * o botão que o revela. A leitura no inicializador só espia; quem apaga é o efeito abaixo,
+   * porque o `StrictMode` executa o inicializador duas vezes em desenvolvimento.
+   */
+  const [desktopCollapsed, setDesktopCollapsed] = useState(() => !wasJustLoggedIn());
   const location = useLocation();
   const navigate = useNavigate();
   const { user, logout } = useAuth();
@@ -174,6 +182,14 @@ export function Sidebar({ items, children, notificationsTo }: SidebarProps) {
     return () => { document.body.style.overflow = ''; };
   }, [mobileOpen]);
 
+  /*
+   * A marca de "acabou de entrar" vale uma vez: apagar aqui garante que a sidebar não se
+   * reabra sozinha numa remontagem depois de a pessoa tê-la fechado.
+   */
+  useEffect(() => {
+    clearJustLoggedIn();
+  }, []);
+
   const handleLogout = async () => {
     await logout();
     navigate('/login');
@@ -278,7 +294,15 @@ export function Sidebar({ items, children, notificationsTo }: SidebarProps) {
         {/* ===== MAIN CONTENT ===== */}
         <main className="no-scrollbar flex-1 overflow-auto">
           <div className="p-4 md:p-6">
-            {children}
+            {/*
+              `key` pela rota: a camada remonta a cada seção e a animação de entrada
+              reinicia. Sem a chave a classe não reaplicaria e a troca seria seca.
+              Nenhuma navegação atual troca só o parâmetro da mesma rota, então a
+              remontagem não descarta estado que estivesse sendo editado.
+            */}
+            <div key={location.pathname} className="section-enter">
+              {children}
+            </div>
           </div>
         </main>
       </div>

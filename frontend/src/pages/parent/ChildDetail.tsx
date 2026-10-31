@@ -9,6 +9,7 @@ import { ArrowLeft, FileText } from 'lucide-react';
 import * as api from '../../api/parent';
 import { apiErrorMessage } from '../../api/errors';
 import { LoadError } from '../../components/LoadError';
+import { PageSkeleton } from '../../components/Skeleton';
 import { formatDate } from '../../utils/format';
 import type { ChildDetail } from '../../types';
 
@@ -44,7 +45,7 @@ export default function ChildDetail() {
     );
   }
 
-  if (!child) return <p>Carregando...</p>;
+  if (!child) return <PageSkeleton />;
 
   return (
     <div>

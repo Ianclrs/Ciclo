@@ -7,6 +7,7 @@ import { Button } from '../../components/Button';
 import { StatCard } from '../../components/StatCard';
 import { CardHeading } from '../../components/CardHeading';
 import { RecentNotifications } from '../../components/RecentNotifications';
+import { Skeleton } from '../../components/Skeleton';
 import { useAuth } from '../../hooks/useAuth';
 import * as studentsApi from '../../api/students';
 import * as enrollmentsApi from '../../api/enrollments';
@@ -241,7 +242,23 @@ export default function AdminDashboard() {
             action={badge ? <Badge variant={badge.variant}>{badge.text}</Badge> : undefined}
           />
 
-          {period && badge ? (
+          {loading ? (
+            /* Silhueta na mesma ordem do cartão real (título, período, barra, link): o
+               dashboard mostrava "Nenhum período aberto" e depois o cartão crescia, o que
+               empurrava os cards abaixo — medido como layout shift na troca de seção. */
+            <div>
+              <Skeleton className="h-6 w-40" />
+              <Skeleton className="mt-2 h-4 w-56" />
+              <div className="mt-5 border-t border-gray-200/70 pt-4">
+                <div className="flex items-center justify-between">
+                  <Skeleton className="h-3 w-32" />
+                  <Skeleton className="h-3 w-20" />
+                </div>
+                <Skeleton className="mt-2 h-2 w-full" />
+              </div>
+              <Skeleton className="mt-4 h-4 w-28" />
+            </div>
+          ) : period && badge ? (
             <div>
               <p className="truncate text-lg font-semibold text-gray-900">{period.nome}</p>
               <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-sm text-gray-600">

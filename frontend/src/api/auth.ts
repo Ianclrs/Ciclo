@@ -1,8 +1,17 @@
 import api from './client';
 import type { User } from '../types';
 
-export async function login(email: string, password: string): Promise<{ accessToken: string; user: User }> {
-  const res = await api.post('/api/auth/login', { email, password });
+/**
+ * `rememberMe` decide a NATUREZA da sessão no servidor: com `true` o cookie de refresh é
+ * persistente (30 dias); com `false` é cookie de sessão, descartado ao fechar o navegador.
+ * Vem sempre explícito para não depender do padrão do backend.
+ */
+export async function login(
+  email: string,
+  password: string,
+  rememberMe = false,
+): Promise<{ accessToken: string; user: User }> {
+  const res = await api.post('/api/auth/login', { email, password, rememberMe });
   return res.data;
 }
 

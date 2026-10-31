@@ -339,6 +339,7 @@ export default function DocumentVerification() {
           data={docs}
           keyExtractor={(doc) => doc.id}
           loading={loading}
+          loadingRows={PAGE_SIZE}
           emptyMessage={
             failed
               ? 'Não foi possível carregar os documentos. Tente novamente.'

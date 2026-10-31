@@ -37,7 +37,8 @@ public class AuthController : ControllerBase
         try
         {
             var result = await _authService.RegisterAsync(request);
-            SetRefreshTokenCookie(result.RefreshToken);
+            // Cadastro não tem opção de "lembrar": a sessão nasce de sessão de navegador.
+            SetRefreshTokenCookie(result.RefreshToken, rememberMe: false);
             return Created(string.Empty, new { result.AccessToken, result.User });
         }
         catch (AuthException ex)
@@ -58,7 +59,8 @@ public class AuthController : ControllerBase
         try
         {
             var result = await _authService.RegisterParentAsync(request);
-            SetRefreshTokenCookie(result.RefreshToken);
+            // Cadastro não tem opção de "lembrar": a sessão nasce de sessão de navegador.
+            SetRefreshTokenCookie(result.RefreshToken, rememberMe: false);
             return Created(string.Empty, new { result.AccessToken, result.User });
         }
         catch (AuthException ex)
@@ -76,7 +78,7 @@ public class AuthController : ControllerBase
         try
         {
             var result = await _authService.LoginAsync(request);
-            SetRefreshTokenCookie(result.RefreshToken);
+            SetRefreshTokenCookie(result.RefreshToken, request.RememberMe);
             return Ok(new { result.AccessToken, result.User });
         }
         catch (AuthException ex)
@@ -98,7 +100,9 @@ public class AuthController : ControllerBase
         try
         {
             var result = await _authService.RefreshTokenAsync(refreshToken);
-            SetRefreshTokenCookie(result.RefreshToken);
+            // A política de "lembrar" vem do token rotacionado: sem isso o primeiro refresh
+            // transformaria uma sessão de 30 dias em cookie de sessão.
+            SetRefreshTokenCookie(result.RefreshToken, result.RememberMe);
             return Ok(new { result.AccessToken, result.User });
         }
         catch (AuthException ex)
@@ -216,15 +220,25 @@ public class AuthController : ControllerBase
         return Ok();
     }
 
-    private void SetRefreshTokenCookie(string token)
+    /// <summary>
+    /// Emite o cookie do refresh token.
+    ///
+    /// <paramref name="rememberMe"/> decide a NATUREZA do cookie, não só a duração: com
+    /// "lembrar" ele é persistente (30 dias, sobrevive a fechar o navegador); sem, é cookie de
+    /// sessão — o navegador o descarta ao fechar. O prazo do lado do servidor acompanha a
+    /// mesma escolha em <c>AuthService.GenerateAuthResponse</c>.
+    /// </summary>
+    private void SetRefreshTokenCookie(string token, bool rememberMe)
     {
         var cookieOptions = new CookieOptions
         {
             HttpOnly = true,
             Secure = true,
             SameSite = SameSiteMode.Strict,
-            Expires = DateTime.UtcNow.AddDays(7)
         };
+
+        if (rememberMe)
+            cookieOptions.Expires = DateTime.UtcNow.AddDays(30);
         Response.Cookies.Append("refresh_token", token, cookieOptions);
     }
 }

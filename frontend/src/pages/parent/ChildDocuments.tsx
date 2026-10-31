@@ -9,6 +9,7 @@ import { ArrowLeft, Upload } from 'lucide-react';
 import * as api from '../../api/parent';
 import { apiErrorMessage } from '../../api/errors';
 import { LoadError } from '../../components/LoadError';
+import { SkeletonRows } from '../../components/Skeleton';
 import { getDocumentTypes } from '../../api/documents';
 import { formatDate } from '../../utils/format';
 import type { Document, DocumentType } from '../../types';
@@ -116,7 +117,7 @@ export default function ChildDocuments() {
       </Card>
       <Card tone="glass">
         {loading ? (
-          <p className="text-gray-500 text-center py-4">Carregando...</p>
+          <SkeletonRows rows={4} />
         ) : docs.length === 0 ? (!error && <p className="text-gray-500 text-center py-4">Nenhum documento.</p>) : (
           <ul className="divide-y">
             {docs.map((d) => (

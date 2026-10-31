@@ -9,6 +9,7 @@ import { Input } from '../../components/Input';
 import { Select } from '../../components/Select';
 import { Modal } from '../../components/Modal';
 import { LoadError } from '../../components/LoadError';
+import { SkeletonRows } from '../../components/Skeleton';
 import * as api from '../../api/users';
 import { apiErrorMessage } from '../../api/errors';
 import { useAuth } from '../../hooks/useAuth';
@@ -32,6 +33,7 @@ import type { ManagedRole, ManagedUser } from '../../types';
 export default function UserManagement() {
   const { user: current } = useAuth();
   const [users, setUsers] = useState<ManagedUser[]>([]);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [busy, setBusy] = useState(false);
@@ -52,10 +54,12 @@ export default function UserManagement() {
         if (!active) return;
         setUsers(list);
         setError(null);
+        setLoading(false);
       })
       .catch((err) => {
         if (!active) return;
         setError(apiErrorMessage(err, 'Não foi possível carregar os usuários.'));
+        setLoading(false);
       });
     return () => {
       active = false;
@@ -72,7 +76,10 @@ export default function UserManagement() {
     );
   }
 
-  const reload = () => setReloadKey((key) => key + 1);
+  const reload = () => {
+    setLoading(true);
+    setReloadKey((key) => key + 1);
+  };
 
   const handleInvite = async () => {
     const problem = validateInvite(form);
@@ -132,6 +139,10 @@ export default function UserManagement() {
       <Card tone="glass">
         {error ? (
           <LoadError message={error} onRetry={reload} />
+        ) : loading ? (
+          /* Sem estas linhas a tela mostrava "Nenhum usuário cadastrado" e trocava pela lista
+             quando a API respondia — a piscada de quem abre uma seção ainda sem dados. */
+          <SkeletonRows rows={5} />
         ) : users.length === 0 ? (
           <p className="text-gray-500 text-center py-4">Nenhum usuário cadastrado.</p>
         ) : (

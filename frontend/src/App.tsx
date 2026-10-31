@@ -7,10 +7,8 @@ import { Sidebar } from './components/Sidebar';
 import DocumentTitle from './components/DocumentTitle';
 import { LayoutDashboard, Users, FileText, Bell, GraduationCap, UserCog } from 'lucide-react';
 import { useAuth } from './hooks/useAuth';
-import LoginPage from './pages/LoginPage';
+import AuthPage from './pages/AuthPage';
 import ForgotPasswordPage from './pages/ForgotPasswordPage';
-import RegisterPage from './pages/RegisterPage';
-import ParentRegisterPage from './pages/ParentRegisterPage';
 import AdminDashboard from './pages/admin/AdminDashboard';
 import StudentList from './pages/admin/StudentList';
 import StudentForm from './pages/admin/StudentForm';
@@ -84,11 +82,21 @@ export default function App() {
       <AuthProvider>
         <Toaster position="top-right" />
         <Routes>
-          <Route path="/login" element={<SplashGate><LoginPage /></SplashGate>} />
+          {/* Uma tela, três endereços: a rota define o que o painel mostra (login, cadastro
+              de colégio, cadastro de responsável). Trocar de conteúdo muda a URL.
+
+              As três passam pelo `SplashGate` porque ele é a porta de entrada do app: quem
+              abre `/register` direto na barra de endereços veria a splash só depois, ao voltar
+              para o login. Ele aparece uma vez por sessão (`sessionStorage`), então trocar de
+              painel depois disso não mostra a abertura de novo.
+
+              `/auth/google/callback` fica FORA: é retorno de redirecionamento com token na
+              URL, e precisa processar a sessão sem uma tela para dispensar antes. */}
+          <Route path="/login" element={<SplashGate><AuthPage /></SplashGate>} />
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-          <Route path="/register" element={<RegisterPage />} />
-          <Route path="/register/parent" element={<ParentRegisterPage />} />
-          <Route path="/auth/google/callback" element={<LoginPage />} />
+          <Route path="/register" element={<SplashGate><AuthPage /></SplashGate>} />
+          <Route path="/register/parent" element={<SplashGate><AuthPage /></SplashGate>} />
+          <Route path="/auth/google/callback" element={<AuthPage />} />
           <Route path="/admin/*" element={<ProtectedRoute roles={['Admin', 'Staff']}><AdminLayout /></ProtectedRoute>} />
           <Route path="/parent/*" element={<ProtectedRoute roles={['Parent']}><ParentLayout /></ProtectedRoute>} />
           <Route path="*" element={<Navigate to="/login" replace />} />

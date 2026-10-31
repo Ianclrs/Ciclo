@@ -17,7 +17,7 @@ public interface IAuthService
     Task<AuthResponse> RegisterAsync(RegisterRequest request);
     Task<AuthResponse> RegisterParentAsync(RegisterParentRequest request);
     Task<AuthResponse> LoginAsync(LoginRequest request);
-    Task<AuthResponse> RefreshTokenAsync(string refreshToken);
+    Task<RefreshedSession> RefreshTokenAsync(string refreshToken);
     Task RevokeTokenAsync(string refreshToken);
     Task<string?> ForgotPasswordAsync(string email);
     Task ResetPasswordAsync(ResetPasswordRequest request);
@@ -156,10 +156,10 @@ public class AuthService : IAuthService
         _tenantContext.SetTenant(user.TenantId);
         await _userManager.ResetAccessFailedCountAsync(user);
 
-        return await GenerateAuthResponse(user);
+        return await GenerateAuthResponse(user, request.RememberMe);
     }
 
-    public async Task<AuthResponse> RefreshTokenAsync(string refreshToken)
+    public async Task<RefreshedSession> RefreshTokenAsync(string refreshToken)
     {
         var storedToken = await _dbContext.RefreshTokens
             .FirstOrDefaultAsync(rt => rt.Token == refreshToken);
@@ -197,9 +197,10 @@ public class AuthService : IAuthService
 
         // Rotação: o token apresentado deixa de valer e um novo é emitido (GenerateAuthResponse
         // persiste os dois no mesmo SaveChanges).
+        var rememberMe = WasRemembered(storedToken);
         storedToken.RevokedAt = DateTime.UtcNow;
 
-        return await GenerateAuthResponse(user);
+        return new RefreshedSession(await GenerateAuthResponse(user, rememberMe), rememberMe);
     }
 
     public async Task RevokeTokenAsync(string refreshToken)
@@ -346,10 +347,39 @@ public class AuthService : IAuthService
     /// <summary>B4: retenção dos tokens revogados — auditoria de reuso sem crescimento sem fim.</summary>
     private const int RevokedTokenRetentionDays = 30;
 
-    private async Task<AuthResponse> GenerateAuthResponse(User user)
+    /// <summary>
+    /// Duração do refresh token quando a pessoa NÃO pediu para ser lembrada. O cookie que o
+    /// carrega é de sessão (morre ao fechar o navegador); este prazo é o teto do lado do
+    /// servidor, para que uma sessão sem "lembrar" não sobreviva a um dia inteiro de aba aberta.
+    /// </summary>
+    private const int SessionLifetimeDays = 1;
+
+    /// <summary>Duração do refresh token quando a pessoa marcou "lembrar o acesso".</summary>
+    private const int RememberedLifetimeDays = 30;
+
+    /// <summary>
+    /// Onde a política fica gravada: na própria duração do token. Qualquer coisa acima de uma
+    /// sessão de um dia é uma sessão lembrada — o valor do meio separa os dois mundos com folga.
+    /// </summary>
+    private static readonly TimeSpan RememberedThreshold =
+        TimeSpan.FromDays((SessionLifetimeDays + RememberedLifetimeDays) / 2.0);
+
+    /// <summary>
+    /// A política de "lembrar" vem do TOKEN que chegou, nunca do cliente: quem decide quanto
+    /// tempo uma sessão dura é o servidor, e a rotação herda a decisão original (senão o
+    /// primeiro refresh rebaixaria uma sessão de 30 dias para sessão de navegador).
+    /// </summary>
+    private static bool WasRemembered(RefreshToken token) =>
+        token.ExpiresAt - token.CreatedAt > RememberedThreshold;
+
+    private async Task<AuthResponse> GenerateAuthResponse(User user, bool rememberMe = false)
     {
         var accessToken = _tokenGenerator.GenerateAccessToken(user);
         var refreshToken = _tokenGenerator.GenerateRefreshToken(user.Id);
+
+        // O gerador produz o segredo; a DURAÇÃO é política de sessão e mora aqui.
+        refreshToken.ExpiresAt = DateTime.UtcNow.AddDays(
+            rememberMe ? RememberedLifetimeDays : SessionLifetimeDays);
 
         await PruneStaleTokensAsync(user.Id, DateTime.UtcNow);
 

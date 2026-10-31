@@ -282,6 +282,7 @@ export default function EnrollmentList() {
           data={enrollments}
           keyExtractor={(enrollment) => enrollment.id}
           loading={loading}
+          loadingRows={PAGE_SIZE}
           emptyMessage={
             failed
               ? 'Não foi possível carregar as matrículas. Tente novamente.'

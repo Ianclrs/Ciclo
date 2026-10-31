@@ -1,13 +1,14 @@
 import { createContext, useState, useEffect, useRef, type ReactNode } from 'react';
 import { getAccessToken, setAccessToken } from '../api/client';
 import * as authApi from '../api/auth';
+import { markJustLoggedIn } from '../utils/sessionMarks';
 import type { User } from '../types';
 
 interface AuthState {
   user: User | null;
   isAuthenticated: boolean;
   isLoading: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string, rememberMe?: boolean) => Promise<void>;
   logout: () => Promise<void>;
   refreshToken: () => Promise<string | null>;
   getCurrentUser: () => Promise<User | null>;
@@ -48,10 +49,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     init();
   }, []);
 
-  const login = async (email: string, password: string) => {
-    const res = await authApi.login(email, password);
+  const login = async (email: string, password: string, rememberMe = false) => {
+    const res = await authApi.login(email, password, rememberMe);
     setAccessToken(res.accessToken);
     setUser(res.user);
+    // A marca faz a sidebar do desktop abrir já aberta nesta sessão (é lida uma vez só).
+    markJustLoggedIn();
   };
 
   const logout = async () => {
