@@ -238,9 +238,49 @@ Resolver o compilador a partir do diretório do arquivo validado (ou de um `pack
 ### O que NÃO fazer
 
 - Criar `package.json` na raiz só para o validador: muda a raiz do build (o deploy usa `frontend` como Root Directory) e exige reinstalação.
-- Copiar o pacote para a raiz ou criar junction ali: **já testado e inútil** (20:13Z junction, 20:16Z cópia real; 3 execuções falharam). Não repetir.
+- Copiar o pacote para a raiz **para destravar o validador de mutação**: já testado e inútil (20:13Z junction, 20:16Z cópia real; 3 execuções falharam).
 - Versionar `node_modules/`.
 - Instalar `typescript` ao lado do `dscode.exe`: é fora do projeto e não corrige o dono do defeito (resolução de módulo do runtime).
+
+### Segundo sintoma: o verificador de critério também não lê `.ts` (2026-10-31 21:03Z)
+
+A task 4 da spec 160 **não foi selada** por um motivo diferente do anterior:
+
+```
+REQ-006[2] UNCHECKABLE function-exists `selectableStudentIds`
+(frontend/src/domain/renewalBatch.ts) — verification not executable for this criterion
+```
+
+O arquivo existe e a função está declarada exatamente como o contrato pede (`export function selectableStudentIds(items: RenewalPreviewItem[]): string[]`), exercitada por 4 testes verdes. O verificador de critério, porém, não consegue avaliar arquivo `.ts` — é o mesmo `typescript` não resolvido, agora na fase de *verificação* e não na de *mutação*. Ou seja: o P-005 bloqueia a certificação por dois caminhos independentes.
+
+### Terceiro sintoma e decisão de parar (2026-10-31 21:05Z)
+
+A tentativa seguinte nem chegou a verificar: `turn-stalled: reasoning-only` — o turno raciocinou sem agir e o runtime abortou, **antes** de qualquer escrita (árvore confirmada intacta depois).
+
+Com duas falhas seguidas por motivos diferentes e nenhum deles de projeto, o dono decidiu **parar o ciclo da spec 160**. A spec permanece `verified` com as tasks 1–3 seladas e 4–6 entregues manualmente com evidência (ver abaixo). Retomar só depois que o runtime conseguir ler `.ts`.
+
+**Hipótese do junction: falsificada (21:06:57Z).** A execução `7b26a795` rodou com `node_modules` na raiz (junction para `frontend/node_modules`) e falhou igual:
+
+```
+REQ-006[2] UNCHECKABLE function-exists `selectableStudentIds`
+(frontend/src/domain/renewalBatch.ts) — verification not executable
+REQ-006[5] FAIL grep-present `admin/enrollment-renewal` (frontend/src/App.tsx)
+```
+
+Conclusão medida: o verificador de critério **não** resolve módulo pela base do workspace — ambos os verificadores vivem dentro do binário. O junction não ajuda nenhum dos dois; remover com `rm -rf node_modules` na raiz quando não for mais necessário. Ele é ignorado pelo git (linha 294 do `.gitignore`), então nenhum arquivo versionado depende dele.
+
+### Defeito do contrato, independente do runtime: FR-006[5] nomeia um literal impossível
+
+O critério exige `grep-present admin/enrollment-renewal` em `frontend/src/App.tsx`. Esse literal **não pode existir** ali: as rotas administrativas são relativas (`path="enrollment-renewal"`, `App.tsx:60`) dentro de um `<Routes>` montado em `/admin/*`. O literal `/admin/enrollment-renewal` só aparece em `pages/admin/EnrollmentList.tsx:242` (o `<Link>`). O critério nomeia arquivo e literal incompatíveis com o design — nenhuma implementação pode prová-lo.
+
+**Cura única (dono: `spec-new`, spec editável enquanto `verified`)** — trocar por verificadores de texto, que o runtime comprovadamente executa (os `grep-present` da mesma FR passaram):
+
+| Critério | Hoje | Reescrita que preserva a exigência |
+|---|---|---|
+| `REQ-006[3]` | `function-exists selectableStudentIds` | `grep-present \`export function selectableStudentIds\`` em `frontend/src/domain/renewalBatch.ts` |
+| `REQ-006[5]` | `grep-present admin/enrollment-renewal` em `App.tsx` | `grep-present \`enrollment-renewal\`` em `frontend/src/App.tsx` |
+
+Nenhuma exigência comportamental muda — só a forma de provar. **Autorização concedida e reescrita aplicada (2026-10-31 21:18Z).** O dono autorizou explicitamente e as duas tags da FR-006 foram reescritas preservando a exigência. Medido após a edição: os 5 verificadores textuais da FR-006 passam (`getRenewalPreview` recursivo em `frontend/src/`, `renewEnrollmentBatch`, `export function selectableStudentIds`, `enrollment-renewal` em `App.tsx`). Os dois `function-exists` restantes da spec apontam para C# (`GetPreviewAsync`, `RenewAsync`) e já foram selados nas tasks 1–2. Próximo passo: `/spec-implement 160` deve selar as tasks 4–6.
 
 ### Entrega manual da task 6 (2026-10-31)
 
@@ -255,6 +295,20 @@ Decisão do dono do projeto: entregar a task 6 **fora do pipeline**, com evidên
 **Defeito encontrado no caminho (corrigido):** a task 4 estava selada mas `AddScoped<IAcademicService, AcademicService>()` nunca foi adicionado a `Program.cs` — toda rota `api/academic` respondia **500**. Registro adicionado; ver **L8** em `lessons.md`.
 
 **Nota de escopo:** a migração `AddAcademicStructure` foi aplicada no banco de dev pelo startup em Development (é o caminho normal do projeto), e a sonda criou dados de exemplo no tenant demo: componente `Matemática`, avaliação `Prova 1` em `1º Ano A` e nota `7,5` de Ana Clara.
+
+### Entrega manual das tasks 4, 5 e 6 da spec 160 (2026-10-31)
+
+Mesmo bloqueio (P-005), mesmo regime: as três tasks restantes da 160 são frontend e foram entregues fora do pipeline, com evidência. A spec segue em `verified` sem selo.
+
+**Arquivos:** `frontend/src/domain/renewalBatch.ts` (regras puras), `pages/admin/EnrollmentRenewal.tsx` (prévia + confirmação + desfecho por aluno), `types/index.ts` (6 tipos), `api/enrollments.ts` (`getRenewalPreview`, `renewEnrollmentBatch`), `api/errors.ts` (`codeMessage`, agora dono único de código → texto), `App.tsx` (rota `/admin/enrollment-renewal`), `pages/admin/EnrollmentList.tsx` (entrada para a tela), `tests/renewalBatch.test.ts` (4 casos), `tests/manual/renewal-probe.mjs`.
+
+**Defeito encontrado no caminho (corrigido):** o contrato do frontend declara `outcome` como união literal de texto, mas `RenewalOutcome` não tinha conversor e a API não configura conversor global — o campo sairia como `0..3`, `describeOutcome` devolveria `undefined` e a tela mostraria rótulo indefinido, **sem erro de compilação**. Resolvido com `[JsonConverter(typeof(JsonStringEnumConverter))]` no próprio enum (blast radius de um tipo só) e travado por `RenewalOutcomeWireFormatTests`.
+
+**Gates:** `tsc` ✅ · lint **0 erros** (2 avisos pré-existentes) · frontend **96/96** · `npm run build` ✅ · backend **403/403**.
+
+**Medido no Chrome real:** `/admin/enrollment-renewal` monta com o seletor de período; ao escolher `Matrículas 2026`, a prévia devolve o aluno bloqueado com o motivo em português, checkbox **desabilitado**, pendências listadas e confirmação desabilitada; `GET renewal-preview` → 200, `POST renewal-batch` → `"outcome":"BlockedPendingDocuments"` (texto, provando o conversor no fio); a página de Matrículas expõe o link `Rematrícula em lote`.
+
+**Nota de escopo:** a sonda criou no tenant demo o aluno `Teste Rematrícula` (turma `4º Ano D`, ano letivo 2027) para exercitar a prévia.
 
 ---
 

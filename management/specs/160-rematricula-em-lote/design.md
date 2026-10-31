@@ -1,0 +1,259 @@
+# Spec 160: Rematrícula em Lote — Design
+
+## Design Approach
+
+Extensão do domínio de matrícula que já existe, sem modelo novo. O lote é um orquestrador: `EnrollmentRenewalService` decide **quem** renovar (prévia, elegibilidade, idempotência) e delega **como** renovar aos métodos existentes de `IEnrollmentService` (`CreateEnrollmentAsync`, `SubmitAsync`, `ApproveAsync`). Assim, a máquina de estados, a exigência documental, a promoção de `Student.AnoLetivo` e o evento de auditoria continuam com um único dono, e nenhuma dessas regras é reescrita no serviço novo.
+
+Três decisões de reuso sustentam o desenho:
+
+1. **Documentos.** `DocumentCompliance.EvaluateAsync` já é o dono da pergunta "a documentação deste aluno está em dia?" e devolve `ApprovedDocuments`, `ValidDocuments` e `MissingRequiredTypes`. A prévia consome esse resultado e o projeta no `CarriedDocumentDto` existente, cujo `IsExpired` já separa reaproveitado de vencido. Nenhum DTO documental novo é criado.
+2. **Idempotência.** O par (`StudentId`, `EnrollmentPeriodId`) já é único por construção do fluxo existente (`CreateEnrollmentAsync` recusa duplicata com `enrollment_already_exists`). O lote consulta antes de criar e traduz a existência em `SkippedAlreadyExists`.
+3. **Auditoria.** `ApproveAsync` já grava `AuditActions.EnrollmentApproved` com alvo `AuditTargetTypes.Enrollment` e já é fail-closed (a trilha lança antes do `SaveChanges`). O lote herda as duas propriedades sem tocar em `IAuditTrail`.
+
+O resultado do lote é um relatório por aluno, não um único status: cada aluno termina em exatamente um de quatro desfechos, e um aluno que falha não impede os demais.
+
+## Architecture Decisions
+
+- **ADR-002 (filtro global de tenant) permanece a única barreira de isolamento.** As consultas do serviço novo não incluem `tenantId` em predicado; o `AppDbContext` aplica o filtro. `tenantId` continua trafegando nas assinaturas apenas para espelhar o contrato dos métodos existentes de `IEnrollmentService`, que o exigem.
+- **Orquestrador separado, regras compartilhadas.** `EnrollmentRenewalService` é um arquivo novo porque tem um único motivo de mudança (o comportamento do lote). Ele não duplica nenhuma regra: cria, submete e aprova por delegação.
+- **Sem DTO de documento novo.** `RenewalPreviewItemDto` expõe `IReadOnlyList<CarriedDocumentDto>`, o mesmo contrato que `EnrollmentDto` já expõe no detalhe da matrícula.
+- **Precedência fixa de elegibilidade.** Quatro motivos possíveis, avaliados sempre na mesma ordem, produzem um único `BlockReason`. A ordem faz parte do contrato e é verificada por teste.
+- **Candidatos por ano letivo.** A prévia considera alunos cujo `Student.AnoLetivo` difere do `AnoLetivo` do período destino. A promoção remove o aluno da prévia na execução seguinte, o que torna a prévia naturalmente idempotente.
+
+## Component / Module Breakdown
+
+### Component: EnrollmentRenewalService (contrato)
+
+**Purpose:** Declarar a superfície pública do lote de rematrícula.
+**Interface:** arquivo `src/Ciclo.Infrastructure/Services/EnrollmentRenewalService.cs`, espaço `Ciclo.Infrastructure.Services`:
+
+```csharp
+public interface IEnrollmentRenewalService
+{
+    Task<RenewalPreviewDto> GetPreviewAsync(
+        Guid periodId, Guid tenantId, UserRole role, CancellationToken cancellationToken = default);
+
+    Task<RenewalBatchResultDto> RenewAsync(
+        RenewalBatchRequest request, Guid tenantId, Guid userId, UserRole role,
+        CancellationToken cancellationToken = default);
+}
+```
+
+**Internal Logic:** nenhuma; o contrato é implementado pela classe abaixo.
+**Dependencies:** `Ciclo.Infrastructure.Contracts`, `Ciclo.Core.Entities`.
+**Error Handling:** erros de entrada sobem como `EnrollmentException` com código e status, exatamente como `IEnrollmentService` já faz.
+
+### Component: EnrollmentRenewalService (implementação)
+
+**Purpose:** Produzir a prévia e executar o lote com relatório por aluno.
+**Interface:**
+
+```csharp
+public class EnrollmentRenewalService : IEnrollmentRenewalService
+{
+    public EnrollmentRenewalService(AppDbContext db, IEnrollmentService enrollments);
+}
+```
+
+**Internal Logic — `GetPreviewAsync`:**
+
+1. `AccessPolicy.Require(AccessPolicy.Roles.EnrollmentPeriodRead, role)`.
+2. Carrega o período por `periodId`; ausente lança `EnrollmentException("period_not_found", 404)`.
+3. `existingStudentIds` = `_db.Enrollments.Where(e => e.EnrollmentPeriodId == periodId).Select(e => e.StudentId).ToHashSetAsync(ct)` — uma consulta, não uma por aluno.
+4. `students` = `_db.Students.Where(s => s.AnoLetivo != period.AnoLetivo).OrderBy(s => s.Nome).ToListAsync(ct)`.
+5. Para cada aluno: `var compliance = await DocumentCompliance.EvaluateAsync(_db, student.Id, ct)` e monta `RenewalPreviewItemDto` com `CarriedDocuments = compliance.ApprovedDocuments.Select(d => new CarriedDocumentDto(d.Id, d.DocumentType.Nome, d.DataValidade, IsExpired: compliance.ValidDocuments.All(v => v.Id != d.Id))).ToList()` e `MissingDocumentTypes = compliance.MissingRequiredTypes.Select(t => t.Nome).ToList()`.
+6. Elegibilidade, nesta ordem: `StudentStatus.Inativo` produz `student_inactive`; `StudentStatus.Transferido` produz `student_transferred`; o aluno está em `existingStudentIds` produz `enrollment_already_exists`; `compliance.HasMissingRequiredDocuments` produz `pending_required_documents`. Sem motivo, `Eligible = true` e `BlockReason = null`.
+7. Retorna `RenewalPreviewDto(period.Id, period.Nome, period.AnoLetivo, DateTime.UtcNow, items)`.
+
+**Internal Logic — `RenewAsync`:**
+
+1. `AccessPolicy.Require(AccessPolicy.Roles.EnrollmentWrite, role)`.
+2. `request.StudentIds` nulo ou vazio lança `EnrollmentException("student_ids_required", 400)`.
+3. Carrega o período por `request.EnrollmentPeriodId`; ausente lança `EnrollmentException("period_not_found", 404)`.
+4. `studentIds` = `request.StudentIds.Distinct().ToList()`, preservando a ordem da primeira ocorrência.
+5. Para cada `studentId`, em sequência, dentro de `try`:
+   - aluno ausente no tenant produz item `Failed` com `Message` igual a `student_not_found`;
+   - `StudentStatus.Inativo` produz item `Failed` com `Message` igual a `student_inactive`;
+   - `StudentStatus.Transferido` produz item `Failed` com `Message` igual a `student_transferred`;
+   - matrícula existente do aluno em `period.Id` produz item `SkippedAlreadyExists` com `Message` igual a `enrollment_already_exists`;
+   - `DocumentCompliance.EvaluateAsync` com `HasMissingRequiredDocuments` produz item `BlockedPendingDocuments` com `Message` igual a `pending_required_documents`;
+   - caso contrário: `created = await _enrollments.CreateEnrollmentAsync(new CreateEnrollmentRequest(studentId, period.Id), tenantId, role)`; `await _enrollments.SubmitAsync(created.Id, tenantId, userId, role)`; `await _enrollments.ApproveAsync(created.Id, tenantId, userId, role)`; item `Renewed` com `Message` nulo.
+6. `catch (EnrollmentException ex)` produz item `Failed` com `Message` igual a `ex.Message`; `catch (Exception ex)` produz item `Failed` com `Message` igual a `ex.Message`. Em ambos os casos o laço continua no próximo aluno.
+7. `Renewed`, `Skipped`, `Blocked` e `Failed` são as contagens dos itens por `Outcome`.
+8. Retorna `RenewalBatchResultDto(period.Id, period.AnoLetivo, items, renewed, skipped, blocked, failed)`.
+
+**Dependencies:** `AppDbContext`, `IEnrollmentService`, `DocumentCompliance`, `AccessPolicy`, tipos de `Ciclo.Infrastructure.Contracts`.
+**Error Handling:** falha de entrada aborta a requisição inteira com `EnrollmentException` e o status correspondente, antes de qualquer escrita. Falha de um aluno é convertida em item `Failed` com a mensagem da exceção e não interrompe o lote. A aprovação continua fail-closed: quando a trilha de auditoria lança, `ApproveAsync` propaga antes do `SaveChanges`, o aluno não fica aprovado e o item recebe `Failed`.
+
+### Component: Contratos de renovação
+
+**Purpose:** Declarar as formas de entrada e saída do lote, ao lado dos contratos de matrícula existentes.
+**Interface:** adicionados em `src/Ciclo.Infrastructure/Contracts/EnrollmentDtos.cs`:
+
+```csharp
+public record RenewalPreviewDto(
+    Guid PeriodId, string PeriodName, int AnoLetivo, DateTime DataReferencia,
+    IReadOnlyList<RenewalPreviewItemDto> Items);
+
+public record RenewalPreviewItemDto(
+    Guid StudentId, string StudentName, bool Eligible, string? BlockReason,
+    IReadOnlyList<CarriedDocumentDto> CarriedDocuments,
+    IReadOnlyList<string> MissingDocumentTypes, bool EnrollmentAlreadyExists);
+
+public record RenewalBatchRequest(Guid EnrollmentPeriodId, IReadOnlyList<Guid> StudentIds);
+
+public enum RenewalOutcome { Renewed, SkippedAlreadyExists, BlockedPendingDocuments, Failed }
+
+public record RenewalBatchItemResultDto(
+    Guid StudentId, string StudentName, RenewalOutcome Outcome, string? Message);
+
+public record RenewalBatchResultDto(
+    Guid EnrollmentPeriodId, int AnoLetivo, IReadOnlyList<RenewalBatchItemResultDto> Items,
+    int Renewed, int Skipped, int Blocked, int Failed);
+```
+
+**Internal Logic:** nenhuma; são contratos de dados imutáveis.
+**Dependencies:** `CarriedDocumentDto` existente no mesmo arquivo.
+**Error Handling:** não se aplica; validação de conteúdo acontece no serviço.
+
+### Component: Endpoints de renovação
+
+**Purpose:** Publicar a prévia e o lote na superfície HTTP existente de matrícula.
+**Interface:** duas ações adicionadas a `EnrollmentController` em `src/Ciclo.Api/Controllers/EnrollmentController.cs` (rota base `api/enrollments`):
+
+```csharp
+[HttpGet("renewal-preview")]
+[Authorize(Roles = AccessPolicy.Roles.EnrollmentPeriodRead)]
+public async Task<IActionResult> GetRenewalPreview([FromQuery] Guid periodId, CancellationToken cancellationToken)
+
+[HttpPost("renewal-batch")]
+[Authorize(Roles = AccessPolicy.Roles.EnrollmentWrite)]
+public async Task<IActionResult> RenewBatch([FromBody] RenewalBatchRequest request, CancellationToken cancellationToken)
+```
+
+Ambas usam os helpers privados já existentes no mesmo controller: `GetTenantId()` e, para o lote, `GetUserInfo()`, que devolve `(Guid userId, UserRole role)`.
+**Internal Logic:** a ação de prévia chama `GetPreviewAsync` e devolve `Ok(result)`; a ação de lote chama `RenewAsync` e devolve `Ok(result)`.
+**Dependencies:** `IEnrollmentRenewalService`, `AccessPolicy`, `ProblemResponse`.
+**Error Handling:** `catch (EnrollmentException ex)` devolve `ProblemResponse.FromCode(ex.Message, ex.StatusCode)`, o mesmo padrão de todas as ações do arquivo. Requisição sem autenticação é barrada pelo `[Authorize]` antes da ação (401); papel fora da lista recebe 403 pelo `ForbiddenException` de `AccessPolicy`.
+
+### Component: Registro de dependência
+
+**Purpose:** Ligar o serviço novo ao contêiner da API.
+**Interface:** uma linha em `src/Ciclo.Api/Program.cs`, ao lado dos registros existentes de matrícula e documento:
+
+```csharp
+builder.Services.AddScoped<IEnrollmentRenewalService, EnrollmentRenewalService>();
+```
+
+**Internal Logic:** injeção por escopo, igual a `IEnrollmentService`.
+**Dependencies:** `Ciclo.Infrastructure.Services`.
+**Error Handling:** falha de resolução de dependência impede a inicialização do host e é observada pelos testes que sobem `ApiTestHost`, nunca ignorada em execução.
+
+### Component: Cliente de API do frontend
+
+**Purpose:** Expor a prévia e o lote para a tela administrativa.
+**Interface:** duas funções adicionadas a `frontend/src/api/enrollments.ts`:
+
+```typescript
+export async function getRenewalPreview(periodId: string): Promise<RenewalPreview>
+export async function renewEnrollmentBatch(request: RenewalBatchRequest): Promise<RenewalBatchResult>
+```
+
+**Internal Logic:** `getRenewalPreview` faz `client.get('/enrollments/renewal-preview', { params: { periodId } })` e devolve `response.data`; `renewEnrollmentBatch` faz `client.post('/enrollments/renewal-batch', request)` e devolve `response.data`, seguindo o padrão dos métodos já presentes no módulo.
+**Dependencies:** `frontend/src/api/client.ts`, tipos de `frontend/src/types/index.ts`.
+**Error Handling:** as funções não capturam; o erro do axios sobe para a página, que mostra a mensagem por `react-hot-toast`, como as telas administrativas existentes.
+
+### Component: Regras puras da tela
+
+**Purpose:** Isolar, de forma testável, a decisão de quais alunos podem ser marcados e o rótulo de cada desfecho.
+**Interface:** arquivo novo `frontend/src/domain/renewalBatch.ts`:
+
+```typescript
+export function selectableStudentIds(items: RenewalPreviewItem[]): string[]
+export function describeOutcome(outcome: RenewalOutcome): string
+```
+
+**Internal Logic:** `selectableStudentIds` filtra `item.eligible === true` e mapeia `item.studentId`; `describeOutcome` devolve, para `Renewed`, `SkippedAlreadyExists`, `BlockedPendingDocuments` e `Failed`, respectivamente `Renovado`, `Já existia`, `Documentação pendente` e `Falhou`.
+**Dependencies:** tipos de `frontend/src/types/index.ts`.
+**Error Handling:** nenhuma exceção é lançada; `selectableStudentIds` sobre lista vazia devolve lista vazia.
+
+### Component: Página administrativa
+
+**Purpose:** Permitir que a secretaria veja a prévia e confirme o lote em uma tela.
+**Interface:** componente `EnrollmentRenewal` exportado por `frontend/src/pages/admin/EnrollmentRenewal.tsx`, com estado `periodId`, `preview`, `selected`, `result`, `loading` e `error`. Rota `/admin/enrollment-renewal` registrada em `frontend/src/App.tsx`, dentro do bloco de rotas administrativas onde vivem `/admin/enrollments` e `/admin/documents`.
+**Internal Logic:** ao montar, busca períodos por `getEnrollmentPeriods`; ao escolher um período, chama `getRenewalPreview(periodId)`; a tabela mostra `studentName`, `carriedDocuments` com o rótulo `reaproveitado` quando `isExpired` é falso e `vencido` quando verdadeiro, `missingDocumentTypes` e `blockReason`; o checkbox de cada linha fica desabilitado quando `eligible` é falso; confirmar monta `{ enrollmentPeriodId: periodId, studentIds: selectableStudentIds(items filtrados pela seleção) }`, chama `renewEnrollmentBatch` e renderiza por item `describeOutcome(item.outcome)` e `item.message`.
+**Dependencies:** `frontend/src/api/enrollments.ts`, `frontend/src/domain/renewalBatch.ts`, `frontend/src/types/index.ts`.
+**Error Handling:** falha na prévia exibe mensagem de erro e mantém a confirmação desabilitada; confirmação sem seleção não dispara requisição e informa a ausência; falha no lote exibe mensagem de erro e mantém a seleção atual.
+
+## Data Flow
+
+**Prévia.** A secretaria escolhe um período na tela; `getRenewalPreview` chama `GET /api/enrollments/renewal-preview?periodId={guid}`; o controller resolve `tenantId` e `role` e chama `GetPreviewAsync`; o serviço aplica `AccessPolicy`, carrega o período, carrega o conjunto de alunos já matriculados no período, carrega os alunos candidatos ordenados por nome e, para cada aluno, avalia a documentação por `DocumentCompliance`; monta um item com elegibilidade e documentos; o controller devolve 200 com `RenewalPreviewDto`; a tela marca os itens elegíveis e desabilita os demais.
+
+**Lote.** A secretaria marca alunos e confirma; a tela envia `POST /api/enrollments/renewal-batch` com `enrollmentPeriodId` e `studentIds`; o controller resolve `tenantId`, `userId` e `role` e chama `RenewAsync`; o serviço valida a entrada, deduplica os identificadores e percorre os alunos: cada aluno elegível passa por `CreateEnrollmentAsync` (cria `Rascunho`), `SubmitAsync` (`Rascunho` para `Pendente`, porque a documentação já foi checada) e `ApproveAsync` (`Pendente` para `Aprovado`, grava `ApprovedAt`, promove `Student.AnoLetivo` para `period.AnoLetivo` e registra `enrollment.approved` na trilha); o desfecho de cada aluno é acumulado; ao final o serviço devolve `RenewalBatchResultDto` com itens e contadores; a tela renderiza cada desfecho.
+
+**Persistência.** Cada aluno renovado é confirmado por um `SaveChangesAsync` dentro do respectivo método de `EnrollmentService`. Uma falha de um aluno não desfaz a renovação de outro já confirmada; a reexecução do lote sobre esse estado devolve `SkippedAlreadyExists` para os alunos já aprovados, sem duplicar matrícula.
+
+## Data Structures
+
+| Estrutura | Campos | Regras |
+|---|---|---|
+| `RenewalPreviewDto` | `PeriodId: Guid`, `PeriodName: string`, `AnoLetivo: int`, `DataReferencia: DateTime`, `Items: IReadOnlyList<RenewalPreviewItemDto>` | `DataReferencia` é `DateTime.UtcNow`; `Items` ordenado por `StudentName`. |
+| `RenewalPreviewItemDto` | `StudentId: Guid`, `StudentName: string`, `Eligible: bool`, `BlockReason: string?`, `CarriedDocuments: IReadOnlyList<CarriedDocumentDto>`, `MissingDocumentTypes: IReadOnlyList<string>`, `EnrollmentAlreadyExists: bool` | `BlockReason` é nulo quando `Eligible` é verdadeiro e um dos quatro códigos quando falso. |
+| `RenewalBatchRequest` | `EnrollmentPeriodId: Guid`, `StudentIds: IReadOnlyList<Guid>` | `StudentIds` não vazio; repetições processadas uma vez. |
+| `RenewalOutcome` | `Renewed = 0`, `SkippedAlreadyExists = 1`, `BlockedPendingDocuments = 2`, `Failed = 3` | Valores fixos; nenhum outro valor é admitido. |
+| `RenewalBatchItemResultDto` | `StudentId: Guid`, `StudentName: string`, `Outcome: RenewalOutcome`, `Message: string?` | `Message` não vazio quando o desfecho não é `Renewed`. |
+| `RenewalBatchResultDto` | `EnrollmentPeriodId: Guid`, `AnoLetivo: int`, `Items: IReadOnlyList<RenewalBatchItemResultDto>`, `Renewed: int`, `Skipped: int`, `Blocked: int`, `Failed: int` | Cada contador é a quantidade de itens com o desfecho correspondente. |
+| `RenewalPreview` (frontend) | `periodId: string`, `periodName: string`, `anoLetivo: number`, `dataReferencia: string`, `items: RenewalPreviewItem[]` | Espelho camelCase do contrato da API. |
+| `RenewalPreviewItem` (frontend) | `studentId: string`, `studentName: string`, `eligible: boolean`, `blockReason: string \| null`, `carriedDocuments: CarriedDocument[]`, `missingDocumentTypes: string[]`, `enrollmentAlreadyExists: boolean` | Espelho camelCase do contrato da API. |
+| `RenewalBatchRequest` (frontend) | `enrollmentPeriodId: string`, `studentIds: string[]` | Corpo enviado ao endpoint de lote. |
+| `RenewalBatchResult` (frontend) | `enrollmentPeriodId: string`, `anoLetivo: number`, `items: RenewalBatchItemResult[]`, `renewed: number`, `skipped: number`, `blocked: number`, `failed: number` | Espelho camelCase do contrato da API. |
+| `RenewalBatchItemResult` (frontend) | `studentId: string`, `studentName: string`, `outcome: RenewalOutcome`, `message: string \| null` | `outcome` é a união literal `'Renewed' \| 'SkippedAlreadyExists' \| 'BlockedPendingDocuments' \| 'Failed'`. |
+
+Nenhuma tabela, coluna, índice ou migração é criada. As entidades `Student`, `Enrollment`, `EnrollmentPeriod`, `Document` e `DocumentType` permanecem inalteradas.
+
+## File / Module Layout
+
+Arquivos criados:
+
+- `src/Ciclo.Infrastructure/Services/EnrollmentRenewalService.cs` — `IEnrollmentRenewalService` e `EnrollmentRenewalService`.
+- `tests/Ciclo.Api.Tests/EnrollmentRenewalTests.cs` — suíte do lote, com contexto in-memory próprio.
+- `frontend/src/domain/renewalBatch.ts` — `selectableStudentIds` e `describeOutcome`.
+- `frontend/src/pages/admin/EnrollmentRenewal.tsx` — página administrativa de prévia e confirmação.
+- `frontend/tests/renewalBatch.test.ts` — testes das regras puras da tela.
+
+Arquivos modificados:
+
+- `src/Ciclo.Infrastructure/Contracts/EnrollmentDtos.cs` — seis contratos de renovação ao lado dos contratos existentes.
+- `src/Ciclo.Api/Controllers/EnrollmentController.cs` — duas ações novas em `EnrollmentController`.
+- `src/Ciclo.Api/Program.cs` — registro de `IEnrollmentRenewalService`.
+- `frontend/src/api/enrollments.ts` — `getRenewalPreview` e `renewEnrollmentBatch`.
+- `frontend/src/types/index.ts` — tipos `RenewalPreview`, `RenewalPreviewItem`, `RenewalBatchRequest`, `RenewalBatchItemResult`, `RenewalBatchResult`, `RenewalOutcome`.
+- `frontend/src/App.tsx` — rota `/admin/enrollment-renewal`.
+
+Reutilizados sem alteração: `src/Ciclo.Infrastructure/Services/EnrollmentService.cs`, `src/Ciclo.Infrastructure/Services/DocumentCompliance.cs`, `src/Ciclo.Infrastructure/Security/AccessPolicy.cs`, `src/Ciclo.Core/Interfaces/IAuditTrail.cs`, `src/Ciclo.Core/Auditing/AuditActions.cs`.
+
+## Testing Strategy
+
+**`tests/Ciclo.Api.Tests/EnrollmentRenewalTests.cs`** (xUnit, `AppDbContext` in-memory com contexto próprio derivado de `AppDbContext` e `ITenantContext` fixo, no mesmo padrão de `AuditOperationCoverageTests`, evitando que o cache de modelo do EF fixe o tenant de outro teste). Cada teste cria `EnrollmentRenewalService(db, new EnrollmentService(db, trail))`, semeia `Tenant`, `Student`, `EnrollmentPeriod`, `DocumentType` e `Document` pelo contexto e verifica:
+
+- Prévia classifica documento aprovado vencido com `IsExpired` verdadeiro, documento aprovado sem validade com `IsExpired` falso e tipo obrigatório sem documento válido em `MissingDocumentTypes`.
+- Prévia ordena os itens por `StudentName` e omite aluno cujo `AnoLetivo` é igual ao do período destino.
+- Prévia marca `EnrollmentAlreadyExists` para aluno com matrícula no período destino e define `BlockReason` igual a `enrollment_already_exists`.
+- Prévia aplica a precedência: aluno inativo com documento pendente recebe `student_inactive`, não `pending_required_documents`.
+- Prévia de período inexistente lança `EnrollmentException` com mensagem `period_not_found` e status 404.
+- Lote renova aluno elegível: uma matrícula no período destino com `Status` igual a `Aprovado` e `ApprovedAt` preenchido, `Student.AnoLetivo` igual ao `AnoLetivo` do período e exatamente um evento de auditoria com ação `AuditActions.EnrollmentApproved` e `TargetId` igual ao identificador da matrícula.
+- Lote executado duas vezes devolve `Renewed` na primeira e `SkippedAlreadyExists` na segunda, com uma única matrícula persistida.
+- Lote com um aluno bloqueado por documentação e um elegível devolve um item `BlockedPendingDocuments` com `Message` igual a `pending_required_documents` e um item `Renewed`, com contadores `Blocked = 1` e `Renewed = 1`.
+- Lote com `StudentIds` vazio lança `EnrollmentException` com mensagem `student_ids_required` e status 400, sem persistir matrícula.
+- Lote com `studentId` repetido devolve um único item para aquele aluno.
+- Lote com aluno inexistente devolve `Failed` com `Message` igual a `student_not_found`.
+- Aluno bloqueado mantém `Student.AnoLetivo` igual ao valor anterior.
+- Lote com trilha de auditoria que lança devolve `Failed` para o aluno e nenhuma matrícula aprovada permanece persistida (`ChangeTracker.Clear()` seguido de leitura do contexto).
+
+**`frontend/tests/renewalBatch.test.ts`** (`node:test` e `node:assert/strict`, executado por `node --test "tests/**/*.test.ts"`): prova que `selectableStudentIds` devolve apenas alunos com `eligible` verdadeiro, devolve lista vazia para entrada vazia, e que `describeOutcome` devolve um rótulo distinto e não vazio para cada um dos quatro valores de `RenewalOutcome`.
+
+## Migration / Rollback
+
+**Migração:** nenhuma. A spec não cria entidade, tabela, coluna ou índice; o banco permanece no esquema atual e não há backfill.
+
+**Rollback:** remover as duas ações de `EnrollmentController`, o registro de `IEnrollmentRenewalService` em `Program.cs`, o arquivo `EnrollmentRenewalService.cs` e as funções novas do frontend devolve o sistema ao comportamento anterior. Como a renovação apenas usa os métodos existentes de `EnrollmentService`, os dados já renovados continuam válidos e consultáveis pelas telas existentes de matrícula; nenhum estado órfão é produzido.

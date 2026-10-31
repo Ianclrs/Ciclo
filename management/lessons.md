@@ -186,3 +186,15 @@ Se o host for realmente necessário em mais de uma classe, compartilhar **uma** 
 **Solution:** `builder.Services.AddScoped<IAcademicService, AcademicService>()` em `Program.cs`, ao lado de `IParentService`.
 
 **Takeaway:** quando a task promete "registro de dependência", a prova precisa de uma chamada real (uma requisição ao endpoint, ou uma resolução no `IServiceProvider` do host). Verificar existência de arquivo/classe é evidência de outra coisa.
+
+## L9: enum sem conversor atravessa como número, e o TypeScript não avisa
+
+**Contexto:** Spec 160. O contrato do frontend declara `outcome: 'Renewed' | 'SkippedAlreadyExists' | 'BlockedPendingDocuments' | 'Failed'`; o backend devolve `RenewalOutcome`, um enum C#.
+
+**Symptom:** nenhum. Compila dos dois lados e os testes de serviço passam — eles comparam o enum C#, não o JSON.
+
+**Cause:** a API não configura `JsonStringEnumConverter` e o enum não tinha o atributo. `System.Text.Json` serializa enum como número por padrão, então o cliente recebia `0..3` enquanto o TypeScript acreditava em texto. O mapa de rótulos devolvia `undefined` e a tela mostrava "Indefinido" sem erro em lugar nenhum.
+
+**Solution:** `[JsonConverter(typeof(JsonStringEnumConverter))]` no próprio enum — blast radius de um tipo, sem tocar no formato dos demais contratos — travado por `RenewalOutcomeWireFormatTests`, que serializa com `PropertyNamingPolicy = CamelCase` para medir o JSON que o MVC entrega.
+
+**Takeaway:** tipo do frontend é declaração, não verificação. Todo campo enum, `DateTime` ou `decimal` que cruza a fronteira precisa de uma prova do **JSON**, não do objeto C#.

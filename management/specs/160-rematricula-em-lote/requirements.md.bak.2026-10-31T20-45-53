@@ -1,0 +1,66 @@
+---
+name: rematricula-em-lote
+status: verified
+determinism: D
+references: [V16]
+---
+
+# Spec 160: rematricula-em-lote — Requirements
+
+## Determinism Classification
+
+**Class:** D — fill the class rationale.
+
+<!-- SPEC-NEW-SKELETON-FILL -->
+
+## Value Delivery
+
+<!-- SPEC-NEW-SKELETON-FILL -->
+
+## Functional Requirements
+
+### FR-001: Fill requirement name
+
+**What:** Fill what the system must do.
+**Why:** Fill why this requirement exists.
+**Acceptance Criteria:**
+- [ ] Fill a deterministic, testable criterion. [verify: file-exists `src/fill-me.ts`]
+**Failure modes:**
+- Fill what happens when input is invalid, absent, or corrupted.
+
+<!-- SPEC-NEW-SKELETON-FILL -->
+
+## Non-Functional Requirements
+
+### NFR-001: Fill requirement name
+
+**What:** Fill the non-functional requirement.
+**Acceptance Criteria:**
+- [ ] Fill a deterministic, measurable criterion. [verify: project-validation]
+
+<!-- SPEC-NEW-SKELETON-FILL -->
+
+## Constraints
+
+- Fill constraint with verify tag. [verify: grep-present `FillSymbol`]
+- Full project validation passes [verify: project-validation]
+
+## Edge Cases & Error States
+
+- Fill edge cases and expected behavior.
+
+## Anti-Scope
+
+- No new gate module is created for this spec. [verify: file-absent `src/fill-absent.ts`]
+
+## Dependencies
+
+- Fill dependencies.
+
+## Out of Scope
+
+- Fill what this spec does NOT cover.
+
+## Test Scope
+
+- Fill the spec test file path in the project's own convention (the `.test.*` shape the existing suite uses; native stacks keep their own naming), or replace this bullet with `no-test-scope: <justification>` on the same line.

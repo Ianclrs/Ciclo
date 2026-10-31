@@ -34,7 +34,7 @@
 | 130 | observabilidade-operacional | implemented | V13 |
 | 140 | comunicacao-proativa | implemented | V14 |
 | 150 | estrutura-academica-e-desempenho | implemented | V15 |
-| 160 | rematricula-em-lote | planned | V16 |
+| 160 | rematricula-em-lote | implemented | V16 |
 | 170 | armazenamento-de-documentos | planned | V17 |
 | 180 | qualidade-automatizada | planned | V18 |
 | 190 | experiencia-i18n-e-acessibilidade | planned | V19 |

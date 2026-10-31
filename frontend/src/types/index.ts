@@ -218,3 +218,56 @@ export interface ReportCard {
   anoLetivo: number | null;
   componentes: ReportCardEntry[];
 }
+
+/* ── Spec 160: rematrícula em lote ─────────────────────────────────────────
+   `outcome` chega como texto porque `RenewalOutcome` declara
+   `JsonStringEnumConverter` no backend — sem isso o campo viria como `0..3` e o
+   rótulo do desfecho ficaria indefinido. */
+
+export type RenewalOutcome =
+  | 'Renewed'
+  | 'SkippedAlreadyExists'
+  | 'BlockedPendingDocuments'
+  | 'Failed';
+
+export interface RenewalPreviewItem {
+  studentId: string;
+  studentName: string;
+  eligible: boolean;
+  /** Código do motivo do bloqueio; `null` quando `eligible` é verdadeiro. */
+  blockReason: string | null;
+  carriedDocuments: CarriedDocument[];
+  missingDocumentTypes: string[];
+  enrollmentAlreadyExists: boolean;
+}
+
+export interface RenewalPreview {
+  periodId: string;
+  periodName: string;
+  anoLetivo: number;
+  /** Instante usado pelo backend para decidir `isExpired`; a tela não recalcula validade. */
+  dataReferencia: string;
+  items: RenewalPreviewItem[];
+}
+
+export interface RenewalBatchRequest {
+  enrollmentPeriodId: string;
+  studentIds: string[];
+}
+
+export interface RenewalBatchItemResult {
+  studentId: string;
+  studentName: string;
+  outcome: RenewalOutcome;
+  message: string | null;
+}
+
+export interface RenewalBatchResult {
+  enrollmentPeriodId: string;
+  anoLetivo: number;
+  items: RenewalBatchItemResult[];
+  renewed: number;
+  skipped: number;
+  blocked: number;
+  failed: number;
+}

@@ -1,0 +1,179 @@
+---
+name: rematricula-em-lote
+status: verified
+determinism: D
+references: [V16, "Spec 110 (auditoria)", "Spec 150 (estrutura-academica-e-desempenho)"]
+---
+
+# Spec 160: Rematrícula em Lote — Requirements
+
+## Determinism Classification
+
+**Class:** D — Deterministic.
+
+O resultado da prévia e do lote é derivado de dados persistidos: período destino, matrículas existentes, documentos aprovados e datas de validade. Não há geração de conteúdo por modelo em nenhum ponto. Duas execuções sobre o mesmo estado produzem o mesmo `RenewalPreviewDto` e o mesmo `RenewalBatchResultDto`, e a idempotência é provada por contagem de matrículas e pelo valor de `Student.AnoLetivo`, não por inspeção de prosa.
+
+## Value Delivery
+
+V16 — Rematrícula em Lote: renovação de matrícula assistida para um período: prévia do que será renovado, reaproveitamento de documentos válidos, lista de pendências por aluno, execução em lote idempotente e promoção de ano letivo. Elimina a operação aluno a aluno e cumpre a renovação automática ou manual prevista na V6.
+
+## Functional Requirements
+
+### FR-001: Prévia de rematrícula por período
+
+**What:** O novo arquivo `src/Ciclo.Infrastructure/Services/EnrollmentRenewalService.cs` declara `IEnrollmentRenewalService.GetPreviewAsync(Guid periodId, CancellationToken cancellationToken = default)` retornando `Task<RenewalPreviewDto>`. `RenewalPreviewDto(Guid PeriodId, string PeriodName, int AnoLetivo, DateTime DataReferencia, IReadOnlyList<RenewalPreviewItemDto> Items)` e `RenewalPreviewItemDto(Guid StudentId, string StudentName, bool Eligible, string? BlockReason, IReadOnlyList<CarriedDocumentDto> CarriedDocuments, IReadOnlyList<string> MissingDocumentTypes, bool EnrollmentAlreadyExists)` são adicionados a `src/Ciclo.Infrastructure/Contracts/EnrollmentDtos.cs`, reutilizando o `CarriedDocumentDto` existente (cujo `IsExpired` separa reaproveitado de vencido). A prévia considera candidatos os alunos do tenant cujo `Student.AnoLetivo` difere do `AnoLetivo` do período destino, ordenados por `Student.Nome`. `CarriedDocuments` traz todos os documentos aprovados do aluno com o sinal `IsExpired`; `MissingDocumentTypes` traz os nomes dos tipos obrigatórios ativos sem documento válido. A elegibilidade aplica a precedência fixa: `student_inactive`, `student_transferred`, `enrollment_already_exists`, `pending_required_documents`; o primeiro motivo aplicável define `Eligible = false` e `BlockReason`, e a ausência de todos define `Eligible = true` com `BlockReason` nulo. O endpoint `GET /api/enrollments/renewal-preview?periodId={guid}` é publicado em `src/Ciclo.Api/Controllers/EnrollmentController.cs`.
+**Why:** Entrega a primeira capacidade nomeada na V16 — prévia do que será renovado com documentos reaproveitáveis, vencidos e tipos pendentes — e é o insumo da confirmação administrativa do FR-006.
+**Acceptance Criteria:**
+- [ ] A prévia devolve um item por aluno do tenant cujo `Student.AnoLetivo` difere do ano do período destino. [verify: project-validation]
+- [ ] Os itens da prévia vêm ordenados por `Student.Nome`. [verify: project-validation]
+- [ ] `RenewalPreviewItemDto` declara `Eligible`, `BlockReason`, `CarriedDocuments`, `MissingDocumentTypes` e `EnrollmentAlreadyExists`. [verify: grep-present `RenewalPreviewItemDto`]
+- [ ] `IEnrollmentRenewalService` declara o método `GetPreviewAsync`. [verify: function-exists `GetPreviewAsync`]
+- [ ] Um documento aprovado com `DataValidade` nula ou futura aparece em `CarriedDocuments` com `IsExpired` falso, e um documento aprovado com `DataValidade` anterior a hoje aparece com `IsExpired` verdadeiro. [verify: project-validation]
+- [ ] A rota `renewal-preview` está publicada no controller de matrícula. [verify: grep-present `renewal-preview` `src/Ciclo.Api/`]
+**Failure modes:**
+- `periodId` inexistente no tenant: 404 com o código `period_not_found`, sem consulta de alunos.
+- Nenhum aluno elegível a renovação: 200 com `Items` vazio e `DataReferencia` preenchida.
+- Aluno com papel de responsável sem aluno vinculado: não entra na prévia, porque a prévia é administrativa e não filtra por vínculo de usuário.
+
+### FR-002: Execução em lote idempotente por aluno e período
+
+**What:** `IEnrollmentRenewalService.RenewAsync(RenewalBatchRequest request, Guid userId, UserRole role, CancellationToken cancellationToken = default)` retorna `Task<RenewalBatchResultDto>`, recebendo `RenewalBatchRequest(Guid EnrollmentPeriodId, IReadOnlyList<Guid> StudentIds)`. Para cada aluno, o serviço executa a sequência já existente: `IEnrollmentService.CreateEnrollmentAsync` com `CreateEnrollmentRequest(studentId, EnrollmentPeriodId)`, depois `SubmitAsync` e depois `ApproveAsync`, todos com o mesmo `userId` e `role`. A chave de idempotência é o par (`StudentId`, `EnrollmentPeriodId`): havendo matrícula do aluno no período destino, nenhuma segunda matrícula é criada e nenhuma transição é executada. O endpoint `POST /api/enrollments/renewal-batch` é publicado em `src/Ciclo.Api/Controllers/EnrollmentController.cs` e responde 200 com `RenewalBatchResultDto`.
+**Why:** Entrega a capacidade central da V16 — execução em lote idempotente por aluno e período — reutilizando o ciclo de vida de matrícula que já existe, em vez de criar um segundo caminho de escrita.
+**Acceptance Criteria:**
+- [ ] Duas execuções consecutivas do mesmo lote, com o mesmo `EnrollmentPeriodId`, resultam em exatamente uma matrícula por aluno no período destino. [verify: project-validation]
+- [ ] Um aluno elegível termina a renovação com a matrícula no período destino no status `Aprovado` e com `ApprovedAt` preenchido. [verify: project-validation]
+- [ ] `IEnrollmentRenewalService` declara o método `RenewAsync`. [verify: function-exists `RenewAsync`]
+- [ ] A renovação delega a aprovação ao serviço de matrícula existente. [verify: function-called `ApproveAsync` `src/Ciclo.Infrastructure/Services/EnrollmentRenewalService.cs`]
+- [ ] Requisição com `StudentIds` vazio ou nulo responde 400 com o código `student_ids_required` e não cria matrícula. [verify: project-validation]
+- [ ] A rota `renewal-batch` está publicada no controller de matrícula. [verify: grep-present `renewal-batch` `src/Ciclo.Api/`]
+**Failure modes:**
+- Período destino inativo: cada aluno recebe `Outcome = Failed` com `Message` igual a `enrollment_period_closed`, herdado da regra de criação existente.
+- Período destino fora da janela de datas: cada aluno recebe `Outcome = Failed` com `Message` igual a `enrollment_period_out_of_window`.
+- `studentId` repetido na lista: o aluno é processado uma única vez e aparece uma única vez em `Items`.
+- Aluno inexistente no tenant: `Outcome = Failed` com `Message` igual a `student_not_found`, sem interromper o restante do lote.
+
+### FR-003: Relatório de falhas parciais
+
+**What:** `RenewalBatchResultDto(Guid EnrollmentPeriodId, int AnoLetivo, IReadOnlyList<RenewalBatchItemResultDto> Items, int Renewed, int Skipped, int Blocked, int Failed)` e `RenewalBatchItemResultDto(Guid StudentId, string StudentName, RenewalOutcome Outcome, string? Message)` vivem em `src/Ciclo.Infrastructure/Contracts/EnrollmentDtos.cs`, junto do enum `RenewalOutcome { Renewed, SkippedAlreadyExists, BlockedPendingDocuments, Failed }`. A falha de um aluno é registrada no item correspondente e não interrompe o processamento dos demais; a resposta é 200 mesmo quando todos os itens terminam com `Failed`.
+**Why:** A V16 exige lista de pendências por aluno e relatório de falhas parciais: a operação em lote precisa ser verificável aluno a aluno, não como sucesso ou falha global.
+**Acceptance Criteria:**
+- [ ] Um aluno cuja criação de matrícula lança `EnrollmentException` produz `Outcome = Failed` com `Message` igual ao código da exceção, e os demais alunos do mesmo lote continuam sendo processados. [verify: project-validation]
+- [ ] O enum `RenewalOutcome` declara exatamente os valores `Renewed`, `SkippedAlreadyExists`, `BlockedPendingDocuments` e `Failed`. [verify: grep-present `SkippedAlreadyExists`]
+- [ ] Os contadores `Renewed`, `Skipped`, `Blocked` e `Failed` somam exatamente a quantidade de itens de `Items`. [verify: project-validation]
+- [ ] A resposta é 200 quando todos os itens terminam com `Outcome = Failed`. [verify: project-validation]
+- [ ] Todo item com `Outcome = Failed` ou `Outcome = BlockedPendingDocuments` carrega `Message` não vazia. [verify: project-validation]
+**Failure modes:**
+- Aluno com documento obrigatório pendente: `Outcome = BlockedPendingDocuments` com `Message` igual a `pending_required_documents`, nenhuma matrícula criada.
+- Aluno com matrícula existente no período destino: `Outcome = SkippedAlreadyExists` com `Message` igual a `enrollment_already_exists`, nenhuma transição executada.
+- Lote inteiro bloqueado por documentação: todos os itens em `BlockedPendingDocuments`, `Renewed` igual a zero, resposta 200.
+
+### FR-004: Promoção de ano letivo
+
+**What:** A renovação bem-sucedida de um aluno promove `Student.AnoLetivo` para o `AnoLetivo` do período destino. A promoção usa o caminho de aprovação já existente (`EnrollmentService.ApproveAsync`, que executa `enrollment.Student.AnoLetivo = enrollment.Period.AnoLetivo`), portanto ocorre somente para itens com `Outcome = Renewed`. Itens com `SkippedAlreadyExists`, `BlockedPendingDocuments` ou `Failed` não alteram `Student.AnoLetivo`.
+**Why:** A V16 nomeia explicitamente a promoção de ano letivo; sem ela a nova matrícula apontaria para um período que o aluno não passou a ocupar.
+**Acceptance Criteria:**
+- [ ] Aluno com `Outcome = Renewed` passa a ter `Student.AnoLetivo` igual ao ano do período destino. [verify: project-validation]
+- [ ] Aluno com `Outcome` diferente de `Renewed` mantém `Student.AnoLetivo` igual ao valor anterior à requisição. [verify: project-validation]
+- [ ] A promoção continua declarada no caminho de aprovação existente da matrícula. [verify: grep-present `AnoLetivo` `src/Ciclo.Infrastructure/Services/EnrollmentService.cs`]
+- [ ] Uma falha durante a sequência de renovação de um aluno não deixa a matrícula criada e não aprovada como `Renewed` no relatório. [verify: project-validation]
+**Failure modes:**
+- Falha na aprovação de um aluno já criado: o item recebe `Outcome = Failed` com o código do erro e `Student.AnoLetivo` permanece no valor anterior, porque a promoção acontece dentro da aprovação.
+- Aluno promovido em execução anterior e reenviado: `Outcome = SkippedAlreadyExists` e `Student.AnoLetivo` inalterado.
+
+### FR-005: Integração com a auditoria da Spec 110
+
+**What:** Cada aluno renovado gera exatamente um evento de auditoria pela trilha existente da Spec 110, gravado pelo caminho de aprovação reutilizado: `IAuditTrail.Record` com `AuditActions.EnrollmentApproved`, `AuditTargetTypes.Enrollment` e `TargetId` igual ao identificador da matrícula criada. Itens com `SkippedAlreadyExists`, `BlockedPendingDocuments` ou `Failed` não geram evento. O evento é registrado na mesma unidade de persistência da aprovação: uma falha da trilha impede a confirmação daquele aluno, que passa a `Outcome = Failed`.
+**Why:** A V16 determina integração com a auditoria (110); uma requisição que altera matrícula e ano letivo de vários alunos precisa de trilha por aluno efetivado.
+**Acceptance Criteria:**
+- [ ] Cada aluno com `Outcome = Renewed` gera exatamente um evento de auditoria com ação igual a `EnrollmentApproved` e alvo igual ao identificador da nova matrícula. [verify: project-validation]
+- [ ] Alunos com `Outcome` diferente de `Renewed` não geram evento de auditoria. [verify: project-validation]
+- [ ] A renovação reutiliza a trilha de auditoria existente, sem canal de log paralelo. [verify: grep-present `IAuditTrail` `src/Ciclo.Infrastructure/Services/EnrollmentService.cs`]
+- [ ] Uma falha da trilha de auditoria durante a aprovação impede a confirmação do aluno e o item recebe `Outcome = Failed`. [verify: project-validation]
+**Failure modes:**
+- Falha da trilha de auditoria: a aprovação daquele aluno é descartada, o item recebe `Outcome = Failed` com a mensagem da exceção e os demais alunos continuam sendo processados.
+- Lote sem nenhum aluno renovado: nenhum evento de auditoria é gravado.
+
+### FR-006: Tela administrativa de prévia e confirmação
+
+**What:** A nova página `frontend/src/pages/admin/EnrollmentRenewal.tsx` carrega a prévia ao selecionar um período, lista os alunos com `StudentName`, `CarriedDocuments` (distingue reaproveitado de vencido por `IsExpired`), `MissingDocumentTypes` e `BlockReason`, permite marcar apenas itens com `Eligible` verdadeiro e, ao confirmar, envia `EnrollmentPeriodId` e os `StudentIds` marcados para `POST /api/enrollments/renewal-batch`, exibindo por item o `Outcome` e a `Message` retornados. O módulo `frontend/src/api/enrollments.ts` ganha `getRenewalPreview(periodId: string)` e `renewEnrollmentBatch(payload)`. O módulo puro `frontend/src/domain/renewalBatch.ts` ganha `selectableStudentIds(items: RenewalPreviewItem[]): string[]`, que devolve o identificador dos itens com `Eligible` verdadeiro, e `describeOutcome(outcome: RenewalOutcome): string`, que devolve o rótulo em pt-BR de cada valor do enum. A rota `/admin/enrollment-renewal` é registrada em `frontend/src/App.tsx`, e os tipos novos ficam em `frontend/src/types/index.ts`.
+**Why:** A V16 exige a tela administrativa de prévia e confirmação; sem ela o lote continuaria sendo operado fora do produto.
+**Acceptance Criteria:**
+- [ ] A página carrega a prévia por meio de `getRenewalPreview`. [verify: grep-present `getRenewalPreview` `frontend/src/`]
+- [ ] A confirmação envia o lote por meio de `renewEnrollmentBatch`. [verify: grep-present `renewEnrollmentBatch` `frontend/src/api/enrollments.ts`]
+- [ ] `selectableStudentIds` devolve apenas os identificadores dos itens com `Eligible` verdadeiro. [verify: grep-present `export function selectableStudentIds` `frontend/src/domain/renewalBatch.ts`]
+- [ ] A página exibe o `Outcome` e a `Message` de cada item retornado pelo lote. [verify: project-validation]
+- [ ] A rota `/admin/enrollment-renewal` está registrada no bloco de rotas administrativas do roteador da aplicação, como filho de `/admin/*`. [verify: grep-present `enrollment-renewal` `frontend/src/App.tsx`]
+**Failure modes:**
+- Falha na requisição de prévia: a página exibe mensagem de erro e mantém a confirmação desabilitada.
+- Confirmação sem nenhum aluno marcado: nenhuma requisição é disparada e a página informa a ausência de seleção.
+- Falha na requisição do lote: a página exibe mensagem de erro e preserva a seleção atual para nova tentativa.
+- Item com `Eligible` falso: aparece na lista com o `BlockReason` e o controle de seleção fica desabilitado.
+
+## Non-Functional Requirements
+
+### NFR-001: Autorização pelas listas de papéis existentes
+
+**What:** Os dois endpoints novos usam `AccessPolicy` como dono único da regra de papel: numa leitura (`renewal-preview`) o papel precisa estar em `AccessPolicy.Roles.EnrollmentPeriodRead`; na escrita (`renewal-batch`) em `AccessPolicy.Roles.EnrollmentWrite` e, na aprovação por aluno, em `AccessPolicy.Roles.EnrollmentReview`. Cada endpoint declara `[Authorize]` com a mesma lista, de modo que a checagem existe no atributo e no serviço. Requisição sem autenticação responde 401; papel fora da lista responde 403 com o código `forbidden`, sem criar matrícula nem gravar auditoria.
+**Acceptance Criteria:**
+- [ ] Requisição sem autenticação aos dois endpoints responde 401 e não cria matrícula. [verify: project-validation]
+- [ ] Requisição autenticada com papel `Parent` responde 403 nos dois endpoints e não grava evento de auditoria. [verify: project-validation]
+- [ ] As checagens de papel do serviço de renovação vêm de `AccessPolicy`. [verify: grep-present `AccessPolicy` `src/Ciclo.Infrastructure/Services/EnrollmentRenewalService.cs`]
+
+### NFR-002: Não-regressão do fluxo de matrícula existente
+
+**What:** Os endpoints de matrícula já existentes mantêm o contrato atual de requisição e resposta, e os testes existentes continuam passando sem alteração de expectativa. A rematrícula em lote não altera `Student.AnoLetivo` de alunos fora do lote nem o comportamento de criação, submissão e aprovação individual.
+**Acceptance Criteria:**
+- [ ] A suíte de testes existente continua passando sem alteração de asserção nos testes de matrícula. [verify: project-validation]
+- [ ] O campo `Student.AnoLetivo` continua declarado na entidade `Student`. [verify: grep-present `AnoLetivo` `src/Ciclo.Core/Entities/Student.cs`]
+- [ ] A validação de projeto completa passa. [verify: project-validation]
+
+## Constraints
+
+- Reutiliza `Enrollment`, `EnrollmentPeriod` e `Student.AnoLetivo` existentes; nenhuma entidade de período ou de lote é criada. [verify: grep-present `AnoLetivo` `src/Ciclo.Core/Entities/Student.cs`]
+- Reutiliza a avaliação documental existente e o `CarriedDocumentDto` existente em vez de recalcular pendência documental. [verify: grep-present `CarriedDocumentDto` `src/Ciclo.Infrastructure/Contracts/EnrollmentDtos.cs`]
+- Reutiliza `AccessPolicy` como dono único da regra de papel; nenhuma lista de papéis paralela é criada. [verify: grep-present `AccessPolicy` `src/Ciclo.Infrastructure/Security/AccessPolicy.cs`]
+- A execução do lote é síncrona dentro da requisição HTTP; nenhum agendador, fila ou job em background é introduzido. [verify: project-validation]
+- Os testes existentes continuam passando sem afrouxamento de asserções. [verify: project-validation]
+- A validação de projeto completa passa. [verify: project-validation]
+
+## Edge Cases & Error States
+
+- `periodId` inexistente no tenant na prévia: 404 com `period_not_found`, sem consulta de alunos.
+- `StudentIds` vazio ou nulo no lote: 400 com `student_ids_required`, sem escrita.
+- `studentId` repetido na lista: processado uma única vez e reportado uma única vez.
+- Documento aprovado com `DataValidade` exatamente igual ao instante corrente: conta como vencido, porque a regra existente considera válido apenas `DataValidade` nula ou estritamente futura.
+- Documento aprovado com `DataValidade` nula: conta como válido e aparece em `CarriedDocuments` com `IsExpired` falso.
+- Aluno com `StudentStatus.Inativo`: `Eligible` falso com `BlockReason` igual a `student_inactive`; no lote, `Outcome = Failed` com a mesma mensagem.
+- Aluno com `StudentStatus.Transferido`: `Eligible` falso com `BlockReason` igual a `student_transferred`; no lote, `Outcome = Failed` com a mesma mensagem.
+- Aluno com matrícula já existente no período destino: `EnrollmentAlreadyExists` verdadeiro na prévia e `Outcome = SkippedAlreadyExists` no lote.
+- Aluno com tipo obrigatório ativo sem documento válido: `Eligible` falso com `BlockReason` igual a `pending_required_documents`; no lote, `Outcome = BlockedPendingDocuments`.
+- Período destino inativo ou fora da janela de datas: cada aluno recebe `Outcome = Failed` com o código herdado da criação de matrícula.
+- Falha de banco durante a renovação de um aluno: o item recebe `Outcome = Failed` com a mensagem da exceção e o restante do lote continua.
+- Lote em que todos os itens falham: resposta 200 com `Failed` igual à quantidade de itens e resposta vazia de renovados.
+
+## Anti-Scope
+
+- Nenhum agendador ou job em background de rematrícula é criado. [verify: grep-absent `RematriculaScheduler` `src/`]
+- Nenhum serviço de upload de documento novo é criado pela rematrícula em lote. [verify: grep-absent `RenewalUploadService` `src/`]
+- Nenhum publicador de notificação é introduzido nesta spec. [verify: grep-absent `RenewalNotificationPublisher` `src/`]
+- Nenhuma entidade agregada de lote de rematrícula é persistida. [verify: file-absent `src/Ciclo.Core/Entities/RematriculaLote.cs`]
+
+## Dependencies
+
+- Spec 110 (auditoria): `IAuditTrail`, `AuditActions` e `AuditTargetTypes` reutilizados pelo FR-005.
+- Spec 150 (estrutura-academica-e-desempenho): `AcademicYear` e `SchoolClass` permanecem como estão; a renovação escreve apenas `Student.AnoLetivo`.
+- Serviço de matrícula existente (`IEnrollmentService`) e avaliação documental existente (`DocumentCompliance`), ambos em `Ciclo.Infrastructure`.
+
+## Out of Scope
+
+- Renovação automática por agendamento e renovação sem confirmação humana.
+- Envio e reenvio de documentos pelo fluxo de rematrícula em lote.
+- Notificação de responsáveis sobre rematrícula renovada ou bloqueada.
+- Configuração por tenant de regras de promoção, cotas e flags de plano.
+- Cálculo de desempenho, notas e boletim do aluno promovido.
+- Alteração de `Student.Turma`, `Student.SchoolClassId` ou `Student.AcademicYearId` pela renovação.
+
+## Test Scope
+
+- `tests/Ciclo.Api.Tests/EnrollmentRenewalTests.cs` — prova prévia com documentos reaproveitáveis, vencidos e pendentes; ordem por nome; idempotência de duas execuções; falha parcial sem interromper o lote; promoção de `Student.AnoLetivo` apenas para renovados; evento de auditoria por aluno renovado; 400 para lista vazia; 403 para papel fora da lista.
+- `frontend/tests/renewalBatch.test.ts` — prova `selectableStudentIds` restringindo a seleção aos itens elegíveis e `describeOutcome` cobrindo cada valor de `RenewalOutcome`.

@@ -238,6 +238,13 @@ export default function EnrollmentList() {
       <PageHeader
         title="Matrículas"
         subtitle="Acompanhe e aprove as matrículas por período."
+        actions={
+          <Link to="/admin/enrollment-renewal">
+            <Button variant="secondary" className="shrink-0">
+              Rematrícula em lote
+            </Button>
+          </Link>
+        }
       />
 
       <Card tone="glass">

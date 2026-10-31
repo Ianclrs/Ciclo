@@ -127,8 +127,12 @@ export function apiErrorCode(error: unknown): string | null {
  * legível da API (ex.: falha de validação) → ele mesmo; caso contrário, o
  * texto de apoio da tela. Nunca devolve o código cru ao usuário.
  */
-export function apiErrorMessage(error: unknown, fallback: string): string {
-  const code = apiErrorCode(error);
+/**
+ * Texto para um código de erro da API. Dono único da tradução código → mensagem: a tela que
+ * recebe um código fora de um `Error` de requisição (o `blockReason` da prévia de rematrícula,
+ * por exemplo) usa esta função em vez de repetir um mapa local.
+ */
+export function codeMessage(code: string | null, fallback: string): string {
   if (code === null) {
     return fallback;
   }
@@ -138,4 +142,8 @@ export function apiErrorMessage(error: unknown, fallback: string): string {
   }
   // ProblemDetails com frase legível já é apresentável; identificador não é.
   return code.includes(' ') ? code : fallback;
+}
+
+export function apiErrorMessage(error: unknown, fallback: string): string {
+  return codeMessage(apiErrorCode(error), fallback);
 }

@@ -160,6 +160,10 @@ try
     // Enrollment services (Spec 50)
     builder.Services.AddScoped<IEnrollmentService, EnrollmentService>();
 
+    // Rematrícula em lote (Spec 160). Sem este registro o `EnrollmentController` não é
+    // ativado: o construtor depende de `IEnrollmentRenewalService` (ver L8).
+    builder.Services.AddScoped<IEnrollmentRenewalService, EnrollmentRenewalService>();
+
 
     // Document services (Spec 70)
     builder.Services.Configure<FileStorageOptions>(builder.Configuration.GetSection(FileStorageOptions.SectionName));

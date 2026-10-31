@@ -91,10 +91,12 @@ public class EnrollmentPeriodController : ControllerBase
 public class EnrollmentController : ControllerBase
 {
     private readonly IEnrollmentService _service;
+    private readonly IEnrollmentRenewalService _renewals;
 
-    public EnrollmentController(IEnrollmentService service)
+    public EnrollmentController(IEnrollmentService service, IEnrollmentRenewalService renewals)
     {
         _service = service;
+        _renewals = renewals;
     }
 
     /// <summary>FR-004: Create a new enrollment (draft).</summary>
@@ -241,6 +243,50 @@ public class EnrollmentController : ControllerBase
             var tenantId = GetTenantId();
             var (userId, role) = GetUserInfo();
             var result = await _service.ReopenAsync(id, tenantId, userId, role);
+            return Ok(result);
+        }
+        catch (EnrollmentException ex)
+        {
+            return ProblemResponse.FromCode(ex.Message, ex.StatusCode);
+        }
+    }
+
+    /// <summary>
+    /// FR-001: prévia da rematrícula em lote — o que aconteceria com cada aluno do período
+    /// selecionado, sem gravar nada.
+    /// </summary>
+    [HttpGet("renewal-preview")]
+    [Authorize(Roles = AccessPolicy.Roles.EnrollmentPeriodRead)]
+    public async Task<IActionResult> GetRenewalPreview(
+        [FromQuery] Guid periodId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var tenantId = GetTenantId();
+            var (_, role) = GetUserInfo();
+            var result = await _renewals.GetPreviewAsync(periodId, tenantId, role, cancellationToken);
+            return Ok(result);
+        }
+        catch (EnrollmentException ex)
+        {
+            return ProblemResponse.FromCode(ex.Message, ex.StatusCode);
+        }
+    }
+
+    /// <summary>
+    /// FR-002: executa a rematrícula do lote. Idempotente por aluno: quem já tem matrícula no
+    /// período sai no resultado com o desfecho correspondente, sem duplicar registro.
+    /// </summary>
+    [HttpPost("renewal-batch")]
+    [Authorize(Roles = AccessPolicy.Roles.EnrollmentWrite)]
+    public async Task<IActionResult> RenewBatch(
+        [FromBody] RenewalBatchRequest request, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var tenantId = GetTenantId();
+            var (userId, role) = GetUserInfo();
+            var result = await _renewals.RenewAsync(request, tenantId, userId, role, cancellationToken);
             return Ok(result);
         }
         catch (EnrollmentException ex)

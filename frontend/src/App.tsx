@@ -15,6 +15,7 @@ import StudentForm from './pages/admin/StudentForm';
 import StudentDetail from './pages/admin/StudentDetail';
 import EnrollmentList from './pages/admin/EnrollmentList';
 import EnrollmentDetail from './pages/admin/EnrollmentDetail';
+import EnrollmentRenewal from './pages/admin/EnrollmentRenewal';
 import DocumentVerification from './pages/admin/DocumentVerification';
 import NotificationList from './pages/admin/NotificationList';
 import NotificationCreate from './pages/admin/NotificationCreate';
@@ -56,6 +57,7 @@ function AdminLayout() {
           <Route path="students/:id/edit" element={<StudentForm />} />
           <Route path="enrollments" element={<EnrollmentList />} />
           <Route path="enrollments/:id" element={<EnrollmentDetail />} />
+          <Route path="enrollment-renewal" element={<EnrollmentRenewal />} />
           <Route path="documents" element={<DocumentVerification />} />
           <Route path="academico" element={<AcademicStructure />} />
           <Route path="notas" element={<GradeEntry />} />
