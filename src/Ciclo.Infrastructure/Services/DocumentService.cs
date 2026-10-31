@@ -16,6 +16,7 @@ public interface IDocumentService
     Task<DocumentDto> UploadAsync(Stream fileStream, string fileName, string contentType, Guid studentId, Guid documentTypeId, Guid tenantId, Guid userId, UserRole role);
     Task<PagedResponse<DocumentDto>> GetStudentDocumentsAsync(Guid studentId, Guid tenantId, Guid userId, UserRole role, int page, int pageSize);
     Task<(Stream Stream, string ContentType, string FileName)> DownloadAsync(Guid documentId, Guid tenantId, Guid userId, UserRole role);
+    Task<SignedDownloadDto> GetDownloadUrlAsync(Guid documentId, Guid tenantId, Guid userId, UserRole role);
     Task VerifyAsync(Guid documentId, VerifyDocumentRequest request, Guid tenantId, UserRole role);
     Task<PagedResponse<DocumentDto>> GetPendingAsync(Guid tenantId, int page, int pageSize);
     Task<PagedResponse<DocumentDto>> GetDocumentsAsync(DocumentFilter filter, Guid tenantId, int page, int pageSize);
@@ -43,6 +44,30 @@ public class DocumentService : IDocumentService
 
     private const long MaxFileSize = 10 * 1024 * 1024; // 10 MB
 
+    // FR-007: o token assinado é a autorização da rota de bytes, então a validade é curta.
+    private static readonly TimeSpan SignedUrlLifetime = TimeSpan.FromMinutes(5);
+
+    // MIME do conteúdo gravado. A chave é a extensão já validada contra a assinatura real, então
+    // o valor é o tipo detectado, não o que o cliente declarou no header da requisição.
+    private static readonly Dictionary<string, string> MimeByExtension = new(StringComparer.OrdinalIgnoreCase)
+    {
+        [".pdf"] = "application/pdf",
+        [".jpg"] = "image/jpeg",
+        [".jpeg"] = "image/jpeg",
+        [".png"] = "image/png",
+    };
+
+    /// <summary>
+    /// MIME derivado da extensão de um caminho/nome de arquivo. Público porque a rota de download
+    /// assinada serve bytes sem passar pelo serviço: uma segunda cópia deste mapa divergiria na
+    /// primeira extensão nova.
+    /// </summary>
+    public static string MimeForExtension(string pathOrFileName)
+    {
+        var ext = Path.GetExtension(pathOrFileName);
+        return MimeByExtension.TryGetValue(ext, out var mime) ? mime : "application/octet-stream";
+    }
+
     public DocumentService(
         AppDbContext db, IFileStorage storage, INotificationService notificationService,
         ILogger<DocumentService> logger, IAuditTrail audit)
@@ -60,22 +85,26 @@ public class DocumentService : IDocumentService
         Stream fileStream, string fileName, string contentType,
         Guid studentId, Guid documentTypeId, Guid tenantId, Guid userId, UserRole role)
     {
-        // Validate file
-        if (fileStream.Length > MaxFileSize)
-            throw new DocumentException("file_too_large", 400);
-
-        var ext = Path.GetExtension(fileName);
-        if (string.IsNullOrEmpty(ext) || !AllowedExtensions.Contains(ext))
-            throw new DocumentException("invalid_extension", 400);
-
+        // Ordem da spec 170: o que é barato e definitivo vem primeiro, para nada ser gravado
+        // (nem em quarentena) antes de a requisição ser válida.
         // M6: a extensão é texto que o cliente escolhe. A assinatura do conteúdo é o que
         // realmente define o tipo — um executável renomeado para .pdf era aceito antes.
         if (!fileStream.CanSeek)
             throw new DocumentException("invalid_file_content", 400);
 
+        var ext = Path.GetExtension(fileName);
+        if (string.IsNullOrEmpty(ext) || !AllowedExtensions.Contains(ext))
+            throw new DocumentException("invalid_extension", 400);
+
         var kind = await FileSignature.DetectAsync(fileStream);
         if (!FileSignature.MatchesExtension(kind, ext))
+        {
+            await QuarantineAsync(tenantId, fileName, fileStream);
             throw new DocumentException("invalid_file_content", 400);
+        }
+
+        if (fileStream.Length > MaxFileSize)
+            throw new DocumentException("file_too_large", 400);
 
         // Validate student
         var student = await _db.Students.FirstOrDefaultAsync(s => s.Id == studentId);
@@ -93,9 +122,32 @@ public class DocumentService : IDocumentService
         if (!docType.IsActive)
             throw new DocumentException("document_type_inactive", 400);
 
-        // Save file
+        // FR-006: a cota é conferida antes de qualquer byte ir para o driver. Não é transacional:
+        // dois uploads simultâneos podem passar pela mesma verificação — comportamento declarado.
+        var used = await _db.Documents.Where(d => d.TenantId == tenantId).SumAsync(d => d.TamanhoBytes);
+        var quota = await _db.Tenants
+            .Where(t => t.Id == tenantId)
+            .Select(t => t.StorageQuotaBytes)
+            .FirstOrDefaultAsync();
+
+        if (used + fileStream.Length > quota)
+            throw new DocumentException("storage_quota_exceeded", 413);
+
+        // FR-004: o decorador calcula SHA-256 e tamanho durante a gravação — sem segunda passagem
+        // pelo conteúdo e sem exigir que ele caiba em memória.
         fileStream.Position = 0;
-        var filePath = await _storage.SaveAsync(tenantId, studentId, fileName, fileStream);
+        await using var hashing = new HashingReadStream(fileStream, MaxFileSize);
+
+        string filePath;
+        try
+        {
+            filePath = await _storage.SaveAsync(tenantId, studentId, fileName, hashing);
+        }
+        catch (InvalidDataException)
+        {
+            // O driver já removeu o arquivo parcial; aqui só o código de problema muda.
+            throw new DocumentException("file_too_large", 400);
+        }
 
         var document = new Document
         {
@@ -105,6 +157,10 @@ public class DocumentService : IDocumentService
             DocumentTypeId = documentTypeId,
             NomeArquivo = fileName,
             CaminhoArquivo = filePath,
+            TamanhoBytes = hashing.BytesRead,
+            HashSha256 = hashing.HashHex,
+            ContentType = MimeByExtension[ext],
+            EnviadoPorUsuarioId = userId,
             Status = DocumentStatus.Pendente,
             CreatedAt = DateTime.UtcNow
         };
@@ -169,16 +225,7 @@ public class DocumentService : IDocumentService
     public async Task<(Stream Stream, string ContentType, string FileName)> DownloadAsync(
         Guid documentId, Guid tenantId, Guid userId, UserRole role)
     {
-        var doc = await _db.Documents
-            .Include(d => d.Student)
-            .ThenInclude(s => s.StudentParents)
-            .FirstOrDefaultAsync(d => d.Id == documentId);
-
-        if (doc is null)
-            throw new DocumentException("document_not_found", 404);
-
-        // B9: regra de vínculo em um dono único.
-        await StudentAccess.EnsureLinkedAsync(_db, doc.StudentId, userId, role);
+        var doc = await LoadAuthorizedAsync(documentId, tenantId, userId, role);
 
         var stream = await GetFileStreamSafeAsync(doc.CaminhoArquivo);
         var ext = Path.GetExtension(doc.NomeArquivo).ToLowerInvariant();
@@ -191,6 +238,19 @@ public class DocumentService : IDocumentService
         };
 
         return (stream, contentType, doc.NomeArquivo);
+    }
+
+    /// <summary>
+    /// FR-007: emite a URL assinada sem servir bytes. A autorização é a mesma do download; o
+    /// token devolvido passa a ser a autorização da requisição que lê o arquivo.
+    /// </summary>
+    public async Task<SignedDownloadDto> GetDownloadUrlAsync(
+        Guid documentId, Guid tenantId, Guid userId, UserRole role)
+    {
+        var doc = await LoadAuthorizedAsync(documentId, tenantId, userId, role);
+        var url = await _storage.GetSignedUrlAsync(doc.CaminhoArquivo, SignedUrlLifetime);
+
+        return new SignedDownloadDto(url, DateTimeOffset.UtcNow.Add(SignedUrlLifetime));
     }
 
     public async Task VerifyAsync(Guid documentId, VerifyDocumentRequest request, Guid tenantId, UserRole role)
@@ -400,6 +460,28 @@ public class DocumentService : IDocumentService
 
     // ── Helpers ────────────────────────────────────────────────────
 
+    /// <summary>
+    /// Dono único da carga e da autorização de um documento já identificado. Download e emissão
+    /// de URL assinada passam por aqui, então as duas rotas não podem divergir no controle de
+    /// acesso.
+    /// </summary>
+    private async Task<Document> LoadAuthorizedAsync(
+        Guid documentId, Guid tenantId, Guid userId, UserRole role)
+    {
+        var doc = await _db.Documents
+            .Include(d => d.Student)
+            .ThenInclude(s => s.StudentParents)
+            .FirstOrDefaultAsync(d => d.Id == documentId && d.TenantId == tenantId);
+
+        if (doc is null)
+            throw new DocumentException("document_not_found", 404);
+
+        // B9: regra de vínculo em um dono único.
+        await StudentAccess.EnsureLinkedAsync(_db, doc.StudentId, userId, role);
+
+        return doc;
+    }
+
     private async Task<Stream> GetFileStreamSafeAsync(string caminhoArquivo)
     {
         try
@@ -417,11 +499,33 @@ public class DocumentService : IDocumentService
         }
     }
 
+    /// <summary>
+    /// Retém os bytes suspeitos antes de recusar. Falha na retenção é registrada e não altera a
+    /// resposta: o cliente continua recebendo a mesma recusa, e o arquivo perdido fica no log.
+    /// </summary>
+    private async Task QuarantineAsync(Guid tenantId, string fileName, Stream fileStream)
+    {
+        try
+        {
+            fileStream.Position = 0;
+            await _storage.SaveQuarantineAsync(tenantId, fileName, fileStream);
+        }
+#pragma warning disable CA1031 // a recusa original é o que importa; a falha aqui só é registrada
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+#pragma warning disable CA1848, CA1873
+            _logger.LogError(ex, "Falha ao reter {FileName} na quarentena", fileName);
+#pragma warning restore CA1848, CA1873
+        }
+    }
+
     private static DocumentDto MapToDto(Document d)
     {
         return new DocumentDto(
             d.Id, d.StudentId, d.Student.Nome, d.DocumentTypeId, d.DocumentType.Nome,
-            d.NomeArquivo, d.Status.ToString(), d.DataValidade, d.MotivoRejeicao, d.CreatedAt);
+            d.NomeArquivo, d.Status.ToString(), d.DataValidade, d.MotivoRejeicao, d.CreatedAt,
+            d.TamanhoBytes, d.HashSha256, d.ContentType, d.EnviadoPorUsuarioId);
     }
 }
 

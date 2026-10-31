@@ -35,9 +35,9 @@
 | 140 | comunicacao-proativa | implemented | V14 |
 | 150 | estrutura-academica-e-desempenho | implemented | V15 |
 | 160 | rematricula-em-lote | implemented | V16 |
-| 170 | armazenamento-de-documentos | planned | V17 |
-| 180 | qualidade-automatizada | planned | V18 |
-| 190 | experiencia-i18n-e-acessibilidade | planned | V19 |
+| 170 | armazenamento-de-documentos | implemented | V17 |
+| 180 | qualidade-automatizada | implemented | V18 |
+| 190 | experiencia-i18n-e-acessibilidade | implemented | V19 |
 | 200 | configuracao-e-limites-por-tenant | planned | V20 |
 | 210 | privacidade-lgpd | planned | V21 |
 

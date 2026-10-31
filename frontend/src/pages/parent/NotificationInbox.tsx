@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
-import { CheckCheck, Inbox, MailOpen } from 'lucide-react';
+import { CheckCheck, Inbox } from 'lucide-react';
 import { Card } from '../../components/Card';
 import { CardHeading } from '../../components/CardHeading';
 import { Badge } from '../../components/Badge';
@@ -10,6 +10,7 @@ import * as api from '../../api/notifications';
 import { apiErrorMessage } from '../../api/errors';
 import { LoadError } from '../../components/LoadError';
 import { Skeleton } from '../../components/Skeleton';
+import { EmptyState } from '../../components/EmptyState';
 import { formatDateTime } from '../../utils/format';
 import type { Notification } from '../../types';
 
@@ -131,12 +132,9 @@ export default function NotificationInbox() {
             ))}
           </ul>
         ) : items.length === 0 ? (
-          <div className="flex flex-col items-center py-8 text-center">
-            <MailOpen size={28} className="text-gray-300" />
-            <p className="mt-2 text-sm text-gray-600">
-              {unreadOnly ? 'Nenhuma notificação não lida.' : 'Nenhuma notificação por aqui.'}
-            </p>
-          </div>
+          <EmptyState
+            message={unreadOnly ? 'Nenhuma notificação não lida.' : 'Nenhuma notificação por aqui.'}
+          />
         ) : (
           <ul className="-mx-2 space-y-0.5">
             {items.map((n) => (

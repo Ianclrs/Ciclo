@@ -310,6 +310,24 @@ Mesmo bloqueio (P-005), mesmo regime: as três tasks restantes da 160 são front
 
 **Nota de escopo:** a sonda criou no tenant demo o aluno `Teste Rematrícula` (turma `4º Ano D`, ano letivo 2027) para exercitar a prévia.
 
+### Entrega manual das 7 tasks da spec 190 (2026-10-31)
+
+Mesmo bloqueio (P-005) e mesmo regime, na maior escala até agora: **as 7 tasks da 190 são 100% frontend**, então o pipeline não consegue selar nenhuma delas. Entrega manual autorizada pelo dono, com evidência. A spec segue em `verified` sem selo.
+
+**Novos módulos:** `i18n/locale.ts` (tabelas país→idioma e idioma→locale, resolução do AD-190-2, leitura/escrita de preferência), `i18n/messages.ts` (catálogo PT/EN/ES com as 11 chaves, `t` com `{param}`), `i18n/LocaleContext.tsx` (`LocaleProvider` + `useLocale`), `api/errorMessages.ts` (75 códigos × 3 idiomas), `components/EmptyState.tsx`, `components/ErrorBoundary.tsx`, `utils/focusTrap.ts`, `utils/contrast.ts`, `config/contrastPairs.ts`.
+
+**Modificados:** `utils/format.ts` (locale explícito em data/hora/número/moeda/percentual + `formatTime`), `api/errors.ts` (mapa movido para fora; `language` opcional), `components/{LoadError,Input,Select,Button,Modal}.tsx`, `App.tsx` (`ErrorBoundary` > `LocaleProvider`), as 6 listagens declaradas e também `pages/admin/AdminDashboard.tsx` e `pages/parent/ParentDashboard.tsx` (últimos literais `pt-BR` da árvore de páginas).
+
+**Testes:** `i18nLocale`, `i18nMessages`, `i18nFormat`, `i18nScreenStates`, `accessibility` (novos) e `validationAndFormat`, `errors` (estendidos).
+
+**Gates:** `tsc -b` ✅ · lint **0 erros** (3 avisos: 2 pré-existentes + `only-export-components` no `LocaleContext`, a mesma classe que já existe no `AuthContext`) · frontend **146/146** · `npm run build` ✅ · cobertura de linha **85,93%** (limiar 60).
+
+**Medido no Chrome real** (login demo → API 5264 + Vite 5173): `/admin/notifications` vazio renderiza `role="status"` com "Nenhum registro encontrado."; com `localStorage.language = 'en'` o título vira "No records found."; modal de convite tem `role=dialog`, `aria-modal=true`, `aria-labelledby` resolvendo para o `<h3>`, foco entra no diálogo, `Escape` fecha e o foco volta ao botão de origem; `/admin/documents` mostra 6 datas em `dd/mm/aaaa` e nenhum `Invalid Date`.
+
+**Limitação declarada:** as mensagens vazias específicas de tela (`Nenhuma notificação registrada.`, por exemplo) continuam em português — o catálogo tem exatamente as 11 chaves que a FR-002 nomeia, e a spec proíbe acrescentar outras. O título genérico e o texto de erro são traduzidos.
+
+**Sonda mantida:** `frontend/tests/manual/i18n-a11y-probe.mjs` (mesmo padrão das sondas anteriores).
+
 ---
 
 
@@ -412,3 +430,60 @@ Hipótese: com o `state.json` ausente, o engine recalcularia `taskSourceHash` a 
 - Gravar `taskSourceHash` à mão (silencia o guard sem provar consistência).
 - Editar `task.md` para "caber" em um hash.
 - Marcar tasks por texto, sem execução.
+
+---
+
+## P-006 — Shell do agente: `dotnet restore` falha com `path1` nulo por falta de variáveis do Windows
+
+**Estado:** aberto — contorno conhecido e aplicado
+**Descoberto:** 2026-10-31 (spec 170, task 2; sintoma já visto na spec 150 com diagnóstico errado)
+**Dono:** runtime do DsCode (bloco de ambiente entregue ao shell das ferramentas)
+**Impacto:** todo `dotnet build`, `restore`, `test` ou `package search` executado pelo agente falha antes de compilar. Um `PackageReference` novo não pode ser restaurado (`--no-restore` não basta). Não afeta o shell de validação do próprio pipeline.
+
+### Comportamento observado
+
+```
+C:\Program Files\dotnet\sdk\10.0.403\NuGet.targets(782,5): error : Value cannot be null. (Parameter 'path1')
+    [src/Ciclo.Core/Ciclo.Core.csproj]
+```
+
+Repetido para cada projeto, em 0,4 s, independentemente de `--force`.
+
+### Causa real (a hipótese anterior estava errada)
+
+Na sessão da spec 150 o sintoma foi atribuído a "`APPDATA` corrompido". A pilha do `-v:d` mostra a origem exata:
+
+```
+System.ArgumentNullException: Value cannot be null. (Parameter 'path1')
+   at System.IO.Path.Combine(String path1, String path2)
+   at NuGet.Common.NuGetEnvironment.CalculateFolderPath(NuGetFolderPath folder)
+   at NuGet.Configuration.XPlatMachineWideSetting..ctor()
+   at NuGet.Build.Tasks.GetRestoreSettingsTask.<>c.<cctor>b__87_0()
+```
+
+`NuGetEnvironment` monta os diretórios machine-wide a partir de variáveis de ambiente do Windows. O shell do agente entrega apenas 32 variáveis — `env` confirma que **`ProgramData`, `ProgramFiles`, `ProgramFiles(x86)`, `ALLUSERSPROFILE` e `APPDATA` não estão entre elas**. Uma delas chega nula e `Path.Combine` lança.
+
+Não é `APPDATA` isoladamente: definir só `APPDATA` (ou só `ProgramData`, ou só `ALLUSERSPROFILE`) **não** resolve. `Environment.GetFolderPath` funciona (retorna `C:\ProgramData`), mas o NuGet usa a variável direta no caminho não-desktop.
+
+### Contorno aplicado
+
+```bash
+env ProgramFiles='C:\Program Files' 'ProgramFiles(x86)=C:\Program Files (x86)' \
+    ProgramW6432='C:\Program Files' ALLUSERSPROFILE='C:\ProgramData' \
+    ProgramData='C:\ProgramData' APPDATA='C:\Users\tempu\AppData\Roaming' \
+    dotnet restore
+```
+
+Com esse prefixo, `dotnet restore`, `dotnet build` **com restore**, `dotnet test` e `dotnet package search` passam a funcionar (medido em 2026-10-31, spec 170 task 2: build da solução 0 erros/0 avisos, suíte 403/403).
+
+`--no-restore` também passa enquanto os assets estiverem atuais, mas **não** serve quando um `PackageReference` muda — o build então falha com `CS0246` no namespace novo, o que é um erro honesto e distinto deste.
+
+### Por que isso não bloqueia o pipeline
+
+O shell de validação do runtime tem as variáveis: em 2026-10-31 o `dotnet build` do próprio pipeline reportou erros reais de compilação (`CS0535`, `CS0246`), nunca o erro de NuGet. O defeito atinge apenas o shell das ferramentas do agente.
+
+### Ação recomendada
+
+1. Repassar o bloco de ambiente completo do Windows ao shell das ferramentas, em vez do conjunto reduzido.
+2. Enquanto não for corrigido, prefixar `env` conforme acima sempre que houver restore — e não repetir o diagnóstico de `APPDATA`.
+

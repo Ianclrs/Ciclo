@@ -1,0 +1,227 @@
+---
+name: experiencia-i18n-e-acessibilidade
+status: verified
+determinism: D
+references: [V19]
+---
+
+# Spec 190: experiencia-i18n-e-acessibilidade — Requirements
+
+## Determinism Classification
+
+**Class:** D — Deterministic
+
+Every deliverable of this spec is a pure function over strings or a source-level invariant: locale resolution maps a country code and a stored language tag to a resolved locale; the message catalog is a constant object; date, number, currency and percent formatting delegate to `Intl` (present in the Node 24 runtime the project already uses for `node --test`); the error map is a constant object keyed by API code; accessibility and screen-state guarantees are asserted by source inspection of named files. Given the same input value and locale tag, the output is identical on every run and every machine, so the acceptance criteria are proved by `assert` over returned values and by literal source inspection.
+
+## Value Delivery
+
+**V19: Experiência Internacionalizada e Acessível**
+
+Interface com idioma, formato de data e número e mensagens por locale (BR/US/PT já previstos na configuração de países), estados explícitos de carregamento e erro em todas as telas, navegação por teclado, rótulos acessíveis e error boundary global. Elimina textos e formatos fixos em pt-BR.
+
+## Functional Requirements
+
+### FR-001: Locale resolution from tenant country and user preference
+
+**What:** Creates `frontend/src/i18n/locale.ts`, the single owner of the active locale. It exports `type Language = 'pt' | 'en' | 'es'`, `LANGUAGE_ORDER`, `DEFAULT_LANGUAGE`, `DEFAULT_LOCALE`, `LANGUAGE_STORAGE_KEY`, `isLanguage(value: unknown): value is Language`, `languageForCountry(code: string | null | undefined): Language`, `defaultLocaleForLanguage(language: Language): string`, `resolveLocale(input: { tenantCountry?: string | null; userLanguage?: string | null }): { language: Language; locale: string }`, `readStoredLanguage(): Language | null` and `storeLanguage(language: Language): void`. It also creates `frontend/src/i18n/LocaleContext.tsx`, exporting `LocaleProvider` and `useLocale(): { language: Language; locale: string; t: (key: string, params?: Record<string, string | number>) => string; setLanguage: (language: Language) => void }`, and wires `<LocaleProvider>` around the application tree in `frontend/src/App.tsx`.
+**Why:** V19 names a locale source built from the tenant country plus the user preference. Today the locale is a module-level constant inside `frontend/src/utils/format.ts` (`const LOCALE = 'pt-BR'`), so no screen can choose a language and no preference can be expressed.
+**Acceptance Criteria:**
+- [ ] The locale module exists and declares the language union, the supported order and the storage key. [verify: file-exists `frontend/src/i18n/locale.ts`]
+- [ ] `resolveLocale` is a function in the locale module. [verify: grep-present `export function resolveLocale` `frontend/src/i18n/locale.ts`]
+- [ ] `languageForCountry` is a function in the locale module. [verify: grep-present `export function languageForCountry` `frontend/src/i18n/locale.ts`]
+- [ ] The storage key constant is declared in the locale module. [verify: grep-present `LANGUAGE_STORAGE_KEY` `frontend/src/i18n/locale.ts`]
+- [ ] The context module exists. [verify: file-exists `frontend/src/i18n/LocaleContext.tsx`]
+- [ ] The provider wraps the application tree in the root component. [verify: grep-present `LocaleProvider` `frontend/src/App.tsx`]
+- [ ] The locale unit test proves the resolution table and the preference precedence. [verify: project-validation]
+**Failure modes:**
+- Unknown or empty `tenantCountry` falls back to `BR`, therefore to language `pt` and locale `pt-BR`, mirroring `getCountry()` in `frontend/src/config/countries.ts`.
+- A `userLanguage` that is not in `LANGUAGE_ORDER` is ignored and the tenant default is used instead; `isLanguage` is the single predicate that performs the check.
+- `readStoredLanguage` returns `null` when `localStorage` is unavailable (private mode, blocked origin, thrown `SecurityError`) or when the stored value is not a supported language; it never throws.
+- `storeLanguage` tolerates a storage write failure after the catalog is already resolved, so a blocked storage cannot break rendering; the in-memory language remains authoritative for the session.
+
+### FR-002: Trilingual message catalog PT, EN, ES with key parity
+
+**What:** Creates `frontend/src/i18n/messages.ts`, the single owner of user-facing catalog text. It exports `type MessageKey` (a closed union of literal keys), `MESSAGES: Record<Language, Record<MessageKey, string>>` and `t(key: MessageKey, language: Language, params?: Record<string, string | number>): string`. The catalog ships at least the keys `common.loading`, `common.error`, `common.empty`, `common.retry`, `common.reload`, `common.close`, `errorBoundary.title`, `errorBoundary.body`, `field.required`, `list.emptyTitle` and `language.label`. `t` replaces every `{name}` placeholder with the matching value from `params`.
+**Why:** V19 names a PT/EN/ES message catalog as the replacement for hardcoded pt-BR copy. One catalog keyed by language is the single source; a per-screen copy would reintroduce the drift the value block removes.
+**Acceptance Criteria:**
+- [ ] The catalog module exists. [verify: file-exists `frontend/src/i18n/messages.ts`]
+- [ ] `t` is a function in the catalog module. [verify: grep-present `export function t(` `frontend/src/i18n/messages.ts`]
+- [ ] The catalog object `MESSAGES` is declared in the catalog module. [verify: grep-present `MESSAGES` `frontend/src/i18n/messages.ts`]
+- [ ] The empty-state key is present in the catalog module. [verify: grep-present `common.empty` `frontend/src/i18n/messages.ts`]
+- [ ] The catalog parity and interpolation test proves key completeness across all three languages. [verify: project-validation]
+**Failure modes:**
+- A key present in one language and absent in another fails the parity test in `frontend/tests/i18nMessages.test.ts`; the catalog is rejected instead of rendering a blank label.
+- An empty or whitespace-only value for any key fails the same parity test.
+- A `{name}` placeholder with no matching entry in `params` is left verbatim in the returned string, so a missing parameter stays visible in the returned value instead of producing `undefined`.
+- `t` never reads `localStorage`, the network or a module-level mutable variable: the language is always an explicit argument.
+
+### FR-003: Intl-based date, number, currency and percent formatting per locale
+
+**What:** Extends `frontend/src/utils/format.ts` so every formatter takes an explicit locale and delegates to `Intl`. It exports `DEFAULT_LOCALE`, `formatDate(value: string | Date, locale?: string): string`, `formatDateTime(value: string | Date, locale?: string): string`, `formatNumber(value: number, locale?: string, options?: Intl.NumberFormatOptions): string`, `formatCurrency(value: number, currency: string, locale?: string): string` and `formatPercent(value: number, locale?: string, options?: Intl.NumberFormatOptions): string`. Date and date-time output come from the `DateTimeFormat` constructor, and every `locale` argument defaults to `DEFAULT_LOCALE` (`pt-BR`).
+**Why:** V19 names date and number formatting through `Intl` and the removal of fixed pt-BR formats. `frontend/src/utils/format.ts` already owns date formatting for the whole application, so the capability belongs there and nowhere else.
+**Acceptance Criteria:**
+- [ ] `formatNumber` is a function in the format module. [verify: grep-present `export function formatNumber` `frontend/src/utils/format.ts`]
+- [ ] `formatCurrency` is a function in the format module. [verify: grep-present `export function formatCurrency` `frontend/src/utils/format.ts`]
+- [ ] Date formatting delegates to the `DateTimeFormat` constructor. [verify: grep-present `DateTimeFormat` `frontend/src/utils/format.ts`]
+- [ ] The formatting test proves distinct output for `pt-BR`, `en-US` and `pt-PT` on the same instant and the same amount. [verify: project-validation]
+**Failure modes:**
+- Calling `formatDate`, `formatDateTime`, `formatNumber`, `formatCurrency` or `formatPercent` without a locale keeps the pre-spec `pt-BR` output, so no existing caller changes behaviour.
+- Invalid input (`'not-a-date'`, `NaN`) returns the empty string instead of throwing or emitting `Invalid Date`; the check is `Number.isNaN` over the parsed value before formatting.
+- An unsupported locale tag is passed through to `Intl` as given; the resolver in `frontend/src/i18n/locale.ts` is the only place that guarantees a supported tag.
+
+### FR-004: Single localized API error-code to message map
+
+**What:** Creates `frontend/src/api/errorMessages.ts` holding the single map `ERROR_MESSAGES: Record<string, Record<Language, string>>` covering every code the API can return, and extends `frontend/src/api/errors.ts` so `codeMessage(code: string | null, fallback: string, language?: Language): string` and `apiErrorMessage(error: unknown, fallback: string, language?: Language): string` resolve the text for the requested language, defaulting to `'pt'`. The `CODE_MESSAGES` constant currently declared in `frontend/src/api/errors.ts` is replaced by an import of `ERROR_MESSAGES`, so the frontend holds exactly one code-to-text map.
+**Why:** V19 names a single API error-code to message map plus its tests. `frontend/src/api/errors.ts` already owns this translation and already documents that it exists to stop each screen from repeating its own `switch`, so the capability is an extension of that owner, never a second map.
+**Acceptance Criteria:**
+- [ ] The error message data module exists. [verify: file-exists `frontend/src/api/errorMessages.ts`]
+- [ ] `codeMessage` is a function in the errors module. [verify: grep-present `export function codeMessage` `frontend/src/api/errors.ts`]
+- [ ] The single error map `ERROR_MESSAGES` is declared in the data module. [verify: grep-present `ERROR_MESSAGES` `frontend/src/api/errorMessages.ts`]
+- [ ] The error-map test proves three-language parity and localized resolution for every code. [verify: project-validation]
+**Failure modes:**
+- A code missing a translation in any of the three languages fails the parity assertion in `frontend/tests/i18nMessages.test.ts`; the map is rejected instead of falling back silently.
+- `code === null` returns `fallback` unchanged, preserving the pre-spec contract.
+- An unknown code that contains a space (a readable ProblemDetails `title`) is returned as-is; an unknown code without a space returns `fallback`, so a raw identifier never reaches the user.
+- The raw code is never returned to the user in any language.
+
+### FR-005: Explicit loading, error and empty states localized in every screen
+
+**What:** Creates `frontend/src/components/EmptyState.tsx` exporting `EmptyState(props: { title?: string; message?: string; action?: ReactNode })`, where `title` defaults to `t('list.emptyTitle', language)` and `message` defaults to `t('common.empty', language)` for the active language. Updates `frontend/src/components/LoadError.tsx` so its title, body and action label come from the catalog through `useLocale()`. Renders `EmptyState` in the six list screens `frontend/src/pages/admin/EnrollmentList.tsx`, `frontend/src/pages/admin/StudentList.tsx`, `frontend/src/pages/admin/NotificationList.tsx`, `frontend/src/pages/parent/NotificationInbox.tsx`, `frontend/src/pages/admin/UserManagement.tsx` and `frontend/src/pages/admin/DocumentVerification.tsx` whenever the rendered collection is empty.
+**Why:** V19 names explicit loading, error and empty states in every screen. The loading and error owners (`Skeleton.tsx`, `LoadError.tsx`) already exist; the missing piece is a shared empty-state component plus the localization of the state text, which is exactly the delta the value block names.
+**Acceptance Criteria:**
+- [ ] The empty-state component exists. [verify: file-exists `frontend/src/components/EmptyState.tsx`]
+- [ ] The student list screen renders the empty state. [verify: grep-present `EmptyState` `frontend/src/pages/admin/StudentList.tsx`]
+- [ ] The load-error component reads the active locale. [verify: grep-present `useLocale` `frontend/src/components/LoadError.tsx`]
+- [ ] The screen-state guard proves all six declared list screens render the empty state on an empty collection. [verify: project-validation]
+**Failure modes:**
+- A collection that is still loading renders `Skeleton`, never `EmptyState`; the empty branch is reached only after the request resolves with zero items, so a slow request does not flash an empty message.
+- A failed request renders `LoadError` with the localized message from the error map, never `EmptyState`.
+- When both `title` and `message` are omitted, `EmptyState` renders the catalog defaults for the active language and never an empty element.
+- Removing `EmptyState` from any of the six declared list screens fails the guard in `frontend/tests/i18nScreenStates.test.ts`.
+
+### FR-006: Global error boundary
+
+**What:** Creates `frontend/src/components/ErrorBoundary.tsx` exporting `class ErrorBoundary extends Component<{ children: ReactNode; fallback?: ReactNode }, { error: Error | null }>` that implements `static getDerivedStateFromError(error: Error)` and `componentDidCatch(error: Error, info: ErrorInfo)`, renders its children while the error state is `null`, and otherwise renders a localized fallback built from `t('errorBoundary.title', language)` and `t('errorBoundary.body', language)` plus a reload button labelled from `t('common.reload', language)`. `frontend/src/App.tsx` wraps the routed tree in `<ErrorBoundary>`.
+**Why:** V19 names a global error boundary. Without one, a render throw in any screen unmounts the whole tree and leaves a blank page.
+**Acceptance Criteria:**
+- [ ] The error boundary component exists. [verify: file-exists `frontend/src/components/ErrorBoundary.tsx`]
+- [ ] The boundary implements the derivation hook. [verify: grep-present `getDerivedStateFromError` `frontend/src/components/ErrorBoundary.tsx`]
+- [ ] The boundary is mounted in the root component. [verify: grep-present `ErrorBoundary` `frontend/src/App.tsx`]
+- [ ] The accessibility guard proves the boundary fallback uses catalog text and the reload handler. [verify: project-validation]
+**Failure modes:**
+- A thrown error inside the boundary subtree sets the error state and renders the fallback; the provider and the document head stay mounted.
+- A `fallback` prop supplied by a caller replaces the default localized fallback; the default is used only when the prop is absent.
+- `componentDidCatch` reporting never throws: a failure inside the reporting path is caught locally and does not re-trigger the boundary.
+- The reload button calls `window.location.reload()` exactly once per activation and holds no other side effect.
+
+### FR-007: Accessible labels, focus and keyboard navigation in shared controls
+
+**What:** Updates the shared controls so accessible names and keyboard operation are guaranteed once for every screen: `frontend/src/components/Input.tsx` and `frontend/src/components/Select.tsx` link label and control through a generated id (`htmlFor` on the label, `id` on the control) and set `aria-invalid` plus `aria-describedby` when an error message is present; `frontend/src/components/Modal.tsx` renders `role="dialog"`, `aria-modal="true"` and `aria-labelledby` pointing at its title, moves focus into the dialog on open, cycles `Tab` inside the dialog, restores focus to the previously focused element on close, and closes on `Escape`; `frontend/src/components/Button.tsx` requires an accessible name and exposes an `aria-label` prop for icon-only buttons.
+**Why:** V19 names accessible labels and keyboard navigation. The four shared components above are the owners every screen already uses, so the invariant is enforced at that layer instead of per page.
+**Acceptance Criteria:**
+- [ ] The input control exposes the invalid state to assistive technology. [verify: grep-present `aria-invalid` `frontend/src/components/Input.tsx`]
+- [ ] The select control links its label to the control element. [verify: grep-present `htmlFor` `frontend/src/components/Select.tsx`]
+- [ ] The dialog declares itself as a modal dialog. [verify: grep-present `aria-modal` `frontend/src/components/Modal.tsx`]
+- [ ] The button component accepts an accessible name for icon-only use. [verify: grep-present `aria-label` `frontend/src/components/Button.tsx`]
+- [ ] The accessibility guard proves focus entry, `Tab` cycling, focus restore and the `Escape` handler. [verify: project-validation]
+**Failure modes:**
+- A control rendered without a `label` prop falls back to `aria-label` and never renders an unlabelled input or select.
+- `Escape` pressed while the modal is open closes it; `Escape` pressed after close is a no-op.
+- When the element focused before the modal opened is no longer in the document, focus restore targets `document.body` instead of throwing.
+- A modal with no title renders `aria-labelledby` pointing at its generated id and never at a missing element.
+
+### FR-008: Contrast verification of text colour tokens
+
+**What:** Creates `frontend/src/utils/contrast.ts` exporting `AA_TEXT_MIN = 4.5`, `relativeLuminance(hex: string): number` and `contrastRatio(foreground: string, background: string): number`, implementing the WCAG 2.1 relative-luminance and ratio formulas over `#rrggbb` input. The colour pairs used for body text on the page background and on the card background, taken from the token declarations in `frontend/src/components/accentStyles.ts`, are asserted against `AA_TEXT_MIN` in `frontend/tests/accessibility.test.ts`.
+**Why:** V19 names contrast in its accessibility checklist. A ratio computed from the declared tokens is the only deterministic form of that check; an eyeballed contrast review cannot be verified.
+**Acceptance Criteria:**
+- [ ] The contrast helper module exists. [verify: file-exists `frontend/src/utils/contrast.ts`]
+- [ ] `contrastRatio` is a function in the contrast module. [verify: grep-present `export function contrastRatio` `frontend/src/utils/contrast.ts`]
+- [ ] The accessibility guard asserts every declared text pair meets the minimum ratio. [verify: project-validation]
+**Failure modes:**
+- Identical foreground and background yields exactly `1`; `#000000` against `#ffffff` yields `21`.
+- A malformed hex value (`#abc`, `rgb(0,0,0)`, empty string) throws a `RangeError` naming the offending value instead of returning a silent wrong ratio.
+- When a declared pair fails `AA_TEXT_MIN`, the token value in `frontend/src/components/accentStyles.ts` is corrected to the nearest passing shade and the test is not weakened.
+
+## Non-Functional Requirements
+
+### NFR-001: No hardcoded pt-BR locale tag remains in screens
+
+**What:** After this spec, no page module under `frontend/src/pages/` contains the locale tag `pt-BR`, and state text in a screen comes from `t()` in `frontend/src/i18n/messages.ts` instead of a literal.
+**Why:** V19 states that the block eliminates fixed pt-BR texts and formats. A guard that scans the page tree keeps the elimination from regressing.
+**Acceptance Criteria:**
+- [ ] No page module declares the bare locale tag. [verify: grep-absent `pt-BR` `frontend/src/pages/`]
+- [ ] The locale guard scans every page module and fails on a reintroduced locale tag. [verify: project-validation]
+
+### NFR-002: Public signatures stay backward compatible
+
+**What:** `formatDate`, `formatDateTime`, `codeMessage` and `apiErrorMessage` keep working with their pre-spec argument list; the new locale and language parameters are optional and default to the pre-spec behaviour.
+**Why:** These four symbols are imported across the application. A required parameter would force a simultaneous edit of every caller inside a spec whose scope is the locale layer, not the screens.
+**Acceptance Criteria:**
+- [ ] The date formatter keeps its pre-spec call shape. [verify: grep-present `export function formatDate(` `frontend/src/utils/format.ts`]
+- [ ] The default locale constant is declared in the format module. [verify: grep-present `DEFAULT_LOCALE` `frontend/src/utils/format.ts`]
+- [ ] The existing format and error test files remain in the suite and pass. [verify: project-validation]
+
+### NFR-003: Typecheck, lint and the full frontend test suite pass
+
+**What:** The frontend build (`tsc -b && vite build`), `oxlint` and the `node --test` suite all pass with the rest of the repository unchanged.
+**Why:** The spec touches shared modules imported by every screen; a green build and suite is the floor for delivering them.
+**Acceptance Criteria:**
+- [ ] The full frontend validation passes. [verify: project-validation]
+- [ ] The test script still runs the project runner over the declared test glob. [verify: grep-present `node --test` `frontend/package.json`]
+
+## Constraints
+
+- Date formatting keeps the pre-spec default locale when no locale argument is supplied. [verify: grep-present `DEFAULT_LOCALE` `frontend/src/utils/format.ts`]
+- The translated error lookup keeps the pre-spec two-argument shape working. [verify: grep-present `export function codeMessage` `frontend/src/api/errors.ts`]
+- The existing format test file stays in the suite and continues to import the format module. [verify: file-exists `frontend/tests/validationAndFormat.test.ts`]
+- The existing error test file stays in the suite and continues to import the errors module. [verify: file-exists `frontend/tests/errors.test.ts`]
+- The country list in `frontend/src/config/countries.ts` remains the single source of supported countries. [verify: grep-present `COUNTRIES` `frontend/src/config/countries.ts`]
+- Full project validation passes. [verify: project-validation]
+
+## Edge Cases & Error States
+
+- `tenantCountry` is `null`, `undefined`, empty string or an unknown code such as `FR`: resolution falls back to `BR`, language `pt`, locale `pt-BR`.
+- The tenant country is `PT` and the stored user language is `pt`: the locale is `pt-PT`, not `pt-BR`, because the country refines the region of its own language.
+- The tenant country is `BR` and the stored user language is `en` or `es`: the locale becomes `en-US` or `es-ES`, because a preference for a different language discards the country region.
+- Storage read throws (private mode, blocked origin): `readStoredLanguage` returns `null` and rendering proceeds with the tenant default.
+- Storage write throws when the user changes the language: the session keeps the new language in memory and the next load falls back to the tenant default.
+- A message key missing in one language: the parity test fails before the catalog is used.
+- A `{placeholder}` without a supplied parameter: the literal placeholder stays in the output and the incomplete-string assertion is what the test reports.
+- `formatDate('not-a-date')` and `formatNumber(NaN)`: the empty string, never `Invalid Date` or `NaN` rendered to the user.
+- A list request in flight renders `Skeleton`; a resolved empty list renders `EmptyState`; a rejected request renders `LoadError`. The three states are mutually exclusive per render.
+- A render throw anywhere below the boundary: the localized fallback replaces the subtree and the reload action restores the previous screen.
+- A modal opened when the previously focused element has been removed from the document: focus falls back to `document.body` on close.
+- A text pair in the token declarations below the contrast minimum: the token is corrected, the threshold is not lowered.
+- An API error whose code is unknown but whose `title` is a readable sentence: that sentence is shown; an unknown code without a sentence shows the screen fallback.
+
+## Anti-Scope
+
+- No third-party internationalization library is added; the catalog is a project-owned constant module. [verify: grep-absent `i18next` `frontend/package.json`]
+- No message-formatting library is added; `Intl` from the runtime is the only formatter. [verify: grep-absent `react-intl` `frontend/package.json`]
+- No client state-management library is added for the language preference. [verify: grep-absent `zustand` `frontend/package.json`]
+- No locale negotiation is added to the API; the backend keeps exposing stable codes only. [verify: grep-absent `Accept-Language` `src/`]
+- No per-screen copy of the code-to-message map is introduced. [verify: grep-absent `CODE_MESSAGES` `frontend/src/pages/`]
+
+## Dependencies
+
+- The existing API error contract: the backend returns the code in the `code` extension of ProblemDetails, with `title` and `error` as legacy fields, already consumed by the code resolution in `frontend/src/api/errors.ts`. This spec does not change the backend.
+- The existing country configuration `frontend/src/config/countries.ts` (`BR`, `US`, `PT`) supplies the country-to-language mapping.
+- The existing shared components `frontend/src/components/Skeleton.tsx` and `frontend/src/components/LoadError.tsx` plus the screen tree under `frontend/src/pages/` supply the state and control surfaces this spec localizes and extends.
+- The existing frontend test runner declared in `frontend/package.json` (`node --test` over `frontend/tests/**/*.test.ts`).
+
+## Out of Scope
+
+- Translating product copy that is not a loading, error or empty state; the catalog carries only the keys named in FR-002.
+- Server-side locale negotiation, localized API payloads or locale-aware database columns.
+- A language selector control in the top bar; `setLanguage` is exposed by the provider, and the UI that calls it is not part of this spec.
+- Right-to-left layout support.
+- Automated accessibility auditing tools or browser-driven checks; the guards are source inspection plus pure-function assertions over formatting and contrast.
+
+## Test Scope
+
+- `frontend/tests/i18nLocale.test.ts` — locale resolution table, preference precedence, storage read and write fallbacks.
+- `frontend/tests/i18nMessages.test.ts` — catalog key parity across PT, EN and ES, placeholder interpolation, error-map parity and localized resolution per code.
+- `frontend/tests/i18nFormat.test.ts` — date and number output per locale, the pt-BR default, and the invalid-input contract.
+- `frontend/tests/i18nScreenStates.test.ts` — the six declared list screens render `EmptyState`, and `LoadError` reads the catalog.
+- `frontend/tests/accessibility.test.ts` — labels, focus entry, `Tab` cycling, focus restore, `Escape`, boundary wiring and token contrast ratios.

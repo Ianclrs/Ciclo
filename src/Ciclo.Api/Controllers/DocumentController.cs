@@ -1,12 +1,19 @@
+using System.Globalization;
 using System.Security.Claims;
+using System.Security.Cryptography;
+using System.Text;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.Extensions.Options;
 using Ciclo.Core.Entities;
 using Ciclo.Infrastructure.Contracts;
 using Ciclo.Infrastructure.Security;
 using Ciclo.Infrastructure.Services;
+using Ciclo.Infrastructure.Storage;
 
 using Ciclo.Api.Middleware;
+using Ciclo.Api.RateLimiting;
 
 namespace Ciclo.Api.Controllers;
 
@@ -15,10 +22,17 @@ namespace Ciclo.Api.Controllers;
 public class DocumentController : ControllerBase
 {
     private readonly IDocumentService _service;
+    private readonly IFileStorage _storage;
+    private readonly FileStorageOptions _storageOptions;
 
-    public DocumentController(IDocumentService service)
+    public DocumentController(
+        IDocumentService service,
+        IFileStorage storage,
+        IOptions<FileStorageOptions> storageOptions)
     {
         _service = service;
+        _storage = storage;
+        _storageOptions = storageOptions.Value;
     }
 
     /// <summary>FR-001: Upload a document.</summary>
@@ -84,6 +98,82 @@ public class DocumentController : ControllerBase
         catch (DocumentException ex)
         {
             return ProblemResponse.FromCode(ex.Message, ex.StatusCode);
+        }
+    }
+
+    /// <summary>FR-007 (Spec 170): emite a URL assinada de download, válida por cinco minutos.</summary>
+    [HttpGet("documents/{id:guid}/download-url")]
+    [Authorize(Roles = AccessPolicy.Roles.DocumentRead)]
+    public async Task<IActionResult> GetDownloadUrl(Guid id)
+    {
+        try
+        {
+            var (userId, role) = GetUserInfo();
+            var tenantId = GetTenantId();
+            var result = await _service.GetDownloadUrlAsync(id, tenantId, userId, role);
+            return Ok(result);
+        }
+        catch (DocumentException ex)
+        {
+            return ProblemResponse.FromCode(ex.Message, ex.StatusCode);
+        }
+    }
+
+    /// <summary>
+    /// FR-007 (Spec 170): serve os bytes a partir do token assinado.
+    ///
+    /// A rota é anônima de propósito: o token É a autorização, e a emissão já exigiu papel e
+    /// vínculo com o aluno. O HMAC é conferido em tempo constante sobre o caminho e a expiração,
+    /// então um token adulterado não vira leitura de outro arquivo.
+    /// </summary>
+    [HttpGet("documents/signed/{token}")]
+    [AllowAnonymous]
+    [EnableRateLimiting(RateLimitPolicies.Download)]
+    public async Task<IActionResult> DownloadSigned(string token)
+    {
+        var parts = token.Split('.');
+        if (parts.Length != 3
+            || !long.TryParse(parts[0], NumberStyles.None, CultureInfo.InvariantCulture, out var epoch)
+            || !TryDecodeBase64Url(parts[1], out var signature)
+            || !TryDecodeBase64Url(parts[2], out var pathBytes))
+        {
+            return ProblemResponse.FromCode("signed_url_invalid", 403);
+        }
+
+        if (DateTimeOffset.UtcNow.ToUnixTimeSeconds() > epoch)
+            return ProblemResponse.FromCode("signed_url_expired", 403);
+
+        var filePath = Encoding.UTF8.GetString(pathBytes);
+
+        byte[] expected;
+        try
+        {
+            expected = HMACSHA256.HashData(
+                FileStorageKey.Parse(_storageOptions.EncryptionKey),
+                Encoding.UTF8.GetBytes($"{filePath}|{epoch}"));
+        }
+        catch (InvalidOperationException)
+        {
+            // Sem chave válida nada pode ser verificado: recusa, e não um 500 com detalhe.
+            return ProblemResponse.FromCode("signed_url_invalid", 403);
+        }
+
+        if (!CryptographicOperations.FixedTimeEquals(signature, expected))
+            return ProblemResponse.FromCode("signed_url_invalid", 403);
+
+        try
+        {
+            var stream = await _storage.OpenReadAsync(filePath);
+            return File(stream, DocumentService.MimeForExtension(filePath), Path.GetFileName(filePath));
+        }
+        catch (UnauthorizedAccessException)
+        {
+            // Caminho fora da raiz do storage: o token não vale como autorização de leitura.
+            return ProblemResponse.FromCode("signed_url_invalid", 403);
+        }
+        catch (FileNotFoundException)
+        {
+            return ProblemResponse.FromCode("document_not_found", 404);
         }
     }
 
@@ -237,6 +327,27 @@ public class DocumentController : ControllerBase
         catch (DocumentException ex)
         {
             return ProblemResponse.FromCode(ex.Message, ex.StatusCode);
+        }
+    }
+
+    /// <summary>
+    /// Decodifica base64url tolerando o preenchimento ausente. Devolve <c>false</c> em conteúdo
+    /// malformado — o chamador transforma isso em <c>signed_url_invalid</c>, nunca em exceção.
+    /// </summary>
+    private static bool TryDecodeBase64Url(string value, out byte[] decoded)
+    {
+        var base64 = value.Replace('-', '+').Replace('_', '/');
+        base64 += new string('=', (4 - base64.Length % 4) % 4);
+
+        try
+        {
+            decoded = Convert.FromBase64String(base64);
+            return true;
+        }
+        catch (FormatException)
+        {
+            decoded = [];
+            return false;
         }
     }
 

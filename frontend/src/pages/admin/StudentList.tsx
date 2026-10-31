@@ -12,6 +12,8 @@ import { Pagination } from '../../components/Pagination';
 import { StatusBadge } from '../../components/StatusBadge';
 import { StudentAvatar } from '../../components/StudentAvatar';
 import { Table } from '../../components/Table';
+import { EmptyState } from '../../components/EmptyState';
+import { LoadError } from '../../components/LoadError';
 import { Modal } from '../../components/Modal';
 import * as api from '../../api/students';
 import type { Student } from '../../types';
@@ -222,18 +224,19 @@ export default function StudentList() {
           )}
         </form>
 
-        <Table
-          columns={columns}
-          data={students}
-          keyExtractor={(student) => student.id}
-          loading={loading}
-          loadingRows={PAGE_SIZE}
-          emptyMessage={
-            failed
-              ? 'Não foi possível carregar os alunos. Tente novamente.'
-              : 'Nenhum aluno encontrado com estes filtros.'
-          }
-        />
+        {failed ? (
+          <LoadError message="Não foi possível carregar os alunos. Tente novamente." onRetry={refresh} />
+        ) : loading || students.length > 0 ? (
+          <Table
+            columns={columns}
+            data={students}
+            keyExtractor={(student) => student.id}
+            loading={loading}
+            loadingRows={PAGE_SIZE}
+          />
+        ) : (
+          <EmptyState />
+        )}
 
         <Pagination
           page={query.page}

@@ -43,6 +43,10 @@ public sealed class ApiTestHost : WebApplicationFactory<Program>
         builder.UseSetting("Jwt:Audience", "Ciclo");
         builder.UseSetting("FileStorage:EncryptionKey", Convert.ToBase64String(new byte[32]));
 
+        // Spec 170 — o provider Local (padrão) exige PublicBaseUrl na inicialização, porque é a
+        // base da URL assinada de download.
+        builder.UseSetting("FileStorage:PublicBaseUrl", "https://localhost");
+
         // Spec 130 — a sonda de readiness grava em RootPath. Usar um diretório temporário evita
         // criar `uploads/` na raiz do repositório a cada execução da suíte.
         builder.UseSetting(

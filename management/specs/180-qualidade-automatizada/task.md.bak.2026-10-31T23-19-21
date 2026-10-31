@@ -1,0 +1,24 @@
+<!-- PIPELINE-CONTRACT: Task completion is determined by "**Status:** [x] done" at the end of each "### Task N" section. -->
+# Spec — Implementation Tasks
+
+## Planned Scaffolds
+
+[No new files — every cited path exists on disk TODAY.]
+
+## Task Order
+
+Tasks MUST be executed sequentially in numerical order. Each task depends on the completion of all preceding tasks.
+
+## Tasks
+
+### Task 1: Fill task name
+
+**Objective:** Fill what this task accomplishes.
+**Requirements Covered:** FR-001
+**Design References:** Fill relevant sections from design.md.
+**Actions:**
+1. Fill the exact action: which file to create or modify (name its path), what code to write, and the backtick-quoted path or validation command that proves the task is done.
+**Validation:** Fill how to verify this task is complete.
+**Status:** [ ] pending
+
+<!-- SPEC-NEW-SKELETON-FILL -->

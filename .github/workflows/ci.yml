@@ -24,14 +24,27 @@ jobs:
   backend:
     name: Backend (.NET 10)
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
+      # Spec 180 — o SDK vem do global.json versionado, não de uma faixa solta: a versão
+      # usada na CI passa a ser a mesma que o build local resolve.
       - uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '10.0.x'
+          global-json-file: global.json
           cache: true
           cache-dependency-path: '**/*.csproj'
+
+      # Spec 180 (FR-003) — um teste marcado como ignorado mantém a CI verde sem executar a
+      # verificação. A ausência do marcador xUnit é portão do próprio job. O padrão aceita a
+      # forma `Skip = "motivo"` do atributo sem casar com nomes de domínio (`Skipped`, `Skips...`).
+      - name: Forbid skipped tests
+        run: |
+          if grep -rnE 'Skip[[:space:]]*=' tests/Ciclo.Api.Tests/; then
+            echo "::error::Marcador de execução ignorada (Skip=) encontrado na suíte do backend."
+            exit 1
+          fi
 
       - name: Restore
         run: dotnet restore Ciclo.sln
@@ -39,12 +52,19 @@ jobs:
       - name: Build
         run: dotnet build Ciclo.sln --no-restore
 
+      # Spec 180 — a cobertura é medida e julgada pelo próprio `dotnet test` (coverlet.msbuild):
+      # abaixo de 60% de linhas o comando sai com código diferente de zero e o job falha.
+      # Sem `--no-build`: a instrumentação acontece no build do projeto de teste.
       - name: Test
-        run: dotnet test tests/Ciclo.Api.Tests --no-build --logger "console;verbosity=normal"
+        run: >-
+          dotnet test tests/Ciclo.Api.Tests --logger "console;verbosity=normal"
+          -p:CollectCoverage=true -p:CoverletOutputFormat=cobertura
+          -p:Threshold=60 -p:ThresholdType=line -p:ThresholdStat=total
 
   frontend:
     name: Frontend (Node 24)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: frontend

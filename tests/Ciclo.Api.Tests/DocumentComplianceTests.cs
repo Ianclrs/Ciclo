@@ -72,7 +72,31 @@ internal static class DocumentTestData
         // (nome único por teste) é o que separa os testes; variar o tenant exigiria um modelo por
         // teste e não traria proteção adicional.
 
-        return (new DocumentTestDbContext(options, new FixedTenantContext(TestTenantId)), TestTenantId);
+        var db = new DocumentTestDbContext(options, new FixedTenantContext(TestTenantId));
+
+        // Spec 170: o upload lê a cota do tenant antes de gravar qualquer byte. Sem a linha do
+        // tenant a cota seria zero e todo upload recusado — o dado de teste precisa refletir o
+        // invariante real de que todo documento pertence a um tenant existente.
+        db.Tenants.Add(NewTenant(TestTenantId));
+        db.SaveChanges();
+
+        return (db, TestTenantId);
+    }
+
+    /// <summary>Tenant com a cota padrão, para contextos que precisam do invariante completo.</summary>
+    internal static Tenant NewTenant(Guid tenantId) => new()
+    {
+        Id = tenantId,
+        Name = "Escola de teste",
+        Slug = "escola-de-teste",
+        Country = "BR",
+        CreatedAt = DateTime.UtcNow.AddYears(-1)
+    };
+
+    internal static async Task AddTenantAsync(AppDbContext db, Guid tenantId)
+    {
+        db.Tenants.Add(NewTenant(tenantId));
+        await db.SaveChangesAsync();
     }
 
 

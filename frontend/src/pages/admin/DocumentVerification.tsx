@@ -12,6 +12,9 @@ import { Modal } from '../../components/Modal';
 import { Input } from '../../components/Input';
 import { Select } from '../../components/Select';
 import { Table } from '../../components/Table';
+import { EmptyState } from '../../components/EmptyState';
+import { LoadError } from '../../components/LoadError';
+import { formatDate } from '../../utils/format';
 import * as api from '../../api/documents';
 import { apiErrorMessage } from '../../api/errors';
 import { motivoValidationError } from '../../domain/validation';
@@ -29,7 +32,7 @@ function Validity({ date }: { date: string | null }) {
 
   return (
     <span className={expired ? 'text-red-600' : 'text-gray-700'}>
-      <span className={expired ? 'font-medium' : ''}>{new Date(date).toLocaleDateString('pt-BR')}</span>
+      <span className={expired ? 'font-medium' : ''}>{formatDate(date)}</span>
       {expired && <span className="block text-xs text-red-500">vencido</span>}
     </span>
   );
@@ -179,7 +182,7 @@ export default function DocumentVerification() {
           <div className="min-w-0">
             <p className="font-medium text-gray-900 truncate max-w-[260px]">{doc.nomeArquivo}</p>
             <p className="text-xs text-gray-500 mt-0.5">
-              Enviado em {new Date(doc.createdAt).toLocaleDateString('pt-BR')}
+              Enviado em {formatDate(doc.createdAt)}
             </p>
           </div>
         </div>
@@ -334,20 +337,21 @@ export default function DocumentVerification() {
           </div>
         )}
 
-        <Table
-          columns={columns}
-          data={docs}
-          keyExtractor={(doc) => doc.id}
-          loading={loading}
-          loadingRows={PAGE_SIZE}
-          emptyMessage={
-            failed
-              ? 'Não foi possível carregar os documentos. Tente novamente.'
-              : view === 'all'
-                ? 'Nenhum documento encontrado com esses filtros.'
-                : 'Nenhum documento vence nos próximos 30 dias.'
-          }
-        />
+        {failed ? (
+          <LoadError message="Não foi possível carregar os documentos. Tente novamente." onRetry={refresh} />
+        ) : loading || docs.length > 0 ? (
+          <Table
+            columns={columns}
+            data={docs}
+            keyExtractor={(doc) => doc.id}
+            loading={loading}
+            loadingRows={PAGE_SIZE}
+          />
+        ) : view === 'all' ? (
+          <EmptyState />
+        ) : (
+          <EmptyState message="Nenhum documento vence nos próximos 30 dias." />
+        )}
 
         <Pagination page={page} pageSize={PAGE_SIZE} total={total} onPageChange={changePage} />
       </Card>

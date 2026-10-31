@@ -25,6 +25,12 @@ internal static class RateLimitingSetup
     /// <summary>Criar escola é raro e caro; praticamente não há uso legítimo repetido.</summary>
     private const int SchoolRegistrationsPerHour = 5;
 
+    /// <summary>
+    /// Download de documento: quatro vezes o limite de autenticação. Um download legítimo é uma
+    /// requisição por arquivo e uma turma inteira pode estar atrás do mesmo IP.
+    /// </summary>
+    private const int DocumentDownloadsPerMinute = 120;
+
     internal static IServiceCollection AddCicloRateLimiting(this IServiceCollection services)
     {
         services.AddRateLimiter(options =>
@@ -36,6 +42,9 @@ internal static class RateLimitingSetup
 
             options.AddPolicy(RateLimitPolicies.SchoolRegistration, context =>
                 FixedWindowPerOrigin(context, TimeSpan.FromHours(1), SchoolRegistrationsPerHour));
+
+            options.AddPolicy(RateLimitPolicies.Download, context =>
+                FixedWindowPerOrigin(context, TimeSpan.FromMinutes(1), DocumentDownloadsPerMinute));
 
             options.OnRejected = async (context, cancellationToken) =>
             {

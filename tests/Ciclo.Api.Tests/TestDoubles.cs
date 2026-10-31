@@ -28,6 +28,19 @@ internal sealed class NoopStorage : IFileStorage
     }
 
     public Task ReencryptAsync(string filePath) => Task.CompletedTask;
+
+    public Task<bool> ExistsAsync(string filePath) => Task.FromResult(false);
+
+    public Task<Stream> OpenReadAsync(string filePath) => Task.FromResult<Stream>(Stream.Null);
+
+    public Task<string> GetSignedUrlAsync(string filePath, TimeSpan lifetime) =>
+        Task.FromResult(string.Empty);
+
+    public Task<string> SaveQuarantineAsync(Guid tenantId, string fileName, Stream content) =>
+        Task.FromResult(string.Empty);
+
+    public Task<IReadOnlyList<string>> ListKeysAsync(Guid? tenantId) =>
+        Task.FromResult<IReadOnlyList<string>>([]);
 }
 
 internal sealed class NoopNotifications : INotificationService

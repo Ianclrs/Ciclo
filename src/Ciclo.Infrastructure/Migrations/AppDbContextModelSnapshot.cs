@@ -203,6 +203,10 @@ namespace Ciclo.Infrastructure.Migrations
                         .HasMaxLength(1000)
                         .HasColumnType("character varying(1000)");
 
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasColumnType("text");
+
                     b.Property<DateTime>("CreatedAt")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("timestamp with time zone")
@@ -213,6 +217,13 @@ namespace Ciclo.Infrastructure.Migrations
 
                     b.Property<Guid>("DocumentTypeId")
                         .HasColumnType("uuid");
+
+                    b.Property<Guid>("EnviadoPorUsuarioId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("HashSha256")
+                        .IsRequired()
+                        .HasColumnType("text");
 
                     b.Property<string>("MotivoRejeicao")
                         .HasMaxLength(500)
@@ -228,6 +239,9 @@ namespace Ciclo.Infrastructure.Migrations
 
                     b.Property<Guid>("StudentId")
                         .HasColumnType("uuid");
+
+                    b.Property<long>("TamanhoBytes")
+                        .HasColumnType("bigint");
 
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid");
@@ -689,6 +703,9 @@ namespace Ciclo.Infrastructure.Migrations
                         .IsRequired()
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
+
+                    b.Property<long>("StorageQuotaBytes")
+                        .HasColumnType("bigint");
 
                     b.Property<string>("Telefone")
                         .HasMaxLength(30)

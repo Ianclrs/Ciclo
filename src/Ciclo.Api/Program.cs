@@ -1,4 +1,5 @@
 using System.Globalization;
+using Amazon.S3;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
@@ -170,8 +171,43 @@ try
     // Fail-closed: a chave de criptografia é validada agora, não na primeira requisição de
     // documento. LocalFileStorage usa a mesma validação (FileStorageKey.Parse).
     _ = FileStorageKey.Parse(builder.Configuration[FileStorageKey.ConfigurationKey]);
-    builder.Services.AddScoped<IFileStorage, LocalFileStorage>();
+
+    // Spec 170 — o driver é escolhido por configuração; o serviço de documentos conhece apenas
+    // o contrato. A configuração do driver escolhido é validada aqui: provider mal configurado
+    // precisa impedir o start, não falhar na primeira requisição de documento.
+    var fileStorage = builder.Configuration
+        .GetSection(FileStorageOptions.SectionName)
+        .Get<FileStorageOptions>() ?? new FileStorageOptions();
+
+    switch (fileStorage.Provider)
+    {
+        case "Local":
+            if (string.IsNullOrWhiteSpace(fileStorage.PublicBaseUrl))
+                throw new InvalidOperationException(
+                    "FileStorage:PublicBaseUrl is required when FileStorage:Provider is Local.");
+            builder.Services.AddScoped<IFileStorage, LocalFileStorage>();
+            break;
+
+        case "S3":
+            if (string.IsNullOrWhiteSpace(fileStorage.S3Bucket))
+                throw new InvalidOperationException(
+                    "FileStorage:S3Bucket is required when FileStorage:Provider is S3.");
+            builder.Services.AddSingleton<IAmazonS3>(_ => new AmazonS3Client(new AmazonS3Config
+            {
+                ServiceURL = fileStorage.S3ServiceUrl,
+                ForcePathStyle = fileStorage.S3ForcePathStyle,
+            }));
+            builder.Services.AddScoped<IFileStorage, S3FileStorage>();
+            break;
+
+        default:
+            throw new InvalidOperationException(
+                $"Unknown FileStorage:Provider '{fileStorage.Provider}'. Accepted values: Local, S3.");
+    }
+
     builder.Services.AddScoped<StorageKeyRotation>();
+    // Spec 170 — a varredura de órfãos é resolvida pela linha de comando (--scan-orphan-files).
+    builder.Services.AddScoped<OrphanFileScanner>();
     builder.Services.AddScoped<IDocumentService, DocumentService>();
 
     // Email (Spec 80)
@@ -320,6 +356,34 @@ try
         // Exit code não-zero quando algo ficou para trás: um script de operação não pode
         // interpretar uma rotação parcial como sucesso.
         Environment.ExitCode = result.Failed > 0 ? 1 : 0;
+        return;
+    }
+
+    // ── Manutenção: varredura de arquivos órfãos ─────────────────────────────────
+    // Uso: dotnet run --project src/Ciclo.Api -- --scan-orphan-files [--delete]
+    // Compara as chaves gravadas com as referenciadas por Document e encerra. Sem --delete
+    // apenas relata; com --delete remove as órfãs.
+    if (args.Contains("--scan-orphan-files"))
+    {
+        using var scanScope = app.Services.CreateScope();
+        var scanner = scanScope.ServiceProvider.GetRequiredService<OrphanFileScanner>();
+        var scanLogger = scanScope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+        var scan = await scanner.ScanAsync(null, args.Contains("--delete"));
+
+#pragma warning disable CA1848, CA1873
+        scanLogger.LogInformation(
+            "Orphan file scan finished: {Scanned} scanned, {Orphaned} orphaned, {Deleted} deleted.",
+            scan.Scanned, scan.Orphaned, scan.Deleted);
+
+        foreach (var failure in scan.Failures)
+        {
+            scanLogger.LogWarning("Orphan file scan failure: {Failure}", failure);
+        }
+#pragma warning restore CA1848, CA1873
+
+        // Falha em qualquer chave precisa aparecer no código de saída: um script de operação
+        // não pode ler uma varredura parcial como sucesso.
+        Environment.ExitCode = scan.Failures.Count > 0 ? 1 : 0;
         return;
     }
 

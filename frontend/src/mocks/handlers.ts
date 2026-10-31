@@ -357,6 +357,23 @@ export function handleRequest(
     return { status: 200, data: paginate(filtered, pageNumber, pageSize) };
   }
 
+  // Spec 170 — o download passou a usar URL assinada. Sem backend, uma URL `data:` resolve o
+  // `fetch` do cliente e o fluxo de demonstração continua baixando o arquivo.
+  const documentDownloadUrl = url.match(/^\/api\/documents\/([^/]+)\/download-url$/);
+  if (verb === 'GET' && documentDownloadUrl) {
+    const document = state.documents.find((candidate) => candidate.id === documentDownloadUrl[1]);
+    if (!document) return notFound();
+
+    const placeholder = `%PDF-1.7\n${document.nomeArquivo}\n`;
+    return {
+      status: 200,
+      data: {
+        url: `data:application/pdf;base64,${btoa(placeholder)}`,
+        expiresAt: new Date(Date.now() + 5 * 60_000).toISOString(),
+      },
+    };
+  }
+
   if (verb === 'POST' && url === '/api/documents/upload') {
     const studentId = text(body.studentId) || state.students[0]?.id;
     const student = state.students.find((candidate) => candidate.id === studentId);

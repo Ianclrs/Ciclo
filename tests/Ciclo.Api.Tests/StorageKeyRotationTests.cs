@@ -109,7 +109,7 @@ public sealed class StorageKeyRotationTests : IDisposable
         await Storage(Key2).ReencryptAsync(path);
 
         var stored = await File.ReadAllBytesAsync(path);
-        Assert.Equal("CICLOENC"u8.ToArray(), stored[..8]);
+        Assert.Equal("CICLOEN2"u8.ToArray(), stored[..8]);
 
         using var read = await Storage(Key2).GetAsync(path);
         Assert.Equal(_content, await ReadAllAsync(read));

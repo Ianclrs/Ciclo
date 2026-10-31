@@ -61,6 +61,7 @@ public sealed class OrphanFileTests
             .Options;
 
         await using var db = new FailingDbContext(options, new FixedTenantContext(tenantId));
+        await DocumentTestData.AddTenantAsync(db, tenantId);
         var student = await DocumentTestData.AddStudentAsync(db, tenantId);
         var type = await DocumentTestData.AddDocumentTypeAsync(db, tenantId, "RG");
 
@@ -93,6 +94,7 @@ public sealed class OrphanFileTests
             .Options;
 
         await using var db = new FailingDbContext(options, new FixedTenantContext(tenantId));
+        await DocumentTestData.AddTenantAsync(db, tenantId);
         var student = await DocumentTestData.AddStudentAsync(db, tenantId);
         var type = await DocumentTestData.AddDocumentTypeAsync(db, tenantId, "RG");
 

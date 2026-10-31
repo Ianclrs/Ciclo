@@ -28,6 +28,10 @@ public static class DocumentQueries
         document.DataValidade,
         document.MotivoRejeicao,
         document.CreatedAt,
+        document.TamanhoBytes,
+        document.HashSha256,
+        document.ContentType,
+        document.EnviadoPorUsuarioId,
         document.Student.Foto);
 
     /// <summary>Busca por parte do nome do aluno. <paramref name="lowerTerm"/> já normalizado.</summary>

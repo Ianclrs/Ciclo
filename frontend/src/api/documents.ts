@@ -57,7 +57,16 @@ export async function getDocumentTypes(): Promise<DocumentType[]> {
   return res.data;
 }
 
-export async function downloadDocument(id: string): Promise<Blob> {
-  const res = await api.get(`/api/documents/${id}/download`, { responseType: 'blob' });
+/** Emite a URL assinada de download; a validade é de cinco minutos. */
+export async function requestDownloadUrl(id: string): Promise<{ url: string; expiresAt: string }> {
+  const res = await api.get(`/api/documents/${id}/download-url`);
   return res.data;
+}
+
+/** Baixa pela URL assinada, sem passar pelo cabeçalho de autorização. */
+export async function downloadDocument(id: string): Promise<Blob> {
+  const { url } = await requestDownloadUrl(id);
+  const res = await fetch(url);
+  if (!res.ok) throw new Error('download_failed');
+  return res.blob();
 }

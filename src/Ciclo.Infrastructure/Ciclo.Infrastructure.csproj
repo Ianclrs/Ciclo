@@ -13,6 +13,9 @@
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.13" />
     <!-- Spec 130: métricas da fila (mesmo pacote base usado pela API via AspNetCore). -->
     <PackageReference Include="prometheus-net" Version="8.2.1" />
+    <!-- Spec 170: driver S3-compatível. A versão casa com o AWSSDK.Core já restaurado no
+         cache local, o que mantém o build reproduzível sem download novo. -->
+    <PackageReference Include="AWSSDK.S3" Version="3.7.415" />
   </ItemGroup>
 
   <ItemGroup>

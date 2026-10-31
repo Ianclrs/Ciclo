@@ -34,6 +34,8 @@ public class ApiAuthorizationTests
         "api/auth/register/parent",
         "api/auth/resend-confirmation",
         "api/auth/reset-password",
+        // Spec 170: o token assinado é a autorização do download; a emissão continua protegida.
+        "api/documents/signed/{token}",
         "api/tenants/register"
     ];
 

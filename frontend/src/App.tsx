@@ -1,6 +1,8 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider } from './context/AuthContext';
+import { LocaleProvider } from './i18n/LocaleContext';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { SplashGate } from './components/SplashGate';
 import { Sidebar } from './components/Sidebar';
@@ -84,9 +86,11 @@ function ParentLayout() {
 
 export default function App() {
   return (
-    <BrowserRouter>
-      <DocumentTitle />
-      <AuthProvider>
+    <ErrorBoundary>
+    <LocaleProvider>
+      <BrowserRouter>
+        <DocumentTitle />
+        <AuthProvider>
         <Toaster position="top-right" />
         <Routes>
           {/* Uma tela, três endereços: a rota define o que o painel mostra (login, cadastro
@@ -108,7 +112,9 @@ export default function App() {
           <Route path="/parent/*" element={<ProtectedRoute roles={['Parent']}><ParentLayout /></ProtectedRoute>} />
           <Route path="*" element={<Navigate to="/login" replace />} />
         </Routes>
-      </AuthProvider>
-    </BrowserRouter>
+        </AuthProvider>
+      </BrowserRouter>
+    </LocaleProvider>
+    </ErrorBoundary>
   );
 }

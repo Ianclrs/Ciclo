@@ -14,4 +14,11 @@ internal static class RateLimitPolicies
 
     /// <summary>Criação de escola (tenant) — operação rara e cara, limite bem mais estrito.</summary>
     internal const string SchoolRegistration = "school-registration";
+
+    /// <summary>
+    /// Download por URL assinada (Spec 170). Público por desenho — o token é a autorização — e
+    /// com limite mais folgado que o de autenticação: uma turma inteira baixando documentos sai
+    /// pelo mesmo IP (NAT da escola).
+    /// </summary>
+    internal const string Download = "download";
 }

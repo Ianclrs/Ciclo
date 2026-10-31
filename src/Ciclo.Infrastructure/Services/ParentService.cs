@@ -114,7 +114,8 @@ public class ParentService : IParentService
             .OrderByDescending(d => d.CreatedAt)
             .Select(d => new DocumentDto(
                 d.Id, d.StudentId, d.Student.Nome, d.DocumentTypeId, d.DocumentType.Nome,
-                d.NomeArquivo, d.Status.ToString(), d.DataValidade, d.MotivoRejeicao, d.CreatedAt))
+                d.NomeArquivo, d.Status.ToString(), d.DataValidade, d.MotivoRejeicao, d.CreatedAt,
+                d.TamanhoBytes, d.HashSha256, d.ContentType, d.EnviadoPorUsuarioId))
             .ToListAsync();
 
         var currentEnrollment = await _db.Enrollments
@@ -144,7 +145,8 @@ public class ParentService : IParentService
             .OrderByDescending(d => d.CreatedAt)
             .Select(d => new DocumentDto(
                 d.Id, d.StudentId, d.Student.Nome, d.DocumentTypeId, d.DocumentType.Nome,
-                d.NomeArquivo, d.Status.ToString(), d.DataValidade, d.MotivoRejeicao, d.CreatedAt))
+                d.NomeArquivo, d.Status.ToString(), d.DataValidade, d.MotivoRejeicao, d.CreatedAt,
+                d.TamanhoBytes, d.HashSha256, d.ContentType, d.EnviadoPorUsuarioId))
             .ToListAsync();
     }
 

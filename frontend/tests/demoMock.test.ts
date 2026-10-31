@@ -32,6 +32,21 @@ test('login com e-mail desconhecido é 401 (não entra com dados de outro papel)
   assert.equal(state.sessionUserId, null);
 });
 
+test('download na demonstração devolve URL de dados que o fetch resolve (Spec 170)', () => {
+  const state = fresh();
+  const document = state.documents[0];
+
+  const result = handleRequest(state, 'GET', `/api/documents/${document.id}/download-url`, {}, null);
+
+  assert.equal(result.status, 200);
+  const data = result.data as { url: string; expiresAt: string };
+  assert.match(data.url, /^data:application\/pdf;base64,/);
+  assert.ok(Date.parse(data.expiresAt) > Date.now(), 'expiração deveria estar no futuro');
+
+  const missing = handleRequest(state, 'GET', '/api/documents/nao-existe/download-url', {}, null);
+  assert.equal(missing.status, 404);
+});
+
 test('cadastro de responsável na demonstração devolve sessão, não só o id', () => {
   const state = fresh();
   const result = handleRequest(state, 'POST', '/api/auth/register/parent', {}, {

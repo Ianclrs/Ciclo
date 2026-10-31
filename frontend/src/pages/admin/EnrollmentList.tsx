@@ -12,6 +12,8 @@ import { Modal } from '../../components/Modal';
 import { Input } from '../../components/Input';
 import { Select } from '../../components/Select';
 import { Table } from '../../components/Table';
+import { EmptyState } from '../../components/EmptyState';
+import { LoadError } from '../../components/LoadError';
 import * as api from '../../api/enrollments';
 import { motivoValidationError } from '../../domain/validation';
 import {
@@ -284,18 +286,19 @@ export default function EnrollmentList() {
           )}
         </div>
 
-        <Table
-          columns={columns}
-          data={enrollments}
-          keyExtractor={(enrollment) => enrollment.id}
-          loading={loading}
-          loadingRows={PAGE_SIZE}
-          emptyMessage={
-            failed
-              ? 'Não foi possível carregar as matrículas. Tente novamente.'
-              : 'Nenhuma matrícula encontrada com estes filtros.'
-          }
-        />
+        {failed ? (
+          <LoadError message="Não foi possível carregar as matrículas. Tente novamente." onRetry={refresh} />
+        ) : loading || enrollments.length > 0 ? (
+          <Table
+            columns={columns}
+            data={enrollments}
+            keyExtractor={(enrollment) => enrollment.id}
+            loading={loading}
+            loadingRows={PAGE_SIZE}
+          />
+        ) : (
+          <EmptyState />
+        )}
 
         <Pagination
           page={query.page}

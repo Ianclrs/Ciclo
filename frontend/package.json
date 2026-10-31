@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
-    "test": "node --test \"tests/**/*.test.ts\"",
+    "test": "node --test --experimental-test-coverage --test-coverage-lines=60 \"tests/**/*.test.ts\"",
     "preview": "vite preview"
   },
   "dependencies": {

@@ -9,6 +9,8 @@ import { Button } from '../../components/Button';
 import { StatCard } from '../../components/StatCard';
 import { RecentNotifications } from '../../components/RecentNotifications';
 import { useAuth } from '../../hooks/useAuth';
+import { useLocale } from '../../i18n/LocaleContext';
+import { formatNumber } from '../../utils/format';
 import { Skeleton } from '../../components/Skeleton';
 import * as api from '../../api/parent';
 import * as notifApi from '../../api/notifications';
@@ -23,11 +25,13 @@ function summarize(grades: Grade[]): Performance {
   return { media: notas.reduce((total, n) => total + n, 0) / notas.length, count: notas.length };
 }
 
-function formatAverage(media: number): string {
-  return media.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+function formatAverage(media: number, locale: string): string {
+  return formatNumber(media, locale, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 }
 
 function PerformanceLine({ value, loading }: { value: Performance | null | undefined; loading: boolean }) {
+  const { locale } = useLocale();
+
   if (loading) {
     return <Skeleton className="mt-4 h-4 w-32" />;
   }
@@ -40,7 +44,7 @@ function PerformanceLine({ value, loading }: { value: Performance | null | undef
   }
   return (
     <p className="mt-4 text-sm text-gray-600">
-      Média <span className="font-semibold text-gray-900">{formatAverage(value.media)}</span>
+      Média <span className="font-semibold text-gray-900">{formatAverage(value.media, locale)}</span>
       <span className="text-gray-400">
         {' '}
         · {value.count} disciplina{value.count === 1 ? '' : 's'}

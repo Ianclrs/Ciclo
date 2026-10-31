@@ -41,6 +41,9 @@ public class Tenant
     [MaxLength(20)]
     public string? Cep { get; set; }
 
+    /// <summary>Cota de armazenamento de documentos em bytes (FR-006).</summary>
+    public long StorageQuotaBytes { get; set; } = 1_073_741_824;
+
     public bool IsActive { get; set; } = true;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }

@@ -39,8 +39,8 @@ public sealed class LocalFileStorageTests : IDisposable
             && storedBytes[4] == (byte)'O'
             && storedBytes[5] == (byte)'E'
             && storedBytes[6] == (byte)'N'
-            && storedBytes[7] == (byte)'C';
-        Assert.True(startsWithMagic, "Arquivo salvo deve ter o header de criptografia CICLOENC.");
+            && storedBytes[7] == (byte)'2';
+        Assert.True(startsWithMagic, "Arquivo salvo deve ter o header do contêiner em blocos, CICLOEN2.");
 
         using var roundTrip = await _storage.GetAsync(filePath);
         using var roundTripBuffer = new MemoryStream();

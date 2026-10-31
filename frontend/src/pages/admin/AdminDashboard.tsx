@@ -9,6 +9,8 @@ import { CardHeading } from '../../components/CardHeading';
 import { RecentNotifications } from '../../components/RecentNotifications';
 import { Skeleton } from '../../components/Skeleton';
 import { useAuth } from '../../hooks/useAuth';
+import { useLocale } from '../../i18n/LocaleContext';
+import { formatDate, formatTime } from '../../utils/format';
 import * as studentsApi from '../../api/students';
 import * as enrollmentsApi from '../../api/enrollments';
 import * as documentsApi from '../../api/documents';
@@ -77,6 +79,7 @@ function share(part: number, total: number): number {
 
 export default function AdminDashboard() {
   const { user } = useAuth();
+  const { locale } = useLocale();
   const [stats, setStats] = useState<Stats>(EMPTY_STATS);
   const [period, setPeriod] = useState<EnrollmentPeriod | null>(null);
   const [loading, setLoading] = useState(true);
@@ -170,7 +173,7 @@ export default function AdminDashboard() {
           {updatedAt && !loading && (
             <span className="rounded-full bg-white/80 px-3 py-1 text-sm font-medium text-gray-700">
               Atualizado às{' '}
-              {updatedAt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+              {formatTime(updatedAt, locale)}
             </span>
           )}
           <Button variant="secondary" size="sm" className="gap-2" onClick={retry} disabled={loading}>
@@ -265,8 +268,8 @@ export default function AdminDashboard() {
                 <span>Ano letivo {period.anoLetivo}</span>
                 <span aria-hidden="true" className="text-gray-400">·</span>
                 <span>
-                  {new Date(period.dataInicio).toLocaleDateString('pt-BR')} a{' '}
-                  {new Date(period.dataFim).toLocaleDateString('pt-BR')}
+                  {formatDate(period.dataInicio, locale)} a{' '}
+                  {formatDate(period.dataFim, locale)}
                 </span>
               </p>
 

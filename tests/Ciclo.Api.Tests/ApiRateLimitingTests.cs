@@ -31,6 +31,8 @@ public class ApiRateLimitingTests
         ["api/auth/register/parent"] = "auth",
         ["api/auth/resend-confirmation"] = "auth",
         ["api/auth/reset-password"] = "auth",
+        // Spec 170: download por token assinado, limite próprio e mais folgado que o de auth.
+        ["api/documents/signed/{token}"] = "download",
         ["api/tenants/register"] = "school-registration"
     };
 

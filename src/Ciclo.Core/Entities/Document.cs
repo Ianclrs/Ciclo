@@ -10,6 +10,18 @@ public class Document : ITenantScoped
     public Guid DocumentTypeId { get; set; }
     public string NomeArquivo { get; set; } = string.Empty;
     public string CaminhoArquivo { get; set; } = string.Empty;
+
+    /// <summary>Tamanho do conteúdo em bytes, medido na gravação (FR-004).</summary>
+    public long TamanhoBytes { get; set; }
+
+    /// <summary>SHA-256 do conteúdo em 64 hexadecimais maiúsculos (FR-004).</summary>
+    public string HashSha256 { get; set; } = string.Empty;
+
+    /// <summary>MIME detectado pela assinatura real do conteúdo (FR-004).</summary>
+    public string ContentType { get; set; } = string.Empty;
+
+    /// <summary>Autor do upload (FR-004).</summary>
+    public Guid EnviadoPorUsuarioId { get; set; }
     public DocumentStatus Status { get; set; } = DocumentStatus.Pendente;
     public DateTime? DataValidade { get; set; }
     public string? MotivoRejeicao { get; set; }

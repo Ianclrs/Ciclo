@@ -10,6 +10,7 @@ import * as api from '../../api/notifications';
 import { apiErrorMessage } from '../../api/errors';
 import { LoadError } from '../../components/LoadError';
 import { Skeleton } from '../../components/Skeleton';
+import { EmptyState } from '../../components/EmptyState';
 import { formatDateTime } from '../../utils/format';
 import type { Notification } from '../../types';
 
@@ -93,10 +94,7 @@ export default function NotificationList() {
             ))}
           </ul>
         ) : items.length === 0 ? (
-          <div className="flex flex-col items-center py-8 text-center">
-            <BellDot size={28} className="text-gray-300" />
-            <p className="mt-2 text-sm text-gray-600">Nenhuma notificação registrada.</p>
-          </div>
+          <EmptyState message="Nenhuma notificação registrada." />
         ) : (
           <ul className="-mx-2 space-y-0.5">
             {items.map((n) => (

@@ -10,6 +10,7 @@ import { Select } from '../../components/Select';
 import { Modal } from '../../components/Modal';
 import { LoadError } from '../../components/LoadError';
 import { SkeletonRows } from '../../components/Skeleton';
+import { EmptyState } from '../../components/EmptyState';
 import * as api from '../../api/users';
 import { apiErrorMessage } from '../../api/errors';
 import { useAuth } from '../../hooks/useAuth';
@@ -144,7 +145,7 @@ export default function UserManagement() {
              quando a API respondia — a piscada de quem abre uma seção ainda sem dados. */
           <SkeletonRows rows={5} />
         ) : users.length === 0 ? (
-          <p className="text-gray-500 text-center py-4">Nenhum usuário cadastrado.</p>
+          <EmptyState message="Nenhum usuário cadastrado." />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">

@@ -1,7 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { MOTIVO_MAX_LENGTH, MOTIVO_MIN_LENGTH, motivoValidationError } from '../src/domain/validation.ts';
-import { formatDate, formatDateTime } from '../src/utils/format.ts';
+import {
+  formatCurrency,
+  formatDate,
+  formatDateTime,
+  formatNumber,
+  formatPercent,
+} from '../src/utils/format.ts';
 
 test('motivo aceito apenas na faixa que o backend aceita', () => {
   assert.equal(motivoValidationError('   '), 'Informe o motivo da rejeição.');
@@ -22,4 +28,14 @@ test('data é formatada em pt-BR', () => {
   // Data local (não UTC) para o resultado não depender do fuso da máquina.
   assert.equal(formatDate(new Date(2026, 9, 22)), '22/10/2026');
   assert.equal(formatDateTime(new Date(2026, 9, 22, 14, 5)), '22/10/2026, 14:05:00');
+});
+
+test('sem locale, todo formatador mantém a saída pt-BR anterior (Spec 190)', () => {
+  const instant = new Date(2026, 9, 22, 14, 5, 0);
+
+  assert.equal(formatDate(instant), formatDate(instant, 'pt-BR'));
+  assert.equal(formatDateTime(instant), formatDateTime(instant, 'pt-BR'));
+  assert.equal(formatNumber(1234567.89), '1.234.567,89');
+  assert.match(formatCurrency(1234.5, 'BRL'), /1\.234,50/);
+  assert.equal(formatPercent(0.256), '26%');
 });
