@@ -38,8 +38,8 @@
 | 170 | armazenamento-de-documentos | implemented | V17 |
 | 180 | qualidade-automatizada | implemented | V18 |
 | 190 | experiencia-i18n-e-acessibilidade | implemented | V19 |
-| 200 | configuracao-e-limites-por-tenant | planned | V20 |
-| 210 | privacidade-lgpd | planned | V21 |
+| 200 | configuracao-e-limites-por-tenant | implemented | V20 |
+| 210 | privacidade-lgpd | implemented | V21 |
 
 ---
 

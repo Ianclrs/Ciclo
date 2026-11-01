@@ -160,6 +160,57 @@ namespace Ciclo.Infrastructure.Migrations
                     b.ToTable("AuditEvents");
                 });
 
+            modelBuilder.Entity("Ciclo.Core.Entities.ConsentRecord", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<DateTime>("GrantedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("GrantedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("LegalBasis")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("Purpose")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<DateTime?>("RevokedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("SubjectId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("SubjectType")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "SubjectType", "SubjectId", "Purpose")
+                        .IsUnique()
+                        .HasDatabaseName("IX_ConsentRecords_SubjectPurpose");
+
+                    b.ToTable("ConsentRecords");
+                });
+
             modelBuilder.Entity("Ciclo.Core.Entities.CurriculumComponent", b =>
                 {
                     b.Property<Guid>("Id")
@@ -507,6 +558,64 @@ namespace Ciclo.Infrastructure.Migrations
                     b.ToTable("NotificationDeliveries");
                 });
 
+            modelBuilder.Entity("Ciclo.Core.Entities.PrivacyRequest", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("CompletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("DecidedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("LegalHold")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<Guid>("RequestedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Resolution")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<DateTime?>("RetainUntil")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("SubjectStudentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("SubmittedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Type")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SubjectStudentId");
+
+                    b.HasIndex("TenantId", "Status")
+                        .HasDatabaseName("IX_PrivacyRequests_TenantStatus");
+
+                    b.ToTable("PrivacyRequests");
+                });
+
             modelBuilder.Entity("Ciclo.Core.Entities.RefreshToken", b =>
                 {
                     b.Property<Guid>("Id")
@@ -577,6 +686,9 @@ namespace Ciclo.Infrastructure.Migrations
 
                     b.Property<int>("AnoLetivo")
                         .HasColumnType("integer");
+
+                    b.Property<DateTime?>("AnonymizedAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("Cpf")
                         .HasMaxLength(14)
@@ -677,6 +789,13 @@ namespace Ciclo.Infrastructure.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasDefaultValueSql("now()");
 
+                    b.Property<int>("DefaultSchoolYear")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("DisplayName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
                     b.Property<string>("DocumentoFiscal")
                         .HasMaxLength(30)
                         .HasColumnType("character varying(30)");
@@ -689,15 +808,40 @@ namespace Ciclo.Infrastructure.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
 
+                    b.Property<string>("FeatureFlags")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
                     b.Property<bool>("IsActive")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("boolean")
                         .HasDefaultValue(true);
 
+                    b.Property<string>("Locale")
+                        .IsRequired()
+                        .HasMaxLength(5)
+                        .HasColumnType("character varying(5)");
+
+                    b.Property<string>("LogoUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
+
+                    b.Property<int>("Plan")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("PrimaryColor")
+                        .HasMaxLength(7)
+                        .HasColumnType("character varying(7)");
+
+                    b.Property<string>("SecondaryColor")
+                        .HasMaxLength(7)
+                        .HasColumnType("character varying(7)");
 
                     b.Property<string>("Slug")
                         .IsRequired()
@@ -710,6 +854,14 @@ namespace Ciclo.Infrastructure.Migrations
                     b.Property<string>("Telefone")
                         .HasMaxLength(30)
                         .HasColumnType("character varying(30)");
+
+                    b.Property<string>("TimeZone")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<int>("UserQuota")
+                        .HasColumnType("integer");
 
                     b.HasKey("Id");
 
@@ -1039,6 +1191,17 @@ namespace Ciclo.Infrastructure.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Ciclo.Core.Entities.ConsentRecord", b =>
+                {
+                    b.HasOne("Ciclo.Core.Entities.Tenant", "Tenant")
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Tenant");
+                });
+
             modelBuilder.Entity("Ciclo.Core.Entities.Document", b =>
                 {
                     b.HasOne("Ciclo.Core.Entities.DocumentType", "DocumentType")
@@ -1147,6 +1310,23 @@ namespace Ciclo.Infrastructure.Migrations
 
             modelBuilder.Entity("Ciclo.Core.Entities.NotificationDelivery", b =>
                 {
+                    b.HasOne("Ciclo.Core.Entities.Tenant", "Tenant")
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Tenant");
+                });
+
+            modelBuilder.Entity("Ciclo.Core.Entities.PrivacyRequest", b =>
+                {
+                    b.HasOne("Ciclo.Core.Entities.Student", null)
+                        .WithMany()
+                        .HasForeignKey("SubjectStudentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.HasOne("Ciclo.Core.Entities.Tenant", "Tenant")
                         .WithMany()
                         .HasForeignKey("TenantId")

@@ -38,6 +38,9 @@ public class AppDbContext : IdentityDbContext<User, IdentityRole<Guid>, Guid>
     public DbSet<CurriculumComponent> CurriculumComponents { get; set; } = null!;
     public DbSet<Assessment> Assessments { get; set; } = null!;
     public DbSet<Grade> Grades { get; set; } = null!;
+    // Spec 210 — LGPD: consentimento por titular/finalidade e solicitação do titular.
+    public DbSet<ConsentRecord> ConsentRecords { get; set; } = null!;
+    public DbSet<PrivacyRequest> PrivacyRequests { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -437,6 +440,54 @@ public class AppDbContext : IdentityDbContext<User, IdentityRole<Guid>, Guid>
             entity.HasOne(d => d.Tenant)
                 .WithMany()
                 .HasForeignKey(d => d.TenantId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // ConsentRecord configuration (Spec 210)
+        builder.Entity<ConsentRecord>(entity =>
+        {
+            entity.HasKey(c => c.Id);
+            entity.Property(c => c.Purpose).HasMaxLength(100).IsRequired();
+            entity.Property(c => c.LegalBasis).HasMaxLength(100).IsRequired();
+            entity.Property(c => c.SubjectType).HasConversion<int>();
+            entity.Property(c => c.Status).HasConversion<int>();
+            entity.Property(c => c.CreatedAt).HasDefaultValueSql("now()");
+
+            // A unicidade é declarada aqui, e não só no serviço: uma requisição concorrente
+            // não pode criar uma segunda prova de consentimento para o mesmo titular e finalidade.
+            entity.HasIndex(c => new { c.TenantId, c.SubjectType, c.SubjectId, c.Purpose })
+                .IsUnique()
+                .HasDatabaseName("IX_ConsentRecords_SubjectPurpose");
+
+            entity.HasOne(c => c.Tenant)
+                .WithMany()
+                .HasForeignKey(c => c.TenantId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // PrivacyRequest configuration (Spec 210)
+        builder.Entity<PrivacyRequest>(entity =>
+        {
+            entity.HasKey(p => p.Id);
+            entity.Property(p => p.Type).HasConversion<int>();
+            entity.Property(p => p.Status).HasConversion<int>();
+            entity.Property(p => p.Reason).HasMaxLength(500);
+            entity.Property(p => p.Resolution).HasMaxLength(500);
+            entity.Property(p => p.LegalHold).HasDefaultValue(false);
+            entity.Property(p => p.SubmittedAt).HasDefaultValueSql("now()");
+
+            entity.HasIndex(p => new { p.TenantId, p.Status })
+                .HasDatabaseName("IX_PrivacyRequests_TenantStatus");
+
+            // Restrict: apagar o aluno não apaga o histórico da solicitação.
+            entity.HasOne<Student>()
+                .WithMany()
+                .HasForeignKey(p => p.SubjectStudentId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(p => p.Tenant)
+                .WithMany()
+                .HasForeignKey(p => p.TenantId)
                 .OnDelete(DeleteBehavior.Restrict);
         });
 

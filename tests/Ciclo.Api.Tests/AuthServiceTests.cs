@@ -81,6 +81,9 @@ public sealed class AuthServiceTests : IDisposable
 
         services.AddScoped<IJwtTokenGenerator>(_ => _tokenGeneratorMock);
         services.AddScoped<IAuditTrail>(_ => NoopAuditTrail.Instance);
+        // Spec 200: AuthService consulta a cota de usuarios do dono (TenantService). A regra em si
+        // e provada em TenantQuotaTests; aqui o fluxo de autenticacao so precisa do colaborador.
+        services.AddScoped<ITenantService>(_ => Mock.Of<ITenantService>());
         services.AddScoped<IAuthService, AuthService>();
         services.AddSingleton<ILogger<AuthService>>(_logger);
         services.AddSingleton(configMock.Object);

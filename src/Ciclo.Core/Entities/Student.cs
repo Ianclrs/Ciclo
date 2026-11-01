@@ -23,6 +23,10 @@ public class Student : ITenantScoped
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
+    // Spec 210 — instante em que a identidade foi sobrescrita pela anonimização. Escrito
+    // somente por AnonymizationService; nulo significa que a linha ainda guarda a identidade real.
+    public DateTime? AnonymizedAt { get; set; }
+
     // Navigation
     public Tenant Tenant { get; set; } = null!;
     public AcademicYear? AcademicYear { get; set; }

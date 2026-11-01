@@ -50,6 +50,8 @@ public sealed class TenantServiceTests : IDisposable
         tenantContextMock.Setup(tc => tc.IsResolved).Returns(false);
         services.AddScoped<ITenantContext>(_ => tenantContextMock.Object);
 
+        // Spec 200: o serviço passou a depender de IMemoryCache (configuração cacheada).
+        services.AddMemoryCache();
         services.AddScoped<ITenantService, TenantService>();
         services.AddSingleton(new Mock<ILogger<TenantService>>().Object);
 

@@ -398,4 +398,78 @@ export const ERROR_MESSAGES: Record<string, Record<Language, string>> = {
     en: 'The grade must be between 0 and 10.',
     es: 'La nota debe estar entre 0 y 10.',
   },
+
+  // Configuração da escola (Spec 200) — códigos estáveis listados no design
+  invalid_color: {
+    pt: 'Informe a cor em hexadecimal, por exemplo #1A2B3C.',
+    en: 'Enter the color in hexadecimal, for example #1A2B3C.',
+    es: 'Ingresa el color en hexadecimal, por ejemplo #1A2B3C.',
+  },
+  invalid_time_zone: {
+    pt: 'Fuso horário desconhecido. Use um identificador válido, como America/Sao_Paulo.',
+    en: 'Unknown time zone. Use a valid identifier such as America/Sao_Paulo.',
+    es: 'Zona horaria desconocida. Usa un identificador válido, como America/Sao_Paulo.',
+  },
+  invalid_school_year: {
+    pt: 'O ano letivo padrão deve estar entre 2000 e 2100.',
+    en: 'The default school year must be between 2000 and 2100.',
+    es: 'El año lectivo predeterminado debe estar entre 2000 y 2100.',
+  },
+  invalid_locale: {
+    pt: 'Idioma não suportado. Use pt-BR, en-US ou es-ES.',
+    en: 'Unsupported language. Use pt-BR, en-US or es-ES.',
+    es: 'Idioma no admitido. Usa pt-BR, en-US o es-ES.',
+  },
+  invalid_user_quota: {
+    pt: 'A cota de usuários deve estar entre 1 e 10000.',
+    en: 'The user quota must be between 1 and 10000.',
+    es: 'La cuota de usuarios debe estar entre 1 y 10000.',
+  },
+  invalid_storage_quota: {
+    pt: 'A cota de armazenamento deve ser maior que zero.',
+    en: 'The storage quota must be greater than zero.',
+    es: 'La cuota de almacenamiento debe ser mayor que cero.',
+  },
+  invalid_feature_flag: {
+    pt: 'A configuração inclui uma funcionalidade desconhecida.',
+    en: 'The configuration includes an unknown feature.',
+    es: 'La configuración incluye una funcionalidad desconocida.',
+  },
+  invalid_plan: {
+    pt: 'Plano inválido. Use Basic, Standard ou Premium.',
+    en: 'Invalid plan. Use Basic, Standard or Premium.',
+    es: 'Plan inválido. Usa Basic, Standard o Premium.',
+  },
+  tenant_not_found: {
+    pt: 'Escola não encontrada.',
+    en: 'School not found.',
+    es: 'Colegio no encontrado.',
+  },
+  user_quota_exceeded: {
+    pt: 'A cota de usuários da escola foi atingida.',
+    en: 'The school user quota has been reached.',
+    es: 'Se alcanzó la cuota de usuarios del colegio.',
+  },
+
+  // Privacidade e LGPD (Spec 210)
+  invalid_request: {
+    pt: 'Não foi possível aceitar este pedido. Confira os dados informados.',
+    en: 'This request could not be accepted. Check the information provided.',
+    es: 'No se pudo aceptar esta solicitud. Revisa los datos informados.',
+  },
+  invalid_state: {
+    pt: 'Esta solicitação não está mais na situação necessária para esta ação.',
+    en: 'This request is no longer in the status required for this action.',
+    es: 'Esta solicitud ya no está en la situación necesaria para esta acción.',
+  },
+  legal_hold_active: {
+    pt: 'Há bloqueio legal ativo: a anonimização não pode ser executada.',
+    en: 'A legal hold is active: anonymization cannot be carried out.',
+    es: 'Hay un bloqueo legal activo: no se puede ejecutar la anonimización.',
+  },
+  privacy_request_not_found: {
+    pt: 'Solicitação não encontrada.',
+    en: 'Request not found.',
+    es: 'Solicitud no encontrada.',
+  },
 };

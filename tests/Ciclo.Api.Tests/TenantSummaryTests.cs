@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging.Abstractions;
 using Ciclo.Core.Entities;
 using Ciclo.Infrastructure.Data;
@@ -28,7 +29,10 @@ public class TenantSummaryTests
             .UseInMemoryDatabase($"tenant-summary-{Guid.NewGuid()}")
             .Options;
         var db = new AppDbContext(options, tenantContext);
-        var service = new TenantService(db, null!, null!, tenantContext, NullLogger<TenantService>.Instance);
+        // Spec 200: o serviço passou a depender de IMemoryCache (configuração cacheada).
+        var service = new TenantService(
+            db, null!, null!, tenantContext, new MemoryCache(new MemoryCacheOptions()),
+            NullLogger<TenantService>.Instance);
         return (service, db);
     }
 

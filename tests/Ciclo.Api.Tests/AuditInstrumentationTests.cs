@@ -255,7 +255,8 @@ public sealed class AuditInstrumentationTests
             fixture.Db,
             new FixedTenantContext(),
             NullLogger<AuthService>.Instance,
-            fixture.Trail);
+            fixture.Trail,
+            new Mock<ITenantService>().Object);
 
         await service.RevokeTokenAsync("token-to-revoke");
 

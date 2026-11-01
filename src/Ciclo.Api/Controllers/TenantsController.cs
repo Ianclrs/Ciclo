@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Ciclo.Infrastructure.Contracts;
+using Ciclo.Infrastructure.Security;
 using Ciclo.Infrastructure.Services;
 
 using Ciclo.Api.Middleware;
@@ -45,6 +46,36 @@ public class TenantsController : ControllerBase
         try
         {
             return Ok(await _tenantService.GetCurrentAsync(GetTenantId()));
+        }
+        catch (AuthException ex)
+        {
+            return ProblemResponse.FromCode(ex.Message, ex.StatusCode);
+        }
+    }
+
+    /// <summary>Configuração efetiva da escola do usuário logado.</summary>
+    [HttpGet("me/configuration")]
+    [Authorize]
+    public async Task<IActionResult> GetConfiguration()
+    {
+        try
+        {
+            return Ok(await _tenantService.GetConfigurationAsync(GetTenantId()));
+        }
+        catch (AuthException ex)
+        {
+            return ProblemResponse.FromCode(ex.Message, ex.StatusCode);
+        }
+    }
+
+    /// <summary>Atualização da configuração da escola (somente Admin).</summary>
+    [HttpPut("me/configuration")]
+    [Authorize(Roles = AccessPolicy.Roles.UserManage)]
+    public async Task<IActionResult> UpdateConfiguration([FromBody] UpdateTenantConfigurationRequest request)
+    {
+        try
+        {
+            return Ok(await _tenantService.UpdateConfigurationAsync(GetTenantId(), request));
         }
         catch (AuthException ex)
         {

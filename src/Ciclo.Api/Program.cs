@@ -153,6 +153,9 @@ try
     builder.Services.AddScoped<IAuthService, AuthService>();
 
     // Tenant services (school registration)
+    // Spec 200 — cache em memória da configuração da escola. A expiração (5 min) é por entrada,
+    // definida em TenantService; aqui só o serviço do framework é registrado.
+    builder.Services.AddMemoryCache();
     builder.Services.AddScoped<ITenantService, TenantService>();
 
     // Student services (Spec 40)
@@ -226,6 +229,13 @@ try
     // Estrutura acadêmica e lançamento de notas (Spec 150). Sem este registro o
     // `AcademicController` não é ativado e toda rota `api/academic` responde 500.
     builder.Services.AddScoped<IAcademicService, AcademicService>();
+
+    // Privacidade e LGPD (Spec 210). Sem estes quatro registros o `PrivacyController` não é
+    // ativado e toda rota `api/privacy` responde 500.
+    builder.Services.AddScoped<IConsentService, ConsentService>();
+    builder.Services.AddScoped<IAnonymizationService, AnonymizationService>();
+    builder.Services.AddScoped<IPrivacyExportService, PrivacyExportService>();
+    builder.Services.AddScoped<IPrivacyRequestService, PrivacyRequestService>();
 
     // Rate limiting (Spec 30) — políticas aplicadas por atributo nos endpoints anônimos.
     builder.Services.AddCicloRateLimiting();

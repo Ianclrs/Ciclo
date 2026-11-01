@@ -482,8 +482,36 @@ Com esse prefixo, `dotnet restore`, `dotnet build` **com restore**, `dotnet test
 
 O shell de validação do runtime tem as variáveis: em 2026-10-31 o `dotnet build` do próprio pipeline reportou erros reais de compilação (`CS0535`, `CS0246`), nunca o erro de NuGet. O defeito atinge apenas o shell das ferramentas do agente.
 
+### Reconferência em 2026-11-01 (a nota "não afeta o shell do pipeline" deixou de valer)
+
+Na spec 200, task 3, o `dotnet build` **do próprio shell de validação do pipeline** falhou com o mesmo
+`path1` nulo. A afirmação anterior de que só o shell do agente era atingido não se sustenta mais: os dois
+shells herdam o bloco de ambiente do processo do DsCode, e basta ele nascer incompleto para ambos falharem.
+
+Medições desta data:
+
+- O shell do agente entrega **33 variáveis**; `ProgramData`, `APPDATA` e `ProgramFiles` estão ausentes.
+- `HKLM\...\Session Manager\Environment` **não contém** `ProgramFiles`, `ProgramFiles(x86)`,
+  `ALLUSERSPROFILE` nem `ProgramData`. `HKCU\Environment` contém `APPDATA` e `PROGRAMDATA`.
+  Ou seja, o ambiente persistente da máquina é incompleto por si: um processo novo iniciado pelo
+  registro nasce **sem** `ProgramFiles`.
+- Conjunto mínimo medido (o shell atual já tem `LOCALAPPDATA` e `USERPROFILE`):
+  **`ProgramData` + `APPDATA` + `ProgramFiles`**. Nenhuma variável sozinha resolve, e `ALLUSERSPROFILE`
+  isolada não muda o resultado.
+- Com essas três: `dotnet build` da solução **0 erros / 0 avisos** e suíte **433/433**.
+- `dotnet build --no-restore` passa sem variável alguma enquanto os assets estiverem atuais — mas volta a
+  falhar assim que um `PackageReference` mudar, então não é correção.
+- `-p:RestoreConfigFile=...` **não** evita o cálculo: testado, o erro persiste. Não existe propriedade
+  MSBuild que contorne a leitura do diretório machine-wide.
+
 ### Ação recomendada
 
-1. Repassar o bloco de ambiente completo do Windows ao shell das ferramentas, em vez do conjunto reduzido.
-2. Enquanto não for corrigido, prefixar `env` conforme acima sempre que houver restore — e não repetir o diagnóstico de `APPDATA`.
+1. Acrescentar as variáveis ausentes ao ambiente **persistente** do usuário (`setx` em `HKCU`) — em
+   particular `ProgramFiles`, além de `ProgramFiles(x86)`, `ProgramW6432` e `ALLUSERSPROFILE` para
+   completar o conjunto padrão do Windows.
+2. **Reiniciar o DsCode** depois disso: o bloco de ambiente é capturado na inicialização, então `setx`
+   não alcança um processo já em execução nem os shells que ele cria.
+3. Repassar o bloco de ambiente completo do Windows ao shell das ferramentas, em vez do conjunto reduzido.
+4. Enquanto não for corrigido, prefixar `env` com as três variáveis do conjunto mínimo sempre que houver
+   restore — e não repetir o diagnóstico de `APPDATA`.
 

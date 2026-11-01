@@ -60,6 +60,13 @@ public static class AccessPolicy
 
         public const string UserRead = "Admin";
         public const string UserManage = "Admin";
+
+        // Privacidade e LGPD (Spec 210): leitura e abertura de solicitação para Admin/Staff/Parent,
+        // decisão, exportação e anonimização só para Admin, escrita de consentimento para
+        // Admin/Staff. Nenhum papel novo é criado.
+        public const string PrivacyRead = "Admin,Staff,Parent";
+        public const string PrivacyManage = "Admin";
+        public const string PrivacyConsentWrite = "Admin,Staff";
     }
 
     /// <summary>Indica se o papel está na lista, sem lançar.</summary>

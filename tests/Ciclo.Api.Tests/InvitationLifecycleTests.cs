@@ -70,6 +70,9 @@ public sealed class InvitationLifecycleTests : IDisposable
         services.AddScoped<IJwtTokenGenerator>(_ => tokenMock.Object);
 
         services.AddScoped<IAuditTrail>(_ => NoopAuditTrail.Instance);
+        // Spec 200: AuthService consulta a cota de usuarios do dono (TenantService). A regra em si
+        // e provada em TenantQuotaTests; aqui o ciclo do convite so precisa do colaborador.
+        services.AddScoped<ITenantService>(_ => Mock.Of<ITenantService>());
         services.AddScoped<IAuthService, AuthService>();
         services.AddSingleton<ILogger<AuthService>>(new CapturingLogger<AuthService>());
 

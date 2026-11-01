@@ -205,7 +205,8 @@ public sealed class AuditOperationCoverageTests
                 Db,
                 TenantContext,
                 NullLogger<AuthService>.Instance,
-                trail);
+                trail,
+                new Mock<ITenantService>().Object);
         }
 
         public void Dispose() => Db.Dispose();

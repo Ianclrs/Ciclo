@@ -46,6 +46,7 @@ public class AuthService : IAuthService
     private readonly ITenantContext _tenantContext;
     private readonly ILogger<AuthService> _logger;
     private readonly IAuditTrail _audit;
+    private readonly ITenantService _tenantService;
 
     public AuthService(
         UserManager<User> userManager,
@@ -53,7 +54,8 @@ public class AuthService : IAuthService
         AppDbContext dbContext,
         ITenantContext tenantContext,
         ILogger<AuthService> logger,
-        IAuditTrail audit)
+        IAuditTrail audit,
+        ITenantService tenantService)
     {
         _userManager = userManager;
         _tokenGenerator = tokenGenerator;
@@ -61,6 +63,7 @@ public class AuthService : IAuthService
         _tenantContext = tenantContext;
         _logger = logger;
         _audit = audit;
+        _tenantService = tenantService;
     }
 
     public async Task<AuthResponse> RegisterAsync(RegisterRequest request)
@@ -113,6 +116,10 @@ public class AuthService : IAuthService
         // Resolve o tenant do usuário para que as consultas internas do Identity
         // (ex.: FindByNameAsync) não falhem por causa do global query filter.
         _tenantContext.SetTenant(tenantId);
+
+        // Spec 200: a cota é regra do dono (TenantService) e é verificada antes de qualquer
+        // escrita, com o tenant já resolvido para que a contagem seja a do colégio certo.
+        await _tenantService.EnsureUserQuotaAsync(tenantId);
 
         var result = await _userManager.CreateAsync(user, password);
         if (!result.Succeeded)
@@ -542,6 +549,9 @@ public class AuthService : IAuthService
 
         if (user is null)
         {
+            // Spec 200: só a conta nova consome cota — o reconvite reaproveita a linha existente.
+            await _tenantService.EnsureUserQuotaAsync(tenantId);
+
             user = new User
             {
                 TenantId = tenantId,

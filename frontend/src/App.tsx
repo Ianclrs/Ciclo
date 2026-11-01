@@ -7,7 +7,7 @@ import { ProtectedRoute } from './components/ProtectedRoute';
 import { SplashGate } from './components/SplashGate';
 import { Sidebar } from './components/Sidebar';
 import DocumentTitle from './components/DocumentTitle';
-import { LayoutDashboard, Users, FileText, Bell, GraduationCap, UserCog, BookOpen } from 'lucide-react';
+import { LayoutDashboard, Users, FileText, Bell, GraduationCap, UserCog, BookOpen, Settings, Shield } from 'lucide-react';
 import { useAuth } from './hooks/useAuth';
 import AuthPage from './pages/AuthPage';
 import ForgotPasswordPage from './pages/ForgotPasswordPage';
@@ -24,10 +24,13 @@ import NotificationCreate from './pages/admin/NotificationCreate';
 import UserManagement from './pages/admin/UserManagement';
 import AcademicStructure from './pages/admin/AcademicStructure';
 import GradeEntry from './pages/admin/GradeEntry';
+import TenantSettings from './pages/admin/TenantSettings';
+import PrivacyRequests from './pages/admin/PrivacyRequests';
 import ParentDashboard from './pages/parent/ParentDashboard';
 import ChildDetail from './pages/parent/ChildDetail';
 import ChildDocuments from './pages/parent/ChildDocuments';
 import NotificationInbox from './pages/parent/NotificationInbox';
+import PrivacyCenter from './pages/parent/PrivacyCenter';
 
 const adminItems = [
   { label: 'Dashboard', path: '/admin', icon: <LayoutDashboard size={20} />, color: 'violet' as const },
@@ -41,12 +44,18 @@ const adminItems = [
 const parentItems = [
   { label: 'Dashboard', path: '/parent', icon: <LayoutDashboard size={20} />, color: 'violet' as const },
   { label: 'Notificações', path: '/parent/notifications', icon: <Bell size={20} />, color: 'red' as const },
+  { label: 'Privacidade', path: '/parent/privacy', icon: <Shield size={20} />, color: 'indigo' as const },
 ];
 
 function AdminLayout() {
   const { user } = useAuth();
   const items = user?.role === 'Admin'
-    ? [...adminItems, { label: 'Usuários', path: '/admin/users', icon: <UserCog size={20} />, color: 'teal' as const }]
+    ? [
+        ...adminItems,
+        { label: 'Usuários', path: '/admin/users', icon: <UserCog size={20} />, color: 'teal' as const },
+        { label: 'Configurações', path: '/admin/settings', icon: <Settings size={20} />, color: 'indigo' as const },
+        { label: 'Privacidade', path: '/admin/privacy', icon: <Shield size={20} />, color: 'sky' as const },
+      ]
     : adminItems;
 
   return (
@@ -66,6 +75,22 @@ function AdminLayout() {
           <Route path="notifications" element={<NotificationList />} />
           <Route path="notifications/create" element={<NotificationCreate />} />
           <Route path="users" element={<UserManagement />} />
+          <Route
+            path="settings"
+            element={
+              <ProtectedRoute roles={['Admin']}>
+                <TenantSettings />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="privacy"
+            element={
+              <ProtectedRoute roles={['Admin']}>
+                <PrivacyRequests />
+              </ProtectedRoute>
+            }
+          />
         </Routes>
     </Sidebar>
   );
@@ -79,6 +104,7 @@ function ParentLayout() {
           <Route path="children/:id" element={<ChildDetail />} />
           <Route path="children/:id/documents" element={<ChildDocuments />} />
           <Route path="notifications" element={<NotificationInbox />} />
+          <Route path="privacy" element={<PrivacyCenter />} />
         </Routes>
     </Sidebar>
   );

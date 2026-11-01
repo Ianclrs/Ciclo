@@ -31,6 +31,8 @@ const colorMap: Record<Accent, { active: string; hover: string }> = {
   amber:  { active: 'text-amber-700',  hover: 'hover:text-amber-700' },
   red:    { active: 'text-red-700',    hover: 'hover:text-red-700' },
   cyan:   { active: 'text-cyan-700',   hover: 'hover:text-cyan-700' },
+  indigo: { active: 'text-indigo-700', hover: 'hover:text-indigo-700' },
+  sky:    { active: 'text-sky-700',    hover: 'hover:text-sky-700' },
 };
 
 interface SidebarProps {

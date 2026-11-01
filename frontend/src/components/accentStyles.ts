@@ -3,7 +3,7 @@
  * e estado de menu). A lista é a fonte única: acrescentar uma cor aqui obriga a completar
  * cada mapa, e o TypeScript acusa o mapa que ficar sem ela.
  */
-export type Accent = 'violet' | 'blue' | 'teal' | 'green' | 'amber' | 'red' | 'cyan';
+export type Accent = 'violet' | 'blue' | 'teal' | 'green' | 'amber' | 'red' | 'cyan' | 'indigo' | 'sky';
 
 /**
  * Chip do ícone: pastel com anel interno. O anel existe porque um `*-100` liso sobre o vidro
@@ -17,6 +17,8 @@ export const accentChip: Record<Accent, string> = {
   amber: 'bg-amber-100 text-amber-700 ring-amber-200',
   red: 'bg-red-100 text-red-700 ring-red-200',
   cyan: 'bg-cyan-100 text-cyan-700 ring-cyan-200',
+  indigo: 'bg-indigo-100 text-indigo-700 ring-indigo-200',
+  sky: 'bg-sky-100 text-sky-700 ring-sky-200',
 };
 
 /** Barra de proporção, na mesma família de cor do chip. */
@@ -28,4 +30,6 @@ export const accentBar: Record<Accent, string> = {
   amber: 'bg-amber-500',
   red: 'bg-red-500',
   cyan: 'bg-cyan-500',
+  indigo: 'bg-indigo-500',
+  sky: 'bg-sky-500',
 };
