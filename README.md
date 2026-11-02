@@ -1,6 +1,6 @@
 # Ciclo
 
-[![CI](https://github.com/Ianclrs/Ciclo/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Ianclrs/Ciclo/actions/workflows/ci.yml)
+
 
 > Plataforma SaaS multi-tenant de gestão escolar que conecta colégios e pais em um único lugar.
 
