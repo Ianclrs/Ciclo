@@ -39,24 +39,35 @@ type FormState =
       isRecovery: boolean;
     };
 
-const FORM_TITLES: Record<FormState['type'], string> = {
-  year: 'ano letivo',
-  class: 'turma',
-  component: 'componente curricular',
-  assessment: 'avaliação',
+import { useLocale } from '../../i18n/LocaleContext';
+import type { MessageKey } from '../../i18n/messages';
+
+type Translate = (key: MessageKey, params?: Record<string, string | number>) => string;
+
+const FORM_ENTITY_KEYS: Record<FormState['type'], MessageKey> = {
+  year: 'struct.entity.year',
+  class: 'struct.entity.class',
+  component: 'struct.entity.component',
+  assessment: 'struct.entity.assessment',
 };
+
+/** Nome curto da entidade no idioma ativo, para títulos e mensagens compostas. */
+function entityName(type: FormState['type'], t: Translate): string {
+  return t(FORM_ENTITY_KEYS[type]);
+}
 
 function Empty({ children }: { children: string }) {
   return <p className="py-2 text-sm text-gray-500">{children}</p>;
 }
 
 function RowActions({ onEdit, onDelete }: { onEdit: () => void; onDelete: () => void }) {
+  const { t } = useLocale();
   return (
     <span className="flex shrink-0 gap-1">
-      <Button variant="secondary" size="sm" onClick={onEdit} aria-label="Editar">
+      <Button variant="secondary" size="sm" onClick={onEdit} aria-label={t('struct.edit')}>
         <Pencil size={14} />
       </Button>
-      <Button variant="secondary" size="sm" onClick={onDelete} aria-label="Excluir">
+      <Button variant="secondary" size="sm" onClick={onDelete} aria-label={t('struct.delete')}>
         <Trash2 size={14} className="text-red-600" />
       </Button>
     </span>
@@ -64,6 +75,7 @@ function RowActions({ onEdit, onDelete }: { onEdit: () => void; onDelete: () => 
 }
 
 export default function AcademicStructure() {
+  const { language, locale, t } = useLocale();
   const navigate = useNavigate();
   const [years, setYears] = useState<AcademicYear[]>([]);
   const [classes, setClasses] = useState<SchoolClass[]>([]);
@@ -98,13 +110,15 @@ export default function AcademicStructure() {
       })
       .catch((err) => {
         if (!active) return;
-        setError(apiErrorMessage(err, 'Não foi possível carregar a estrutura acadêmica.'));
+        setError(apiErrorMessage(err, t('struct.loadError'), language));
         setLoading(false);
       });
     return () => {
       active = false;
     };
-  }, [reloadKey]);
+    // `t`/`language` entram porque a mensagem de erro é traduzida: trocar de idioma
+    // refaz a consulta em vez de manter um texto no idioma anterior.
+  }, [reloadKey, t, language]);
 
   const reload = () => {
     setLoading(true);
@@ -153,7 +167,7 @@ export default function AcademicStructure() {
   const submit = async () => {
     if (!form) return;
 
-    const problem = validate(form);
+    const problem = validate(form, t);
     if (problem) {
       toast.error(problem);
       return;
@@ -191,12 +205,12 @@ export default function AcademicStructure() {
         else await api.createAssessment(body);
       }
 
-      toast.success(`Cadastro de ${FORM_TITLES[form.type]} salvo.`);
+      toast.success(t('struct.saved', { entity: entityName(form.type, t) }));
       setForm(null);
       reload();
     } catch (err) {
       // O modal permanece aberto com o que foi digitado: fechar perderia o trabalho.
-      toast.error(apiErrorMessage(err, 'Não foi possível salvar o cadastro.'));
+      toast.error(apiErrorMessage(err, t('struct.saveError'), language));
     } finally {
       setBusy(false);
     }
@@ -206,11 +220,11 @@ export default function AcademicStructure() {
     if (!pendingDelete) return;
     try {
       await pendingDelete.run();
-      toast.success('Cadastro excluído.');
+      toast.success(t('struct.deleted'));
       setPendingDelete(null);
       reload();
     } catch (err) {
-      toast.error(apiErrorMessage(err, 'Não foi possível excluir o cadastro.'));
+      toast.error(apiErrorMessage(err, t('struct.deleteError'), language));
       setPendingDelete(null);
     }
   };
@@ -218,17 +232,17 @@ export default function AcademicStructure() {
   return (
     <div>
       <PageHeader
-        title="Estrutura acadêmica"
-        subtitle="Anos letivos, turmas, componentes curriculares e avaliações."
+        title={t('struct.title')}
+        subtitle={t('struct.subtitle')}
         actions={
           <div className="flex shrink-0 gap-2">
             {/* O lançamento de notas tem rota própria e vive aqui: o menu já usa todas as cores
                 da paleta, e esta é a tela que o usuário está vendo quando vai lançar. */}
             <Button variant="secondary" onClick={() => navigate('/admin/notas')}>
-              <ClipboardList size={16} className="mr-1" /> Lançar notas
+              <ClipboardList size={16} className="mr-1" /> {t('struct.actions.gradeEntry')}
             </Button>
             <Button onClick={() => openCreate('year')}>
-              <Plus size={16} className="mr-1" /> Novo ano letivo
+              <Plus size={16} className="mr-1" /> {t('struct.actions.newYear')}
             </Button>
           </div>
         }
@@ -242,10 +256,10 @@ export default function AcademicStructure() {
         </Card>
       ) : (
         <div className="space-y-6">
-          <Card tone="glass" title="Anos letivos">
-            <ListHeader onAdd={() => openCreate('year')} addLabel="Novo ano" disabled={false} />
+          <Card tone="glass" title={t('struct.schoolYears')}>
+            <ListHeader onAdd={() => openCreate('year')} addLabel={t('struct.add.year')} disabled={false} />
             {years.length === 0 ? (
-              <Empty>Nenhum ano letivo cadastrado.</Empty>
+              <Empty>{t('struct.empty.schoolYears')}</Empty>
             ) : (
               <ul className="divide-y text-sm">
                 {years.map((item) => (
@@ -253,8 +267,13 @@ export default function AcademicStructure() {
                     <div>
                       <p className="font-medium">{item.year}</p>
                       <p className="text-xs text-gray-500">
-                        {formatDateOnly(item.startDate)} a {formatDateOnly(item.endDate)}
-                        {item.isActive ? ' · ativo' : ' · inativo'}
+                        {t('struct.dateRange', {
+                          start: formatDateOnly(item.startDate, locale),
+                          end: formatDateOnly(item.endDate, locale),
+                        })}
+                        {item.isActive
+                          ? ` · ${t('struct.active')}`
+                          : ` · ${t('struct.inactive')}`}
                       </p>
                     </div>
                     <RowActions
@@ -270,7 +289,7 @@ export default function AcademicStructure() {
                       }
                       onDelete={() =>
                         setPendingDelete({
-                          label: `o ano letivo ${item.year}`,
+                          label: `${t('struct.deleteEntity.year')} ${item.year}`,
                           run: () => api.deleteAcademicYear(item.id),
                         })
                       }
@@ -281,19 +300,19 @@ export default function AcademicStructure() {
             )}
           </Card>
 
-          <Card tone="glass" title="Turmas">
-            <ListHeader onAdd={() => openCreate('class')} addLabel="Nova turma" disabled={years.length === 0} />
+          <Card tone="glass" title={t('struct.classes')}>
+            <ListHeader onAdd={() => openCreate('class')} addLabel={t('struct.add.class')} disabled={years.length === 0} />
             {years.length === 0 ? (
-              <Empty>Cadastre um ano letivo antes de criar turmas.</Empty>
+              <Empty>{t('struct.empty.classesNeedYear')}</Empty>
             ) : classes.length === 0 ? (
-              <Empty>Nenhuma turma cadastrada.</Empty>
+              <Empty>{t('struct.empty.classes')}</Empty>
             ) : (
               <ul className="divide-y text-sm">
                 {classes.map((item) => (
                   <li key={item.id} className="flex items-center justify-between gap-3 py-2">
                     <div>
                       <p className="font-medium">{item.name}</p>
-                      <p className="text-xs text-gray-500">Ano letivo {yearName(item.academicYearId)}</p>
+                      <p className="text-xs text-gray-500">{t('struct.yearLabel', { year: yearName(item.academicYearId) })}</p>
                     </div>
                     <RowActions
                       onEdit={() =>
@@ -306,7 +325,7 @@ export default function AcademicStructure() {
                       }
                       onDelete={() =>
                         setPendingDelete({
-                          label: `a turma ${item.name}`,
+                          label: `${t('struct.deleteEntity.class')} ${item.name}`,
                           run: () => api.deleteSchoolClass(item.id),
                         })
                       }
@@ -317,10 +336,10 @@ export default function AcademicStructure() {
             )}
           </Card>
 
-          <Card tone="glass" title="Componentes curriculares">
-            <ListHeader onAdd={() => openCreate('component')} addLabel="Novo componente" disabled={false} />
+          <Card tone="glass" title={t('struct.components')}>
+            <ListHeader onAdd={() => openCreate('component')} addLabel={t('struct.add.component')} disabled={false} />
             {components.length === 0 ? (
-              <Empty>Nenhum componente curricular cadastrado.</Empty>
+              <Empty>{t('struct.empty.components')}</Empty>
             ) : (
               <ul className="divide-y text-sm">
                 {components.map((item) => (
@@ -329,7 +348,9 @@ export default function AcademicStructure() {
                       <p className="font-medium">{item.name}</p>
                       <p className="text-xs text-gray-500">
                         {item.code}
-                        {item.isActive ? ' · ativo' : ' · inativo'}
+                        {item.isActive
+                          ? ` · ${t('struct.active')}`
+                          : ` · ${t('struct.inactive')}`}
                       </p>
                     </div>
                     <RowActions
@@ -344,7 +365,7 @@ export default function AcademicStructure() {
                       }
                       onDelete={() =>
                         setPendingDelete({
-                          label: `o componente ${item.name}`,
+                          label: `${t('struct.deleteEntity.component')} ${item.name}`,
                           run: () => api.deleteComponent(item.id),
                         })
                       }
@@ -355,16 +376,16 @@ export default function AcademicStructure() {
             )}
           </Card>
 
-          <Card tone="glass" title="Avaliações">
+          <Card tone="glass" title={t('struct.assessments')}>
             <ListHeader
               onAdd={() => openCreate('assessment')}
-              addLabel="Nova avaliação"
+              addLabel={t('struct.add.assessment')}
               disabled={classes.length === 0 || components.length === 0}
             />
             {classes.length === 0 || components.length === 0 ? (
-              <Empty>Cadastre uma turma e um componente antes de criar avaliações.</Empty>
+              <Empty>{t('struct.empty.assessmentsNeedClass')}</Empty>
             ) : assessments.length === 0 ? (
-              <Empty>Nenhuma avaliação cadastrada.</Empty>
+              <Empty>{t('struct.empty.assessments')}</Empty>
             ) : (
               <ul className="divide-y text-sm">
                 {assessments.map((item) => (
@@ -373,8 +394,9 @@ export default function AcademicStructure() {
                       <p className="font-medium">{item.title}</p>
                       <p className="text-xs text-gray-500">
                         {classLabel(item.schoolClassId)} · {componentName(item.curriculumComponentId)} ·{' '}
-                        {formatDateOnly(item.date)} · peso {item.weight}
-                        {item.isRecovery ? ' · recuperação' : ''}
+                        {formatDateOnly(item.date, locale)} ·{' '}
+                        {t('struct.assessmentWeight', { weight: item.weight })}
+                        {item.isRecovery ? ` · ${t('struct.recoveryTag')}` : ''}
                       </p>
                     </div>
                     <RowActions
@@ -392,7 +414,7 @@ export default function AcademicStructure() {
                       }
                       onDelete={() =>
                         setPendingDelete({
-                          label: `a avaliação ${item.title}`,
+                          label: `${t('struct.deleteEntity.assessment')} ${item.title}`,
                           run: () => api.deleteAssessment(item.id),
                         })
                       }
@@ -408,27 +430,27 @@ export default function AcademicStructure() {
       <Modal
         open={form !== null}
         onClose={() => setForm(null)}
-        title={`${form?.id ? 'Editar' : 'Novo'} ${form ? FORM_TITLES[form.type] : ''}`}
-        confirmLabel="Salvar"
-        confirmDisabled={busy || (form !== null && validate(form) !== null)}
+        title={form ? t('struct.form.title', { action: t(form.id ? 'struct.form.edit' : 'struct.form.new'), entity: entityName(form.type, t) }) : ''}
+        confirmLabel={t('common.save')}
+        confirmDisabled={busy || (form !== null && validate(form, t) !== null)}
         onConfirm={submit}
       >
         {form?.type === 'year' && (
           <div className="space-y-4">
             <Input
-              label="Ano"
+              label={t('struct.field.year')}
               type="number"
               value={form.year}
               onChange={(event) => setForm({ ...form, year: event.target.value })}
             />
             <Input
-              label="Início"
+              label={t('struct.field.start')}
               type="date"
               value={form.startDate}
               onChange={(event) => setForm({ ...form, startDate: event.target.value })}
             />
             <Input
-              label="Fim"
+              label={t('struct.field.end')}
               type="date"
               value={form.endDate}
               onChange={(event) => setForm({ ...form, endDate: event.target.value })}
@@ -439,7 +461,7 @@ export default function AcademicStructure() {
                 checked={form.isActive}
                 onChange={(event) => setForm({ ...form, isActive: event.target.checked })}
               />
-              Ano letivo ativo
+              {t('struct.form.yearActive')}
             </label>
           </div>
         )}
@@ -447,12 +469,12 @@ export default function AcademicStructure() {
         {form?.type === 'class' && (
           <div className="space-y-4">
             <Input
-              label="Nome"
+              label={t('struct.field.name')}
               value={form.name}
               onChange={(event) => setForm({ ...form, name: event.target.value })}
             />
             <Select
-              label="Ano letivo"
+              label={t('struct.field.schoolYear')}
               value={form.academicYearId}
               onChange={(event) => setForm({ ...form, academicYearId: event.target.value })}
             >
@@ -468,12 +490,12 @@ export default function AcademicStructure() {
         {form?.type === 'component' && (
           <div className="space-y-4">
             <Input
-              label="Nome"
+              label={t('struct.field.name')}
               value={form.name}
               onChange={(event) => setForm({ ...form, name: event.target.value })}
             />
             <Input
-              label="Código"
+              label={t('struct.field.code')}
               value={form.code}
               onChange={(event) => setForm({ ...form, code: event.target.value })}
             />
@@ -483,7 +505,7 @@ export default function AcademicStructure() {
                 checked={form.isActive}
                 onChange={(event) => setForm({ ...form, isActive: event.target.checked })}
               />
-              Componente ativo
+              {t('struct.form.componentActive')}
             </label>
           </div>
         )}
@@ -491,7 +513,7 @@ export default function AcademicStructure() {
         {form?.type === 'assessment' && (
           <div className="space-y-4">
             <Select
-              label="Turma"
+              label={t('struct.field.class')}
               value={form.schoolClassId}
               onChange={(event) => setForm({ ...form, schoolClassId: event.target.value })}
             >
@@ -502,7 +524,7 @@ export default function AcademicStructure() {
               ))}
             </Select>
             <Select
-              label="Componente"
+              label={t('struct.field.component')}
               value={form.curriculumComponentId}
               onChange={(event) => setForm({ ...form, curriculumComponentId: event.target.value })}
             >
@@ -513,17 +535,17 @@ export default function AcademicStructure() {
               ))}
             </Select>
             <Input
-              label="Título"
+              label={t('struct.field.title')}
               value={form.title}
               onChange={(event) => setForm({ ...form, title: event.target.value })}
             />
             <Input
-              label="Peso"
+              label={t('struct.field.weight')}
               value={form.weight}
               onChange={(event) => setForm({ ...form, weight: event.target.value })}
             />
             <Input
-              label="Data"
+              label={t('struct.field.date')}
               type="date"
               value={form.date}
               onChange={(event) => setForm({ ...form, date: event.target.value })}
@@ -534,7 +556,7 @@ export default function AcademicStructure() {
                 checked={form.isRecovery}
                 onChange={(event) => setForm({ ...form, isRecovery: event.target.checked })}
               />
-              É avaliação de recuperação
+              {t('struct.form.isRecovery')}
             </label>
           </div>
         )}
@@ -543,12 +565,12 @@ export default function AcademicStructure() {
       <Modal
         open={pendingDelete !== null}
         onClose={() => setPendingDelete(null)}
-        title="Confirmar exclusão"
-        confirmLabel="Excluir"
+        title={t('struct.deleteTitle')}
+        confirmLabel={t('struct.delete')}
         confirmVariant="danger"
         onConfirm={confirmDelete}
       >
-        <p>Excluir {pendingDelete?.label}? Cadastros com dependentes são recusados pela API.</p>
+        <p>{t('struct.deletePrompt', { entity: pendingDelete?.label ?? '' })}</p>
       </Modal>
     </div>
   );
@@ -573,28 +595,28 @@ function ListHeader({
 }
 
 /** Validação mínima de formulário; a regra de negócio é do backend. */
-function validate(form: FormState): string | null {
+function validate(form: FormState, t: Translate): string | null {
   if (form.type === 'year') {
-    if (!/^\d{4}$/.test(form.year.trim())) return 'Informe o ano com quatro dígitos.';
-    if (!form.startDate || !form.endDate) return 'Informe o início e o fim do ano letivo.';
+    if (!/^\d{4}$/.test(form.year.trim())) return t('struct.error.yearDigits');
+    if (!form.startDate || !form.endDate) return t('struct.error.dates');
     return null;
   }
   if (form.type === 'class') {
-    if (form.name.trim() === '') return 'Informe o nome da turma.';
-    if (form.academicYearId === '') return 'Selecione o ano letivo.';
+    if (form.name.trim() === '') return t('struct.error.className');
+    if (form.academicYearId === '') return t('struct.error.selectYear');
     return null;
   }
   if (form.type === 'component') {
-    if (form.name.trim() === '') return 'Informe o nome do componente.';
-    if (form.code.trim() === '') return 'Informe o código do componente.';
+    if (form.name.trim() === '') return t('struct.error.componentName');
+    if (form.code.trim() === '') return t('struct.error.componentCode');
     return null;
   }
 
-  if (form.title.trim() === '') return 'Informe o título da avaliação.';
-  if (!form.schoolClassId) return 'Selecione a turma.';
-  if (!form.curriculumComponentId) return 'Selecione o componente.';
-  if (!form.date) return 'Informe a data da avaliação.';
+  if (form.title.trim() === '') return t('struct.error.assessmentTitle');
+  if (!form.schoolClassId) return t('struct.error.selectClass');
+  if (!form.curriculumComponentId) return t('struct.error.selectComponent');
+  if (!form.date) return t('struct.error.assessmentDate');
   const weight = Number(form.weight.replace(',', '.'));
-  if (!Number.isFinite(weight) || weight <= 0) return 'O peso deve ser maior que zero.';
+  if (!Number.isFinite(weight) || weight <= 0) return t('struct.error.weight');
   return null;
 }

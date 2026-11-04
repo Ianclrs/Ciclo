@@ -1,5 +1,6 @@
 import { useState, useEffect, type ReactNode } from 'react';
 import { ShaderBackground } from './ShaderBackground';
+import { useLocale } from '../i18n/LocaleContext';
 
 // Splash exibida uma única vez por sessão do navegador (sobrevive a reloads/navegação,
 // mas reaparece em uma nova aba/sessão).
@@ -26,6 +27,7 @@ function markSeen(): void {
 }
 
 export function SplashGate({ children }: { children: ReactNode }) {
+  const { t } = useLocale();
   const [dismissed, setDismissed] = useState(wasSeenThisSession);
 
   useEffect(() => {
@@ -53,7 +55,7 @@ export function SplashGate({ children }: { children: ReactNode }) {
     <div
       role="button"
       tabIndex={0}
-      aria-label="Continuar para o login"
+      aria-label={t('splash.continue')}
       className="min-h-screen flex items-center justify-center bg-[#eceff2] px-4 relative overflow-hidden cursor-pointer select-none font-brand"
     >
       <ShaderBackground />
@@ -67,9 +69,9 @@ export function SplashGate({ children }: { children: ReactNode }) {
           />
         </div>
         <h1 className="mt-6 text-4xl font-bold text-stone-800 tracking-tight">Ciclo</h1>
-        <p className="text-stone-500 mt-1 text-sm">Seu Sistema de Gestão Escolar</p>
+        <p className="text-stone-500 mt-1 text-sm">{t('splash.subtitle')}</p>
         <p className="mt-10 text-xs text-stone-400 animate-pulse motion-reduce:animate-none">
-          Toque ou pressione qualquer tecla para continuar
+          {t('splash.prompt')}
         </p>
       </div>
     </div>

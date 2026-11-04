@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, type ReactNode } from 'react';
 import { Button } from './Button';
 import { FOCUSABLE_SELECTOR, nextFocusIndex } from '../utils/focusTrap';
+import { useLocale } from '../i18n/LocaleContext';
 
 interface ModalProps {
   open: boolean;
@@ -32,6 +33,7 @@ export function Modal({
   confirmVariant = 'primary',
   confirmDisabled = false,
 }: ModalProps) {
+  const { t } = useLocale();
   const dialogRef = useRef<HTMLDivElement>(null);
   const previousFocusRef = useRef<Element | null>(null);
   const titleId = useId();
@@ -105,10 +107,10 @@ export function Modal({
         <h3 id={titleId} className="text-lg font-semibold text-gray-900 mb-4">{title}</h3>
         <div className="text-sm text-gray-600 mb-6">{children}</div>
         <div className="flex justify-end gap-3">
-          <Button variant="secondary" onClick={onClose}>Cancelar</Button>
+          <Button variant="secondary" onClick={onClose}>{t('common.cancel')}</Button>
           {onConfirm && (
             <Button variant={confirmVariant} onClick={onConfirm} disabled={confirmDisabled}>
-              {confirmLabel || 'Confirmar'}
+              {confirmLabel || t('common.confirm')}
             </Button>
           )}
         </div>

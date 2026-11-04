@@ -7,6 +7,8 @@ import { Badge } from './Badge';
 import { Button } from './Button';
 import { Skeleton } from './Skeleton';
 import * as api from '../api/notifications';
+import { useLocale } from '../i18n/LocaleContext';
+import { formatDateTime } from '../utils/format';
 import type { Notification } from '../types';
 
 const LIMIT = 5;
@@ -17,6 +19,7 @@ const LIMIT = 5;
  * assim este bloco não precisa compartilhar estado com os KPIs do dashboard.
  */
 export function RecentNotifications({ viewAllTo }: { viewAllTo: string }) {
+  const { locale, t } = useLocale();
   const [items, setItems] = useState<Notification[] | null>(null);
   const [failed, setFailed] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
@@ -56,19 +59,21 @@ export function RecentNotifications({ viewAllTo }: { viewAllTo: string }) {
     <Card tone="glass">
       <CardHeading
         icon={BellDot}
-        title="Atividade recente"
+        title={t('notifications.recent')}
         action={
           <div className="flex shrink-0 items-center gap-3">
             {unreadHere > 0 && (
               <span className="rounded-full bg-violet-100 px-2.5 py-0.5 text-xs font-medium text-violet-700">
-                {unreadHere} {unreadHere === 1 ? 'não lida' : 'não lidas'}
+                {t(unreadHere === 1 ? 'notifications.unreadOne' : 'notifications.unreadMany', {
+                  count: unreadHere,
+                })}
               </span>
             )}
             <Link
               to={viewAllTo}
               className="inline-flex items-center gap-1 text-sm font-medium text-violet-700 hover:text-violet-800"
             >
-              Ver todas <ArrowRight size={14} />
+              {t('notifications.viewAll')} <ArrowRight size={14} />
             </Link>
           </div>
         }
@@ -76,9 +81,9 @@ export function RecentNotifications({ viewAllTo }: { viewAllTo: string }) {
 
       {failed ? (
         <div className="py-6 text-center">
-          <p className="text-sm text-gray-600">Não foi possível carregar as notificações.</p>
+          <p className="text-sm text-gray-600">{t('notifications.loadError')}</p>
           <Button variant="secondary" size="sm" className="mt-3" onClick={retry}>
-            Tentar de novo
+            {t('common.retry')}
           </Button>
         </div>
       ) : items === null ? (
@@ -98,7 +103,7 @@ export function RecentNotifications({ viewAllTo }: { viewAllTo: string }) {
       ) : items.length === 0 ? (
         <div className="flex flex-col items-center py-8 text-center">
           <BellDot size={28} className="text-gray-300" />
-          <p className="mt-2 text-sm text-gray-600">Nenhuma notificação por aqui.</p>
+          <p className="mt-2 text-sm text-gray-600">{t('notifications.recentEmpty')}</p>
         </div>
       ) : (
         <ul className="-mx-2 space-y-0.5">
@@ -124,7 +129,7 @@ export function RecentNotifications({ viewAllTo }: { viewAllTo: string }) {
                       {n.titulo}
                     </p>
                     <span className="shrink-0 text-xs text-gray-500">
-                      {new Date(n.createdAt).toLocaleString('pt-BR')}
+                      {formatDateTime(n.createdAt, locale)}
                     </span>
                   </div>
                   <p className="mt-0.5 text-sm text-gray-600 line-clamp-2">{n.mensagem}</p>

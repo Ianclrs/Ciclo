@@ -5,6 +5,8 @@ import { getCurrentTenant } from '../api/tenants';
 import { getUnreadCount } from '../api/notifications';
 import type { TenantSummary } from '../types';
 import { isDemoMode } from '../mocks/mode';
+import { useLocale } from '../i18n/LocaleContext';
+import { LanguageSwitcher } from './LanguageSwitcher';
 
 interface TopbarActionsProps {
   /** Rota de notificações do perfil logado (admin e responsável têm caminhos distintos). */
@@ -12,7 +14,7 @@ interface TopbarActionsProps {
 }
 
 /**
- * Ações da topbar: identificação do colégio e acesso às notificações.
+ * Ações da topbar: idioma da interface, identificação do colégio e acesso às notificações.
  *
  * O nome do colégio vem do próprio recurso de tenant, não do usuário: é dado da escola e
  * apareceria repetido em toda listagem de usuários se morasse no UserDto.
@@ -21,6 +23,7 @@ export function TopbarActions({ notificationsTo }: TopbarActionsProps) {
   const [tenant, setTenant] = useState<TenantSummary | null>(null);
   const [unread, setUnread] = useState(0);
   const { pathname } = useLocation();
+  const { t } = useLocale();
 
   useEffect(() => {
     let cancelled = false;
@@ -61,10 +64,10 @@ export function TopbarActions({ notificationsTo }: TopbarActionsProps) {
     <div className="ml-auto flex items-center gap-2">
       {isDemoMode && (
         <span
-          title="Os dados desta instalação são fictícios e ficam no seu navegador."
+          title={t('nav.demoTitle')}
           className="hidden items-center rounded-full bg-amber-100/90 px-2.5 py-1 text-xs font-medium text-amber-900 ring-1 ring-inset ring-amber-200 sm:inline-flex"
         >
-          demonstração
+          {t('nav.demo')}
         </span>
       )}
       {tenant && (
@@ -73,10 +76,12 @@ export function TopbarActions({ notificationsTo }: TopbarActionsProps) {
         </span>
       )}
 
+      <LanguageSwitcher />
+
       <Link
         to={notificationsTo}
-        aria-label={unread > 0 ? `Notificações (${unread} não lidas)` : 'Notificações'}
-        title="Notificações"
+        aria-label={unread > 0 ? t('nav.notificationsUnread', { count: unread }) : t('nav.notifications')}
+        title={t('nav.notifications')}
         className="relative p-2 rounded-xl text-stone-700 hover:bg-stone-300/80 active:scale-95 transition-all"
       >
         <Bell size={20} />

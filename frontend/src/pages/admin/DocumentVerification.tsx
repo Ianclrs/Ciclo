@@ -17,13 +17,22 @@ import { LoadError } from '../../components/LoadError';
 import { formatDate } from '../../utils/format';
 import * as api from '../../api/documents';
 import { apiErrorMessage } from '../../api/errors';
+import { statusLabelKey } from '../../domain/statusLabels';
 import { motivoValidationError } from '../../domain/validation';
+import { useLocale } from '../../i18n/LocaleContext';
 import type { Document, DocumentType } from '../../types';
 
 const PAGE_SIZE = 10;
 
+/**
+ * Status que a API devolve e aceita no filtro. O rótulo vem do dono único do vocabulário
+ * (`domain/statusLabels.ts`), o mesmo usado pela etiqueta de status das outras telas.
+ */
+const DOCUMENT_STATUSES = ['Pendente', 'Aprovado', 'Rejeitado'] as const;
+
 /** Validade do documento; destaca em vermelho quando a data já passou. */
 function Validity({ date }: { date: string | null }) {
+  const { locale, t } = useLocale();
   if (!date) return <span className="text-gray-400">—</span>;
 
   const today = new Date();
@@ -32,13 +41,14 @@ function Validity({ date }: { date: string | null }) {
 
   return (
     <span className={expired ? 'text-red-600' : 'text-gray-700'}>
-      <span className={expired ? 'font-medium' : ''}>{formatDate(date)}</span>
-      {expired && <span className="block text-xs text-red-500">vencido</span>}
+      <span className={expired ? 'font-medium' : ''}>{formatDate(date, locale)}</span>
+      {expired && <span className="block text-xs text-red-500">{t('renewal.expired')}</span>}
     </span>
   );
 }
 
 export default function DocumentVerification() {
+  const { language, locale, t } = useLocale();
   const [docs, setDocs] = useState<Document[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -47,7 +57,7 @@ export default function DocumentVerification() {
   const [reloadKey, setReloadKey] = useState(0);
   const [verify, setVerify] = useState<{ id: string; approved: boolean } | null>(null);
   const [motivo, setMotivo] = useState('');
-  const motivoError = motivo === '' ? null : motivoValidationError(motivo);
+  const motivoError = motivo === '' ? null : motivoValidationError(motivo, t);
   // A6b: a visão "Todos" substitui a antiga "Pendentes" — status virou filtro. "A vencer"
   // continua separada porque tem semântica de data, não de status.
   const [view, setView] = useState<'all' | 'expiring'>('all');
@@ -98,8 +108,8 @@ export default function DocumentVerification() {
     api
       .getDocumentTypes()
       .then(setTypes)
-      .catch((err) => toast.error(apiErrorMessage(err, 'Não foi possível carregar os tipos.')));
-  }, []);
+      .catch((err) => toast.error(apiErrorMessage(err, t('docs.typesError'), language)));
+  }, [t, language]);
 
   const changePage = (nextPage: number) => {
     setLoading(true);
@@ -131,11 +141,11 @@ export default function DocumentVerification() {
     if (!verify) return;
     try {
       await api.verifyDocument(verify.id, verify.approved, verify.approved ? undefined : motivo);
-      toast.success(verify.approved ? 'Documento aprovado.' : 'Documento rejeitado.');
+      toast.success(t(verify.approved ? 'docs.approved' : 'docs.rejected'));
       closeVerify();
       refresh();
     } catch (err) {
-      toast.error(apiErrorMessage(err, 'Não foi possível concluir a verificação.'));
+      toast.error(apiErrorMessage(err, t('docs.verifyError'), language));
     }
   };
 
@@ -152,28 +162,31 @@ export default function DocumentVerification() {
       // B5: revogar no mesmo tick pode cancelar o download em andamento (Firefox).
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch (err) {
-      toast.error(apiErrorMessage(err, 'Erro ao baixar o documento.'));
+      toast.error(apiErrorMessage(err, t('docs.downloadError'), language));
     }
   };
 
   // Na visão filtrável o status é informação; em "A vencer" todos são aprovados e a coluna
   // só repetiria a mesma palavra.
   const statusColumn = {
-    header: 'Status',
+    header: t('common.status'),
     className: 'text-center',
-    accessor: (doc: Document) => (
-      <Badge
-        className={uniformBadgeClass}
-        variant={doc.status === 'Aprovado' ? 'success' : doc.status === 'Rejeitado' ? 'danger' : 'warning'}
-      >
-        {doc.status}
-      </Badge>
-    ),
+    accessor: (doc: Document) => {
+      const key = statusLabelKey(doc.status);
+      return (
+        <Badge
+          className={uniformBadgeClass}
+          variant={doc.status === 'Aprovado' ? 'success' : doc.status === 'Rejeitado' ? 'danger' : 'warning'}
+        >
+          {key ? t(key) : doc.status}
+        </Badge>
+      );
+    },
   };
 
   const columns = [
     {
-      header: 'Arquivo',
+      header: t('docs.col.file'),
       accessor: (doc: Document) => (
         <div className="flex items-center gap-3 min-w-0">
           <div className="p-2 rounded-lg bg-gray-100 text-gray-500 shrink-0">
@@ -182,7 +195,7 @@ export default function DocumentVerification() {
           <div className="min-w-0">
             <p className="font-medium text-gray-900 truncate max-w-[260px]">{doc.nomeArquivo}</p>
             <p className="text-xs text-gray-500 mt-0.5">
-              Enviado em {formatDate(doc.createdAt)}
+              {t('docs.sentAt', { date: formatDate(doc.createdAt, locale) })}
             </p>
           </div>
         </div>
@@ -196,20 +209,20 @@ export default function DocumentVerification() {
       accessor: (doc: Document) => <StudentAvatar name={doc.studentName} photo={doc.studentFoto} />,
     },
     {
-      header: 'Aluno',
+      header: t('students.col.student'),
       className: 'text-center',
       accessor: (doc: Document) => (
         <span className="text-gray-700">{doc.studentName}</span>
       ),
     },
     {
-      header: 'Tipo',
+      header: t('docs.field.type'),
       className: 'text-center',
       accessor: (doc: Document) => <Badge className={uniformBadgeClass}>{doc.documentTypeName}</Badge>,
     },
     ...(view === 'all' ? [statusColumn] : []),
     {
-      header: 'Validade',
+      header: t('docs.col.validity'),
       className: 'text-center',
       accessor: (doc: Document) => <Validity date={doc.dataValidade} />,
     },
@@ -221,8 +234,8 @@ export default function DocumentVerification() {
           <button
             type="button"
             onClick={() => handleDownload(doc)}
-            aria-label={`Baixar ${doc.nomeArquivo}`}
-            title="Baixar arquivo"
+            aria-label={t('docs.downloadAria', { name: doc.nomeArquivo })}
+            title={t('docs.downloadTitle')}
             className="p-2 rounded-lg text-gray-500 hover:bg-gray-100 hover:text-indigo-600 transition-colors"
           >
             <Download size={16} />
@@ -231,7 +244,7 @@ export default function DocumentVerification() {
           {doc.status === 'Pendente' && (
             <>
               <Button variant="ghost" size="sm" onClick={() => openVerify(doc, true)}>
-                Aprovar
+                {t('enrollment.action.approve')}
               </Button>
               <Button
                 variant="ghost"
@@ -239,7 +252,7 @@ export default function DocumentVerification() {
                 className="text-red-600 hover:bg-red-50"
                 onClick={() => openVerify(doc, false)}
               >
-                Rejeitar
+                {t('enrollment.action.reject')}
               </Button>
             </>
           )}
@@ -251,12 +264,8 @@ export default function DocumentVerification() {
   return (
     <div>
       <PageHeader
-        title="Documentos"
-        subtitle={
-          view === 'all'
-            ? 'Documentos de todos os alunos, com filtros.'
-            : 'Documentos aprovados que vencem nos próximos 30 dias.'
-        }
+        title={t('nav.documents')}
+        subtitle={t(view === 'all' ? 'docs.subtitle.all' : 'docs.subtitle.expiring')}
         actions={
           <>
             <Button
@@ -265,7 +274,7 @@ export default function DocumentVerification() {
               aria-pressed={view === 'all'}
               onClick={() => switchView('all')}
             >
-              Todos
+              {t('docs.view.all')}
             </Button>
             <Button
               variant={view === 'expiring' ? 'primary' : 'secondary'}
@@ -273,7 +282,7 @@ export default function DocumentVerification() {
               aria-pressed={view === 'expiring'}
               onClick={() => switchView('expiring')}
             >
-              A vencer
+              {t('docs.view.expiring')}
             </Button>
           </>
         }
@@ -284,7 +293,7 @@ export default function DocumentVerification() {
           <div className="mb-5 flex flex-wrap items-end gap-3">
             <div className="min-w-[260px] flex-1 sm:max-w-md">
               <label htmlFor="filtro-aluno" className="mb-1 block text-sm font-medium text-gray-700">
-                Aluno
+                {t('students.col.student')}
               </label>
               <div className="relative">
                 <Search
@@ -295,7 +304,7 @@ export default function DocumentVerification() {
                 <input
                   id="filtro-aluno"
                   type="search"
-                  placeholder="Buscar aluno por nome"
+                  placeholder={t('docs.filter.studentPlaceholder')}
                   value={search}
                   onChange={(event) => {
                     setPage(1);
@@ -307,7 +316,7 @@ export default function DocumentVerification() {
               </div>
             </div>
             <Select
-              label="Tipo"
+              label={t('docs.field.type')}
               value={documentTypeId}
               onChange={(event) => {
                 setPage(1);
@@ -315,13 +324,13 @@ export default function DocumentVerification() {
                 setDocumentTypeId(event.target.value);
               }}
             >
-              <option value="">Todos os tipos</option>
+              <option value="">{t('docs.filter.allTypes')}</option>
               {types.map((type) => (
                 <option key={type.id} value={type.id}>{type.nome}</option>
               ))}
             </Select>
             <Select
-              label="Status"
+              label={t('common.status')}
               value={status}
               onChange={(event) => {
                 setPage(1);
@@ -329,16 +338,19 @@ export default function DocumentVerification() {
                 setStatus(event.target.value);
               }}
             >
-              <option value="">Todos os status</option>
-              <option value="Pendente">Pendente</option>
-              <option value="Aprovado">Aprovado</option>
-              <option value="Rejeitado">Rejeitado</option>
+              <option value="">{t('docs.filter.allStatus')}</option>
+              {DOCUMENT_STATUSES.map((option) => {
+                const key = statusLabelKey(option);
+                return (
+                  <option key={option} value={option}>{key ? t(key) : option}</option>
+                );
+              })}
             </Select>
           </div>
         )}
 
         {failed ? (
-          <LoadError message="Não foi possível carregar os documentos. Tente novamente." onRetry={refresh} />
+          <LoadError message={t('docs.loadListError')} onRetry={refresh} />
         ) : loading || docs.length > 0 ? (
           <Table
             columns={columns}
@@ -350,7 +362,7 @@ export default function DocumentVerification() {
         ) : view === 'all' ? (
           <EmptyState />
         ) : (
-          <EmptyState message="Nenhum documento vence nos próximos 30 dias." />
+          <EmptyState message={t('docs.noneExpiring')} />
         )}
 
         <Pagination page={page} pageSize={PAGE_SIZE} total={total} onPageChange={changePage} />
@@ -359,17 +371,17 @@ export default function DocumentVerification() {
       <Modal
         open={!!verify}
         onClose={closeVerify}
-        title={verify?.approved ? 'Aprovar documento' : 'Rejeitar documento'}
+        title={t(verify?.approved ? 'docs.approveTitle' : 'docs.rejectTitle')}
         onConfirm={handleVerify}
-        confirmLabel={verify?.approved ? 'Aprovar' : 'Rejeitar'}
+        confirmLabel={t(verify?.approved ? 'enrollment.action.approve' : 'enrollment.action.reject')}
         confirmVariant={verify?.approved ? 'primary' : 'danger'}
         confirmDisabled={!verify?.approved && (motivo.trim() === '' || motivoError !== null)}
       >
         {verify?.approved ? (
-          <p>Confirmar a aprovação deste documento?</p>
+          <p>{t('docs.confirmApprove')}</p>
         ) : (
           <Input
-            label="Motivo da rejeição"
+            label={t('enrollments.rejectReason')}
             value={motivo}
             onChange={(event) => setMotivo(event.target.value)}
           />

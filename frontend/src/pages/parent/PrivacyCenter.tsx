@@ -9,6 +9,7 @@ import { LoadError } from '../../components/LoadError';
 import { SkeletonRows } from '../../components/Skeleton';
 import { apiErrorMessage } from '../../api/errors';
 import { useLocale } from '../../i18n/LocaleContext';
+import type { MessageKey } from '../../i18n/messages';
 import { formatDate } from '../../utils/format';
 import { getChildren } from '../../api/parent';
 import {
@@ -23,9 +24,9 @@ import {
 import type { Student } from '../../types';
 
 /** Tipos que o responsável pode pedir. A revogação de consentimento é feita pelo colégio. */
-const REQUESTABLE: { type: PrivacyRequestType; label: string }[] = [
-  { type: 'Export', label: 'Solicitar exportação' },
-  { type: 'Anonymization', label: 'Solicitar anonimização' },
+const REQUESTABLE: { type: PrivacyRequestType; labelKey: MessageKey }[] = [
+  { type: 'Export', labelKey: 'priv.requestExport' },
+  { type: 'Anonymization', labelKey: 'priv.requestAnonymization' },
 ];
 
 /** Solicitação ainda em andamento: impede pedir a mesma coisa duas vezes para o mesmo aluno. */
@@ -53,7 +54,7 @@ function hasOpenRequest(
  * apresenta o erro devolvido, preservando a lista já carregada.
  */
 export default function PrivacyCenter() {
-  const { locale } = useLocale();
+  const { language, locale, t } = useLocale();
   const [children, setChildren] = useState<Student[] | null>(null);
   const [consents, setConsents] = useState<Record<string, Consent[]>>({});
   const [requests, setRequests] = useState<PrivacyRequest[]>([]);
@@ -107,10 +108,10 @@ export default function PrivacyCenter() {
 
     try {
       await submitPrivacyRequest({ studentId: child.id, type });
-      toast.success('Solicitação enviada.');
+      toast.success(t('priv.sent'));
       setReloadKey((key) => key + 1);
     } catch (err: unknown) {
-      toast.error(apiErrorMessage(err, 'Não foi possível enviar a solicitação.'));
+      toast.error(apiErrorMessage(err, t('priv.sendError'), language));
     } finally {
       setBusy(null);
     }
@@ -130,7 +131,7 @@ export default function PrivacyCenter() {
       URL.revokeObjectURL(url);
     } catch (err: unknown) {
       // Nenhum arquivo é criado quando o download falha.
-      toast.error(apiErrorMessage(err, 'Não foi possível baixar o documento.'));
+      toast.error(apiErrorMessage(err, t('priv.downloadError'), language));
     } finally {
       setBusy(null);
     }
@@ -139,8 +140,8 @@ export default function PrivacyCenter() {
   return (
     <div>
       <PageHeader
-        title="Privacidade"
-        subtitle="Consentimentos registrados e solicitações sobre os dados dos seus filhos."
+        title={t('nav.privacy')}
+        subtitle={t('priv.centerSubtitle')}
       />
 
       {error !== null ? (
@@ -151,7 +152,7 @@ export default function PrivacyCenter() {
         </Card>
       ) : children.length === 0 ? (
         <Card>
-          <EmptyState message="Nenhum aluno vinculado ao seu acesso." />
+          <EmptyState message={t('priv.noStudents')} />
         </Card>
       ) : (
         <div className="space-y-6">
@@ -162,7 +163,7 @@ export default function PrivacyCenter() {
               <Card key={child.id} title={`${child.nome} — ${child.turma}`}>
                 <div className="space-y-4">
                   {childConsents.length === 0 ? (
-                    <p className="text-sm text-gray-600">Nenhum consentimento registrado.</p>
+                    <p className="text-sm text-gray-600">{t('priv.noConsents')}</p>
                   ) : (
                     <ul className="space-y-2">
                       {childConsents.map((consent) => (
@@ -173,15 +174,15 @@ export default function PrivacyCenter() {
                           <div className="min-w-0">
                             <p className="text-sm font-medium text-gray-800">{consent.purpose}</p>
                             <p className="text-xs text-gray-600">
-                              Base legal: {consent.legalBasis} · Concedido em{' '}
-                              {formatDate(consent.grantedAt, locale)}
-                              {consent.revokedAt === null
-                                ? ''
-                                : ` · Revogado em ${formatDate(consent.revokedAt, locale)}`}
+                              {t('priv.legalBasis', { basis: consent.legalBasis })} ·{' '}
+                              {t('priv.grantedAt', { date: formatDate(consent.grantedAt, locale) })}
+                              {consent.revokedAt !== null && (
+                                <> · {t('priv.revokedAt', { date: formatDate(consent.revokedAt, locale) })}</>
+                              )}
                             </p>
                           </div>
                           <Badge variant={consent.status === 'Granted' ? 'success' : 'default'}>
-                            {consent.status === 'Granted' ? 'Concedido' : 'Revogado'}
+                            {consent.status === 'Granted' ? t('priv.granted') : t('priv.revoked')}
                           </Badge>
                         </li>
                       ))}
@@ -189,7 +190,7 @@ export default function PrivacyCenter() {
                   )}
 
                   <div className="flex flex-wrap gap-2">
-                    {REQUESTABLE.map(({ type, label }) => {
+                    {REQUESTABLE.map(({ type, labelKey }) => {
                       const open = hasOpenRequest(requests, child.id, type);
                       const key = `${child.id}:${type}`;
 
@@ -201,7 +202,7 @@ export default function PrivacyCenter() {
                           onClick={() => submitRequest(child, type)}
                           disabled={open || busy === key}
                         >
-                          {busy === key ? 'Enviando…' : label}
+                          {busy === key ? t('priv.sending') : t(labelKey)}
                         </Button>
                       );
                     })}
@@ -211,13 +212,12 @@ export default function PrivacyCenter() {
                       onClick={() => downloadExport(child)}
                       disabled={busy === `export:${child.id}`}
                     >
-                      {busy === `export:${child.id}` ? 'Baixando…' : 'Baixar exportação'}
+                      {busy === `export:${child.id}` ? t('priv.downloading') : t('priv.downloadExport')}
                     </Button>
                   </div>
 
                   <p className="text-xs text-gray-500">
-                    Pedidos com solicitação aberta do mesmo tipo ficam desabilitados até a
-                    conclusão pelo colégio.
+                    {t('priv.openRequestHint')}
                   </p>
                 </div>
               </Card>

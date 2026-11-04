@@ -122,16 +122,16 @@ test('a aba do navegador nomeia as três rotas de entrada', async () => {
 
   // Sem regra, o título cai em "Ciclo" sozinho e a aba deixa de dizer onde a pessoa está.
   const expected: Array<[string, string]> = [
-    ['/login', 'Login'],
-    ['/register', 'Cadastro de colégio'],
-    ['/register/parent', 'Conta de responsável'],
+    ['/login', 'nav.login'],
+    ['/register', 'auth.brand.register'],
+    ['/register/parent', 'auth.brand.parent'],
   ];
 
-  for (const [prefix, title] of expected) {
+  for (const [prefix, key] of expected) {
     assert.match(
       titles,
-      new RegExp(`\\{ prefix: '${prefix}', title: '${title}' \\}`),
-      `a rota ${prefix} perdeu o nome "${title}" na aba`,
+      new RegExp(`\\{ prefix: '${prefix}', titleKey: '${key}' \\}`),
+      `a rota ${prefix} perdeu a chave "${key}" na aba`,
     );
   }
 
@@ -142,10 +142,11 @@ test('a aba do navegador nomeia as três rotas de entrada', async () => {
     'a regra de `/register` precisa vir DEPOIS da de `/register/parent`',
   );
 
-  // O nome na aba é o mesmo ao lado da logo; divergir faria a tela dizer uma coisa e a aba outra.
+  // O nome na aba é a MESMA chave usada ao lado da logo; divergir faria a tela dizer uma coisa
+  // e a aba outra — inclusive depois de trocar de idioma.
   const page = await readText(AUTH_PAGE);
-  for (const title of ['Cadastro de colégio', 'Conta de responsável']) {
-    assert.match(page, new RegExp(`brand: '${title}'`), `a marca "${title}" saiu do painel`);
+  for (const key of ['auth.brand.register', 'auth.brand.parent']) {
+    assert.match(page, new RegExp(`brand: '${key}'`), `a marca "${key}" saiu do painel`);
   }
 });
 
@@ -174,12 +175,12 @@ test('a marca ao lado da logo muda junto com o painel', async () => {
   // Um texto fixo ao lado do favicon faria a tela dizer "login" enquanto mostra cadastro.
   assert.doesNotMatch(
     page,
-    /<span className="text-xs font-semibold text-slate-600">Sua Plataforma Educacional<\/span>/,
+    /<span className="text-xs font-semibold text-slate-600">[^<{][^<]*<\/span>/,
     'a marca ao lado da logo ficou fixa em vez de acompanhar o modo',
   );
-  assert.match(page, /\{copy\.brand\}/, 'a marca ao lado da logo deixou de vir do conteúdo do modo');
-  for (const brand of ['Sua Plataforma Educacional', 'Cadastro de colégio', 'Conta de responsável']) {
-    assert.match(page, new RegExp(`brand: '${brand}'`), `a marca "${brand}" saiu da tabela de conteúdo`);
+  assert.match(page, /\{t\(copy\.brand\)\}/, 'a marca ao lado da logo deixou de vir do conteúdo do modo');
+  for (const key of ['auth.brand.login', 'auth.brand.register', 'auth.brand.parent']) {
+    assert.match(page, new RegExp(`brand: '${key}'`), `a marca "${key}" saiu da tabela de conteúdo`);
   }
 });
 
@@ -269,7 +270,10 @@ test('campos e botões de ícone são acessíveis', async () => {
   assert.match(source, /id="login-password"/, 'o campo de senha perdeu o id');
 
   // O botão de mostrar a senha é só ícone: sem `aria-label` ele é mudo para leitor de tela.
-  assert.match(source, /aria-label=\{showPassword \? 'Ocultar senha' : 'Mostrar senha'\}/);
+  assert.match(
+    source,
+    /aria-label=\{showPassword \? t\('auth\.hidePassword'\) : t\('auth\.showPassword'\)\}/,
+  );
   assert.match(source, /autoComplete="email"/, 'o campo de e-mail perdeu o autopreenchimento');
   assert.match(source, /autoComplete="current-password"/, 'o campo de senha perdeu o autopreenchimento');
 });

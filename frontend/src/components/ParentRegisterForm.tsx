@@ -8,6 +8,7 @@ import { registerParent } from '../api/auth';
 import { setAccessToken } from '../api/client';
 import { useAuth } from '../hooks/useAuth';
 import { passwordError } from '../domain/password';
+import { useLocale } from '../i18n/LocaleContext';
 
 /**
  * A5 — cadastro de responsável.
@@ -21,6 +22,7 @@ import { passwordError } from '../domain/password';
  * `/parent` — por isso a navegação fica aqui, e não em um `onSuccess` do hospedeiro.
  */
 export function ParentRegisterForm() {
+  const { t } = useLocale();
   const navigate = useNavigate();
   const { getCurrentUser } = useAuth();
   const [form, setForm] = useState({ schoolSlug: '', name: '', email: '', password: '', confirm: '' });
@@ -40,7 +42,7 @@ export function ParentRegisterForm() {
       return;
     }
     if (form.password !== form.confirm) {
-      setError('As senhas não conferem.');
+      setError(t('reg.passwordMismatch'));
       return;
     }
 
@@ -54,10 +56,10 @@ export function ParentRegisterForm() {
       });
       setAccessToken(res.accessToken);
       await getCurrentUser();
-      toast.success('Conta criada. A secretaria precisa vincular seu filho para você ver os dados.');
+      toast.success(t('reg.parentCreated'));
       navigate('/parent', { replace: true });
     } catch (err) {
-      setError(apiErrorMessage(err, 'Não foi possível criar a conta.'));
+      setError(apiErrorMessage(err, t('reg.parentCreateFailed')));
     } finally {
       setLoading(false);
     }
@@ -67,19 +69,19 @@ export function ParentRegisterForm() {
     <>
       <form onSubmit={handleSubmit} className="space-y-3">
         <Input
-          label="Código do colégio"
+          label={t('reg.schoolCode')}
           value={form.schoolSlug}
           onChange={update('schoolSlug')}
-          placeholder="ex.: colegio-modelo"
+          placeholder={t('reg.schoolCodePlaceholder')}
           required
         />
         <p className="-mt-2 text-xs text-gray-500">
-          O colégio informa este código no primeiro contato. É o mesmo que aparece no cadastro da escola.
+          {t('reg.schoolCodeHint')}
         </p>
-        <Input label="Seu nome" value={form.name} onChange={update('name')} required />
-        <Input type="email" label="E-mail" value={form.email} onChange={update('email')} required />
-        <Input type="password" label="Senha" value={form.password} onChange={update('password')} required />
-        <Input type="password" label="Confirmar senha" value={form.confirm} onChange={update('confirm')} required />
+        <Input label={t('reg.yourName')} value={form.name} onChange={update('name')} required />
+        <Input type="email" label={t('field.email')} value={form.email} onChange={update('email')} required />
+        <Input type="password" label={t('reg.password')} value={form.password} onChange={update('password')} required />
+        <Input type="password" label={t('reg.confirmPassword')} value={form.confirm} onChange={update('confirm')} required />
 
         {error && (
           <p className="text-sm text-red-600" role="alert">
@@ -88,13 +90,12 @@ export function ParentRegisterForm() {
         )}
 
         <Button type="submit" className="w-full" disabled={loading}>
-          {loading ? 'Criando conta...' : 'Criar conta'}
+          {loading ? t('reg.creating') : t('reg.createAccount')}
         </Button>
       </form>
 
       <p className="mt-4 text-xs text-gray-500">
-        Depois do cadastro, a secretaria do colégio precisa vincular você ao seu filho. Até lá a
-        conta existe, mas não mostra dados de aluno.
+        {t('reg.parentLinkHint')}
       </p>
     </>
   );

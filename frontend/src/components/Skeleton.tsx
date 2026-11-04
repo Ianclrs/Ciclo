@@ -1,4 +1,5 @@
 import { Card } from './Card';
+import { useLocale } from '../i18n/LocaleContext';
 
 /**
  * Textura única de carregamento. Todo placeholder cinza da aplicação nasce daqui: a cor, o
@@ -36,9 +37,11 @@ export function SkeletonRows({ rows = 4, className = 'h-4' }: { rows?: number; c
  * aparece como piscada ao trocar de seção.
  */
 export function PageSkeleton({ rows = 3 }: { rows?: number }) {
+  const { t } = useLocale();
+
   return (
     <div role="status" aria-live="polite">
-      <span className="sr-only">Carregando…</span>
+      <span className="sr-only">{t('common.loading')}</span>
       <Skeleton className="h-4 w-24" />
       <Skeleton className="mt-4 h-7 w-56" />
       <Skeleton className="mt-2 h-4 w-40" />

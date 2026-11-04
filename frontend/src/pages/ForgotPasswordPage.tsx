@@ -7,16 +7,27 @@ import { Button } from '../components/Button';
 import { Input } from '../components/Input';
 import { ShaderBackground } from '../components/ShaderBackground';
 import { forgotPassword, resetPassword } from '../api/auth';
+import { useLocale } from '../i18n/LocaleContext';
+import type { MessageKey } from '../i18n/messages';
 
-function passwordError(pw: string): string | null {
-  if (pw.length < 8) return 'A senha deve ter no mínimo 8 caracteres.';
-  if (!/[A-Z]/.test(pw)) return 'A senha deve ter pelo menos uma letra maiúscula.';
-  if (!/\d/.test(pw)) return 'A senha deve ter pelo menos um número.';
-  if (!/[^A-Za-z0-9]/.test(pw)) return 'A senha deve ter pelo menos um símbolo (ex.: !@#$%).';
+/** Devolve a chave da regra violada, ou `null` quando a senha atende ao padrão. */
+function passwordError(pw: string): MessageKey | null {
+  if (pw.length < 8) return 'password.min';
+  if (!/[A-Z]/.test(pw)) return 'password.upper';
+  if (!/\d/.test(pw)) return 'password.digit';
+  if (!/[^A-Za-z0-9]/.test(pw)) return 'password.symbol';
   return null;
 }
 
+const REQUIREMENTS: MessageKey[] = [
+  'forgot.req.length',
+  'forgot.req.upper',
+  'forgot.req.digit',
+  'forgot.req.symbol',
+];
+
 export default function ForgotPasswordPage() {
+  const { t } = useLocale();
   const [step, setStep] = useState<'email' | 'reset'>('email');
   const [email, setEmail] = useState('');
   const [resetToken, setResetToken] = useState('');
@@ -24,7 +35,7 @@ export default function ForgotPasswordPage() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [errors, setErrors] = useState<{ password?: string; confirm?: string }>({});
+  const [errors, setErrors] = useState<{ password?: MessageKey; confirm?: MessageKey }>({});
   const navigate = useNavigate();
 
   const handleEmailSubmit = async (e: React.FormEvent) => {
@@ -34,15 +45,15 @@ export default function ForgotPasswordPage() {
       const res = await forgotPassword(email);
       if (!res.resetToken) {
         // Produção: o token seria enviado por email
-        toast.success('Se o email estiver cadastrado, você receberá as instruções de recuperação.');
+        toast.success(t('forgot.sent'));
         navigate('/login');
         return;
       }
       setResetToken(res.resetToken);
       setStep('reset');
-      toast.success('Email verificado! Agora defina sua nova senha.');
+      toast.success(t('forgot.verified'));
     } catch {
-      toast.error('Não foi possível processar a solicitação. Tente novamente.');
+      toast.error(t('forgot.requestFailed'));
     } finally {
       setLoading(false);
     }
@@ -52,20 +63,21 @@ export default function ForgotPasswordPage() {
     e.preventDefault();
 
     const pwError = passwordError(newPassword);
-    const confirmError = newPassword !== confirmPassword ? 'As senhas não conferem.' : null;
+    const confirmError: MessageKey | null =
+      newPassword !== confirmPassword ? 'forgot.mismatch' : null;
     setErrors({ password: pwError ?? undefined, confirm: confirmError ?? undefined });
     if (pwError || confirmError) return;
 
     setLoading(true);
     try {
       await resetPassword(email, resetToken, newPassword);
-      toast.success('Senha alterada com sucesso! Faça login com a sua nova senha.');
+      toast.success(t('forgot.changed'));
       navigate('/login');
     } catch (err) {
       const message =
         axios.isAxiosError(err) && typeof err.response?.data?.title === 'string'
           ? err.response.data.title
-          : 'Não foi possível redefinir a senha.';
+          : t('forgot.resetFailed');
       toast.error(message);
     } finally {
       setLoading(false);
@@ -84,45 +96,45 @@ export default function ForgotPasswordPage() {
               <KeyRound className="w-8 h-8 sm:w-10 sm:h-10 text-white" />
             </div>
             <h1 className="text-2xl font-bold text-stone-800 tracking-tight mt-2">
-              {step === 'email' ? 'Esqueci minha senha' : 'Nova senha'}
+              {t(step === 'email' ? 'forgot.title.email' : 'forgot.title.reset')}
             </h1>
             <p className="text-stone-500 mt-0.5 text-sm">
-              {step === 'email'
-                ? 'Informe o email cadastrado para continuar.'
-                : 'Defina sua nova senha seguindo o padrão de segurança.'}
+              {t(step === 'email' ? 'forgot.subtitle.email' : 'forgot.subtitle.reset')}
             </p>
           </div>
 
           {step === 'email' ? (
             <form onSubmit={handleEmailSubmit} className="space-y-4">
               <Input
-                label="Email cadastrado"
+                label={t('forgot.emailLabel')}
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
-                placeholder="voce@email.com"
+                placeholder={t('field.emailExample')}
                 className="bg-white !border-stone-400 focus:!ring-stone-500"
               />
               <Button type="submit" className="w-full !bg-stone-700 hover:!bg-stone-800 shadow-md" disabled={loading}>
-                {loading ? 'Verificando...' : 'Continuar'}
+                {loading ? t('forgot.verifying') : t('forgot.continue')}
               </Button>
             </form>
           ) : (
             <form onSubmit={handleResetSubmit} className="space-y-4">
               <div className="relative">
                 <Input
-                  label="Nova senha"
+                  label={t('forgot.newPassword')}
                   type={showPassword ? 'text' : 'password'}
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
                   required
-                  error={errors.password}
+                  error={errors.password ? t(errors.password) : undefined}
                   className="bg-white !border-stone-400 focus:!ring-stone-500 !pr-10"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
+                  aria-label={showPassword ? t('auth.hidePassword') : t('auth.showPassword')}
+                  aria-pressed={showPassword}
                   className="absolute right-3 top-[34px] text-stone-400 hover:text-stone-600 transition-colors"
                   tabIndex={-1}
                 >
@@ -130,25 +142,24 @@ export default function ForgotPasswordPage() {
                 </button>
               </div>
               <Input
-                label="Confirmar nova senha"
+                label={t('forgot.confirmPassword')}
                 type={showPassword ? 'text' : 'password'}
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 required
-                error={errors.confirm}
+                error={errors.confirm ? t(errors.confirm) : undefined}
                 className="bg-white !border-stone-400 focus:!ring-stone-500"
               />
               <div className="bg-stone-100 border border-stone-300 rounded-lg p-3 text-xs text-stone-600">
-                <p className="font-medium mb-1">Requisitos da senha:</p>
+                <p className="font-medium mb-1">{t('forgot.requirements')}</p>
                 <ul className="list-disc pl-4 space-y-0.5">
-                  <li>Mínimo de 8 caracteres</li>
-                  <li>Pelo menos 1 letra maiúscula</li>
-                  <li>Pelo menos 1 número</li>
-                  <li>Pelo menos 1 símbolo (ex.: !@#$%)</li>
+                  {REQUIREMENTS.map((key) => (
+                    <li key={key}>{t(key)}</li>
+                  ))}
                 </ul>
               </div>
               <Button type="submit" className="w-full !bg-stone-700 hover:!bg-stone-800 shadow-md" disabled={loading}>
-                {loading ? 'Alterando senha...' : 'Alterar senha'}
+                {loading ? t('forgot.changing') : t('forgot.change')}
               </Button>
             </form>
           )}
@@ -156,7 +167,7 @@ export default function ForgotPasswordPage() {
           <div className="mt-4 text-center">
             <Link to="/login" className="inline-flex items-center gap-1 text-sm text-stone-600 hover:text-stone-800 transition-colors">
               <ArrowLeft size={16} />
-              Voltar para o login
+              {t('auth.backToLogin')}
             </Link>
           </div>
         </div>

@@ -9,18 +9,30 @@ import { CardHeading } from '../../components/CardHeading';
 import { StudentPicker, UserPicker } from '../../components/RecipientPicker';
 import * as api from '../../api/notifications';
 import { apiErrorMessage } from '../../api/errors';
+import { useLocale } from '../../i18n/LocaleContext';
+import type { MessageKey } from '../../i18n/messages';
 import type { ManagedUser, Student } from '../../types';
 
 type TargetMode = 'users' | 'broadcast' | 'student';
 
-const MODES: { value: TargetMode; label: string }[] = [
-  { value: 'users', label: 'Usuários' },
-  { value: 'broadcast', label: 'Broadcast' },
-  { value: 'student', label: 'Por aluno' },
+const MODES: { value: TargetMode; labelKey: MessageKey }[] = [
+  { value: 'users', labelKey: 'nav.users' },
+  { value: 'broadcast', labelKey: 'notify.mode.broadcast' },
+  { value: 'student', labelKey: 'notify.mode.student' },
+];
+
+/** Tipos do contrato (`NotificationType`), na ordem exibida. O valor é o que a API persiste. */
+const KINDS: { value: number; labelKey: MessageKey }[] = [
+  { value: 0, labelKey: 'notify.kind.general' },
+  { value: 1, labelKey: 'notify.kind.docPending' },
+  { value: 2, labelKey: 'notify.kind.meeting' },
+  { value: 3, labelKey: 'nav.enrollments' },
+  { value: 4, labelKey: 'notify.kind.other' },
 ];
 
 export default function NotificationCreate() {
   const navigate = useNavigate();
+  const { language, t } = useLocale();
   const [titulo, setTitulo] = useState('');
   const [mensagem, setMensagem] = useState('');
   const [tipo, setTipo] = useState(0);
@@ -38,10 +50,10 @@ export default function NotificationCreate() {
     try {
       if (mode === 'broadcast') {
         await api.broadcastNotification({ titulo, mensagem, tipo });
-        toast.success('Broadcast enviado!');
+        toast.success(t('notify.sentBroadcast'));
       } else if (mode === 'student' && selectedStudent) {
         await api.sendByStudent(selectedStudent.id, titulo, mensagem, tipo);
-        toast.success('Notificação enviada!');
+        toast.success(t('notify.sentStudent'));
       } else if (mode === 'users') {
         await api.createNotification({
           titulo,
@@ -49,23 +61,23 @@ export default function NotificationCreate() {
           tipo,
           userIds: selectedUsers.map((user) => user.id),
         });
-        toast.success('Notificação criada!');
+        toast.success(t('notify.created'));
       }
       navigate('/admin/notifications');
     } catch (err) {
-      toast.error(apiErrorMessage(err, 'Não foi possível criar a notificação.'));
+      toast.error(apiErrorMessage(err, t('notify.createError'), language));
     }
   };
 
   return (
     <div className="mx-auto max-w-5xl">
       <div className="mb-6">
-        <h2 className="text-3xl font-bold tracking-tight text-gray-900">Nova notificação</h2>
-        <p className="mt-1 text-base text-gray-700">Escolha o destino, escreva e envie.</p>
+        <h2 className="text-3xl font-bold tracking-tight text-gray-900">{t('notify.createTitle')}</h2>
+        <p className="mt-1 text-base text-gray-700">{t('notify.createSubtitle')}</p>
       </div>
 
       <Card tone="glass">
-        <CardHeading icon={Send} title="Compor mensagem" />
+        <CardHeading icon={Send} title={t('notify.compose')} />
 
         <form onSubmit={handleSubmit} className="space-y-6">
           {/* Duas colunas no desktop: compor à esquerda, escolher destinatário à direita.
@@ -73,7 +85,7 @@ export default function NotificationCreate() {
           <div className="grid gap-6 lg:grid-cols-3">
             <div className="space-y-4 lg:col-span-2">
               <Input
-                label="Título"
+                label={t('notify.field.title')}
                 value={titulo}
                 onChange={(e) => setTitulo(e.target.value)}
                 required
@@ -82,7 +94,7 @@ export default function NotificationCreate() {
 
               <div>
                 <label htmlFor="mensagem" className="mb-1 block text-sm font-medium text-gray-700">
-                  Mensagem
+                  {t('notify.field.message')}
                 </label>
                 <textarea
                   id="mensagem"
@@ -97,7 +109,7 @@ export default function NotificationCreate() {
 
               <div>
                 <label htmlFor="tipo" className="mb-1 block text-sm font-medium text-gray-700">
-                  Tipo
+                  {t('notify.field.type')}
                 </label>
                 <select
                   id="tipo"
@@ -105,17 +117,15 @@ export default function NotificationCreate() {
                   value={tipo}
                   onChange={(e) => setTipo(Number(e.target.value))}
                 >
-                  <option value={0}>Geral</option>
-                  <option value={1}>Documento Pendente</option>
-                  <option value={2}>Reunião</option>
-                  <option value={3}>Matrícula</option>
-                  <option value={4}>Outro</option>
+                  {KINDS.map((kind) => (
+                    <option key={kind.value} value={kind.value}>{t(kind.labelKey)}</option>
+                  ))}
                 </select>
               </div>
             </div>
 
             <fieldset className="space-y-2 lg:col-span-1">
-              <legend className="mb-2 block text-sm font-medium text-gray-700">Destino</legend>
+              <legend className="mb-2 block text-sm font-medium text-gray-700">{t('notify.field.target')}</legend>
               <div className="flex flex-wrap gap-2">
                 {MODES.map((option) => (
                   <Button
@@ -126,7 +136,7 @@ export default function NotificationCreate() {
                     aria-pressed={mode === option.value}
                     onClick={() => setMode(option.value)}
                   >
-                    {option.label}
+                    {t(option.labelKey)}
                   </Button>
                 ))}
               </div>
@@ -137,7 +147,7 @@ export default function NotificationCreate() {
               )}
               {mode === 'broadcast' && (
                 <p className="rounded-lg border border-amber-200/80 bg-amber-50/80 px-3 py-2 text-xs text-amber-900">
-                  O aviso vai para todos os usuários do colégio.
+                  {t('notify.broadcastNotice')}
                 </p>
               )}
             </fieldset>
@@ -146,17 +156,17 @@ export default function NotificationCreate() {
           <div className="flex flex-wrap items-center gap-3 border-t border-gray-200/70 pt-4">
             <Button type="submit" className="gap-2" disabled={missingRecipient}>
               <Send size={16} />
-              {mode === 'broadcast' ? 'Enviar para todos' : 'Enviar'}
+              {t(mode === 'broadcast' ? 'notify.sendAll' : 'notify.send')}
             </Button>
             <Button
               variant="secondary"
               type="button"
               onClick={() => navigate('/admin/notifications')}
             >
-              Cancelar
+              {t('common.cancel')}
             </Button>
             {missingRecipient && (
-              <p className="text-xs text-gray-600">Escolha ao menos um destinatário para enviar.</p>
+              <p className="text-xs text-gray-600">{t('notify.missingRecipient')}</p>
             )}
           </div>
         </form>

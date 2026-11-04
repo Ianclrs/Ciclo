@@ -15,6 +15,8 @@ import { Table } from '../../components/Table';
 import { EmptyState } from '../../components/EmptyState';
 import { LoadError } from '../../components/LoadError';
 import { Modal } from '../../components/Modal';
+import { useLocale } from '../../i18n/LocaleContext';
+import type { MessageKey } from '../../i18n/messages';
 import * as api from '../../api/students';
 import type { Student } from '../../types';
 
@@ -29,7 +31,15 @@ interface Query {
 
 const NO_FILTERS: Query = { page: 1, search: '', turma: '', status: '' };
 
-const STATUS_OPTIONS = ['Ativo', 'Inativo', 'Transferido'];
+/**
+ * Status do aluno: o `value` é o que a API persiste; o rótulo vem do catálogo, então o filtro
+ * acompanha o idioma sem tocar no contrato.
+ */
+const STATUS_OPTIONS: ReadonlyArray<{ value: string; labelKey: MessageKey }> = [
+  { value: 'Ativo', labelKey: 'student.status.active' },
+  { value: 'Inativo', labelKey: 'student.status.inactive' },
+  { value: 'Transferido', labelKey: 'student.status.transferred' },
+];
 
 function statusVariant(status: string) {
   if (status === 'Ativo') return 'success';
@@ -38,6 +48,7 @@ function statusVariant(status: string) {
 }
 
 export default function StudentList() {
+  const { t } = useLocale();
   const [students, setStudents] = useState<Student[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -93,11 +104,11 @@ export default function StudentList() {
   const handleRemove = async () => {
     try {
       await api.deleteStudent(removeId);
-      toast.success('Aluno removido.');
+      toast.success(t('students.removed'));
       setRemoveId('');
       refresh();
     } catch {
-      toast.error('Não foi possível remover o aluno.');
+      toast.error(t('students.removeError'));
     }
   };
 
@@ -112,7 +123,7 @@ export default function StudentList() {
       accessor: (student: Student) => <StudentAvatar name={student.nome} photo={student.foto} />,
     },
     {
-      header: 'Aluno',
+      header: t('students.col.student'),
       className: 'text-center',
       accessor: (student: Student) => (
         <div className="min-w-0">
@@ -129,7 +140,7 @@ export default function StudentList() {
       ),
     },
     {
-      header: 'Status',
+      header: t('common.status'),
       className: 'text-center',
       accessor: (student: Student) => <StatusBadge status={student.status} variant={statusVariant(student.status)} />,
     },
@@ -139,7 +150,7 @@ export default function StudentList() {
       accessor: (student: Student) => (
         <div className="flex justify-end gap-1">
           <Link to={`/admin/students/${student.id}/edit`} className={buttonClass('ghost', 'sm')}>
-            Editar
+            {t('students.edit')}
           </Link>
           <Button
             variant="ghost"
@@ -147,7 +158,7 @@ export default function StudentList() {
             className="text-red-600 hover:bg-red-50"
             onClick={() => setRemoveId(student.id)}
           >
-            Remover
+            {t('common.remove')}
           </Button>
         </div>
       ),
@@ -157,11 +168,11 @@ export default function StudentList() {
   return (
     <div>
       <PageHeader
-        title="Alunos"
-        subtitle="Cadastro e situação dos alunos da escola."
+        title={t('nav.students')}
+        subtitle={t('students.subtitle')}
         actions={
           <Link to="/admin/students/new" className={buttonClass('primary', 'md', 'shrink-0')}>
-            <Plus size={16} className="mr-1" /> Novo aluno
+            <Plus size={16} className="mr-1" /> {t('students.new')}
           </Link>
         }
       />
@@ -176,8 +187,8 @@ export default function StudentList() {
         >
           <div className="flex-1 min-w-[200px]">
             <Input
-              aria-label="Buscar por nome"
-              placeholder="Buscar por nome"
+              aria-label={t('students.searchPlaceholder')}
+              placeholder={t('students.searchPlaceholder')}
               value={form.search}
               onChange={(event) => setForm({ ...form, search: event.target.value })}
             />
@@ -185,29 +196,29 @@ export default function StudentList() {
 
           <div className="w-32">
             <Input
-              aria-label="Filtrar por turma"
-              placeholder="Turma"
+              aria-label={t('students.filterClass')}
+              placeholder={t('students.classPlaceholder')}
               value={form.turma}
               onChange={(event) => setForm({ ...form, turma: event.target.value })}
             />
           </div>
 
           <Select
-            aria-label="Filtrar por status"
+            aria-label={t('students.filterStatus')}
             className="min-w-[170px]"
             value={query.status}
             onChange={(event) => applyQuery({ ...query, page: 1, status: event.target.value })}
           >
-            <option value="">Todos os status</option>
+            <option value="">{t('students.allStatus')}</option>
             {STATUS_OPTIONS.map((status) => (
-              <option key={status} value={status}>
-                {status}
+              <option key={status.value} value={status.value}>
+                {t(status.labelKey)}
               </option>
             ))}
           </Select>
 
           <Button type="submit" variant="secondary">
-            <Search size={16} className="mr-1" /> Buscar
+            <Search size={16} className="mr-1" /> {t('students.search')}
           </Button>
 
           {hasFilters && (
@@ -219,13 +230,13 @@ export default function StudentList() {
                 applyQuery(NO_FILTERS);
               }}
             >
-              Limpar
+              {t('students.clear')}
             </Button>
           )}
         </form>
 
         {failed ? (
-          <LoadError message="Não foi possível carregar os alunos. Tente novamente." onRetry={refresh} />
+          <LoadError message={t('students.loadListError')} onRetry={refresh} />
         ) : loading || students.length > 0 ? (
           <Table
             columns={columns}
@@ -235,7 +246,7 @@ export default function StudentList() {
             loadingRows={PAGE_SIZE}
           />
         ) : (
-          <EmptyState />
+          <EmptyState message={t('students.empty')} />
         )}
 
         <Pagination
@@ -249,12 +260,12 @@ export default function StudentList() {
       <Modal
         open={!!removeId}
         onClose={() => setRemoveId('')}
-        title="Remover aluno"
+        title={t('students.removeTitle')}
         onConfirm={handleRemove}
-        confirmLabel="Remover"
+        confirmLabel={t('common.remove')}
         confirmVariant="danger"
       >
-        <p>O aluno e os dados vinculados a ele serão removidos. Esta ação não pode ser desfeita.</p>
+        <p>{t('students.removeBody')}</p>
       </Modal>
     </div>
   );

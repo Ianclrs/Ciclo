@@ -1,6 +1,8 @@
 import { useCallback, useState, useEffect, useLayoutEffect, useRef, type ReactNode } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
+import { useLocale } from '../i18n/LocaleContext';
+import type { MessageKey } from '../i18n/messages';
 import { Button } from './Button';
 import { ShaderBackground } from './ShaderBackground';
 import { TopbarActions } from './TopbarActions';
@@ -8,8 +10,9 @@ import { cutoutMask, type CutoutRect } from './sidebarCutout';
 import { clearJustLoggedIn, wasJustLoggedIn } from '../utils/sessionMarks';
 import type { Accent } from './accentStyles';
 
-interface SidebarItem {
-  label: string;
+export interface SidebarItem {
+  /** Chave do catálogo: o texto é resolvido no idioma ativo, não guardado no item. */
+  labelKey: MessageKey;
   path: string;
   icon: ReactNode;
   color?: Accent;
@@ -54,6 +57,7 @@ export function Sidebar({ items, children, notificationsTo }: SidebarProps) {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, logout } = useAuth();
+  const { t } = useLocale();
   const desktopAsideRef = useRef<HTMLElement>(null);
   const mobileAsideRef = useRef<HTMLElement>(null);
 
@@ -232,7 +236,7 @@ export function Sidebar({ items, children, notificationsTo }: SidebarProps) {
             }`}
           >
             <span className="shrink-0">{item.icon}</span>
-            <span className="truncate">{item.label}</span>
+            <span className="truncate">{t(item.labelKey)}</span>
           </Link>
           )
         })}
@@ -248,7 +252,7 @@ export function Sidebar({ items, children, notificationsTo }: SidebarProps) {
           </div>
         </div>
         <Button variant="ghost" size="sm" className="w-full justify-center bg-white text-stone-700 shadow-sm hover:bg-red-100 hover:text-red-700 font-medium transition-all" onClick={handleLogout}>
-          Sair
+          {t('nav.logout')}
         </Button>
       </div>
     </>
@@ -284,7 +288,7 @@ export function Sidebar({ items, children, notificationsTo }: SidebarProps) {
           {/* A logo é o controle da sidebar: mesma ação do antigo botão hambúrguer. */}
           <button
             onClick={toggle}
-            aria-label={menuOpen ? 'Fechar menu' : 'Abrir menu'}
+            aria-label={menuOpen ? t('nav.closeMenu') : t('nav.openMenu')}
             aria-expanded={menuOpen}
             className="-ml-2 rounded-xl p-1 hover:bg-white/40 active:scale-95 transition-all"
           >

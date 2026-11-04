@@ -3,7 +3,8 @@ import { Check, Search } from 'lucide-react';
 import { getUsers } from '../api/users';
 import { getStudents } from '../api/students';
 import { apiErrorMessage } from '../api/errors';
-import { roleLabel } from '../domain/userAdmin';
+import { roleLabelKey } from '../domain/userAdmin';
+import { useLocale } from '../i18n/LocaleContext';
 import { Skeleton } from './Skeleton';
 import { matches } from '../utils/search';
 import type { ManagedUser, Student } from '../types';
@@ -58,6 +59,13 @@ export function UserPicker({
   const [query, setQuery] = useState('');
   const [users, setUsers] = useState<ManagedUser[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const { t } = useLocale();
+
+  /** Papel desconhecido é mostrado como veio: só rótulos conhecidos têm texto no catálogo. */
+  const labelFor = (role: string) => {
+    const key = roleLabelKey(role);
+    return key ? t(key) : role;
+  };
 
   useEffect(() => {
     let active = true;
@@ -66,12 +74,13 @@ export function UserPicker({
         if (active) setUsers(list.filter((user) => user.isActive));
       })
       .catch((err) => {
-        if (active) setError(apiErrorMessage(err, 'Não foi possível carregar os usuários.'));
+        if (active) setError(apiErrorMessage(err, t('pick.usersLoadError')));
       });
     return () => {
       active = false;
     };
-  }, []);
+    // `t` entra porque a mensagem de erro é traduzida; trocar de idioma refaz a busca.
+  }, [t]);
 
   const visible = users?.filter((user) => matches(`${user.name} ${user.email}`, query)) ?? [];
   const isSelected = (id: string) => selected.some((user) => user.id === id);
@@ -82,7 +91,7 @@ export function UserPicker({
 
   return (
     <div className="space-y-2">
-      <SearchField value={query} onChange={setQuery} placeholder="Buscar por nome ou e-mail" />
+      <SearchField value={query} onChange={setQuery} placeholder={t('pick.searchUsers')} />
 
       {error ? (
         <p role="alert" className="text-sm text-red-700">{error}</p>
@@ -96,7 +105,7 @@ export function UserPicker({
         </div>
       ) : visible.length === 0 ? (
         <p className="rounded-lg border border-gray-200/80 bg-white/60 px-3 py-4 text-center text-sm text-gray-600">
-          Nenhum usuário encontrado.
+          {t('pick.noUsers')}
         </p>
       ) : (
         <div className={listClass}>
@@ -122,7 +131,7 @@ export function UserPicker({
                   <span className="block truncate font-medium text-gray-800">{user.name}</span>
                   <span className="block truncate text-xs text-gray-600">{user.email}</span>
                 </span>
-                <span className="shrink-0 text-xs text-gray-500">{roleLabel(user.role)}</span>
+                <span className="shrink-0 text-xs text-gray-500">{labelFor(user.role)}</span>
               </button>
             );
           })}
@@ -131,10 +140,11 @@ export function UserPicker({
 
       <p className="text-xs text-gray-600">
         {selected.length === 0
-          ? 'Nenhum destinatário selecionado.'
-          : `${selected.length} selecionado${selected.length === 1 ? '' : 's'}: ${selected
-              .map((user) => user.name)
-              .join(', ')}`}
+          ? t('pick.noRecipient')
+          : t(selected.length === 1 ? 'pick.selectedOne' : 'pick.selectedMany', {
+              count: selected.length,
+              names: selected.map((user) => user.name).join(', '),
+            })}
       </p>
     </div>
   );
@@ -147,6 +157,7 @@ export function StudentPicker({
   selected: Student | null;
   onChange: (student: Student | null) => void;
 }) {
+  const { t } = useLocale();
   const [query, setQuery] = useState('');
   // Guarda o termo junto dos resultados: resultado de uma busca antiga não é "carregando"
   // o termo atual, e isso é derivado no render em vez de escrito de dentro do efeito.
@@ -170,7 +181,7 @@ export function StudentPicker({
         .catch((err) => {
           if (!active) return;
           setFound({ term, items: [] });
-          setError(apiErrorMessage(err, 'Não foi possível buscar os alunos.'));
+          setError(apiErrorMessage(err, t('pick.studentsLoadError')));
         });
     }, 300);
 
@@ -178,7 +189,8 @@ export function StudentPicker({
       active = false;
       clearTimeout(timer);
     };
-  }, [term]);
+    // `t` entra pela mesma razão do UserPicker: o erro é traduzido.
+  }, [term, t]);
 
   const results = found?.term === term ? found.items : null;
   const searching = term.length >= 2 && results === null;
@@ -197,7 +209,7 @@ export function StudentPicker({
           onClick={() => onChange(null)}
           className="shrink-0 text-sm font-medium text-violet-700 hover:text-violet-800"
         >
-          Trocar
+          {t('pick.change')}
         </button>
       </div>
     );
@@ -205,21 +217,21 @@ export function StudentPicker({
 
   return (
     <div className="space-y-2">
-      <SearchField value={query} onChange={setQuery} placeholder="Buscar aluno por nome" />
+      <SearchField value={query} onChange={setQuery} placeholder={t('pick.searchStudents')} />
 
       {error ? (
         <p role="alert" className="text-sm text-red-700">{error}</p>
       ) : term.length < 2 ? (
         <p className="rounded-lg border border-gray-200/80 bg-white/60 px-3 py-4 text-center text-sm text-gray-600">
-          Digite ao menos 2 letras para buscar.
+          {t('pick.minChars')}
         </p>
       ) : searching ? (
         <p className="rounded-lg border border-gray-200/80 bg-white/60 px-3 py-4 text-center text-sm text-gray-600">
-          Buscando…
+          {t('pick.searching')}
         </p>
       ) : results && results.length === 0 ? (
         <p className="rounded-lg border border-gray-200/80 bg-white/60 px-3 py-4 text-center text-sm text-gray-600">
-          Nenhum aluno encontrado.
+          {t('pick.noStudents')}
         </p>
       ) : (
         <div className={listClass}>

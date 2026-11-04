@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { actionLabel, actionsFor } from '../src/domain/enrollmentStatus.ts';
+import { actionLabelKey, actionsFor } from '../src/domain/enrollmentStatus.ts';
+import { statusLabelKey } from '../src/domain/statusLabels.ts';
 
 test('reabertura aparece apenas para Admin', () => {
   assert.deepEqual(actionsFor('Aprovado', 'Admin'), ['reopen']);
@@ -19,6 +20,10 @@ test('as ações do fluxo normal não mudaram com a reabertura', () => {
   assert.deepEqual(actionsFor('DocumentacaoPendente', 'Staff'), ['approve', 'reject', 'cancel']);
 });
 
-test('rótulo da reabertura', () => {
-  assert.equal(actionLabel('reopen'), 'Reabrir');
+test('rótulos são chaves do catálogo, não texto preso ao idioma', () => {
+  assert.equal(actionLabelKey('reopen'), 'enrollment.action.reopen');
+  assert.equal(statusLabelKey('Pendente'), 'enrollment.status.pending');
+  assert.equal(statusLabelKey('DocumentacaoPendente'), 'enrollment.status.documentsRequired');
+  // Estado fora da tabela não recebe rótulo inventado.
+  assert.equal(statusLabelKey('Desconhecido'), null);
 });

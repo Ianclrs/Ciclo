@@ -12,6 +12,7 @@ import { SkeletonRows } from '../../components/Skeleton';
 import * as api from '../../api/academic';
 import { apiErrorMessage } from '../../api/errors';
 import { formatDateOnly, parseGradeInput } from '../../domain/academic';
+import { useLocale } from '../../i18n/LocaleContext';
 import type { Assessment, SchoolClass, Student } from '../../types';
 
 /**
@@ -25,6 +26,7 @@ import type { Assessment, SchoolClass, Student } from '../../types';
  * versão. Campo vazio significa "ainda não lançada nesta sessão", e relançar sobrescreve.
  */
 export default function GradeEntry() {
+  const { language, locale, t } = useLocale();
   const [classes, setClasses] = useState<SchoolClass[]>([]);
   const [assessments, setAssessments] = useState<Assessment[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
@@ -54,13 +56,13 @@ export default function GradeEntry() {
       })
       .catch((err) => {
         if (!active) return;
-        setError(apiErrorMessage(err, 'Não foi possível carregar as turmas.'));
+        setError(apiErrorMessage(err, t('grades.classesError'), language));
         setLoadingClasses(false);
       });
     return () => {
       active = false;
     };
-  }, [reloadKey]);
+  }, [reloadKey, t, language]);
 
   // Trocar de turma recarrega avaliações e roster. A limpeza das notas fica no manipulador do
   // seletor, e não no efeito: elas pertenciam à turma anterior e o efeito não é evento.
@@ -80,14 +82,14 @@ export default function GradeEntry() {
       })
       .catch((err) => {
         if (!active) return;
-        setError(apiErrorMessage(err, 'Não foi possível carregar a turma.'));
+        setError(apiErrorMessage(err, t('grades.rosterError'), language));
         setLoadingRoster(false);
       });
 
     return () => {
       active = false;
     };
-  }, [classId, reloadKey]);
+  }, [classId, reloadKey, t, language]);
 
   const reload = () => {
     setError(null);
@@ -109,7 +111,7 @@ export default function GradeEntry() {
   const save = async (student: Student) => {
     if (!assessmentId) return;
 
-    const parsed = parseGradeInput(grades[student.id] ?? '');
+    const parsed = parseGradeInput(grades[student.id] ?? '', t);
     if (!parsed.ok) {
       setFieldErrors((current) => ({ ...current, [student.id]: parsed.error }));
       return;
@@ -123,10 +125,10 @@ export default function GradeEntry() {
         delete next[student.id];
         return next;
       });
-      toast.success(`Nota de ${student.nome} salva.`);
+      toast.success(t('grades.saved', { name: student.nome }));
     } catch (err) {
       // O valor digitado permanece no campo: a tela só informa a falha.
-      toast.error(apiErrorMessage(err, `Não foi possível salvar a nota de ${student.nome}.`));
+      toast.error(apiErrorMessage(err, t('grades.saveError', { name: student.nome }), language));
     } finally {
       setSavingId(null);
     }
@@ -136,10 +138,7 @@ export default function GradeEntry() {
 
   return (
     <div>
-      <PageHeader
-        title="Lançamento de notas"
-        subtitle="Escolha a turma e a avaliação, depois grave a nota de cada aluno."
-      />
+      <PageHeader title={t('grades.title')} subtitle={t('grades.subtitle')} />
 
       {error ? (
         <LoadError message={error} onRetry={reload} />
@@ -150,9 +149,9 @@ export default function GradeEntry() {
       ) : classes.length === 0 ? (
         <Card tone="glass">
           <p className="py-2 text-sm text-gray-600">
-            Nenhuma turma cadastrada. Cadastre a estrutura acadêmica primeiro em{' '}
+            {t('grades.noClasses')}{' '}
             <Link to="/admin/academico" className="text-indigo-600 hover:underline">
-              Estrutura acadêmica
+              {t('grades.academicStructure')}
             </Link>
             .
           </p>
@@ -161,7 +160,7 @@ export default function GradeEntry() {
         <Card tone="glass">
           <div className="mb-5 flex flex-wrap gap-4">
             <Select
-              label="Turma"
+              label={t('students.field.class')}
               value={classId}
               onChange={(event) => changeClass(event.target.value)}
             >
@@ -172,18 +171,19 @@ export default function GradeEntry() {
               ))}
             </Select>
             <Select
-              label="Avaliação"
+              label={t('grades.field.assessment')}
               value={assessmentId}
               disabled={assessments.length === 0}
               onChange={(event) => setAssessmentId(event.target.value)}
             >
               {assessments.length === 0 ? (
-                <option value="">Nenhuma avaliação nesta turma</option>
+                <option value="">{t('grades.noAssessment')}</option>
               ) : (
                 assessments.map((item) => (
                   <option key={item.id} value={item.id}>
-                    {item.title} · {formatDateOnly(item.date)} · peso {item.weight}
-                    {item.isRecovery ? ' · recuperação' : ''}
+                    {item.title} · {formatDateOnly(item.date, locale)} · {t('grades.weight')}{' '}
+                    {item.weight}
+                    {item.isRecovery ? ` · ${t('grades.recovery')}` : ''}
                   </option>
                 ))
               )}
@@ -194,21 +194,21 @@ export default function GradeEntry() {
             <SkeletonRows rows={5} />
           ) : assessments.length === 0 ? (
             <p className="py-2 text-sm text-gray-500">
-              Esta turma não tem avaliações. Cadastre uma em{' '}
+              {t('grades.noAssessments')}{' '}
               <Link to="/admin/academico" className="text-indigo-600 hover:underline">
-                Estrutura acadêmica
+                {t('grades.academicStructure')}
               </Link>
               .
             </p>
           ) : students.length === 0 ? (
-            <p className="py-2 text-sm text-gray-500">Nenhum aluno nesta turma.</p>
+            <p className="py-2 text-sm text-gray-500">{t('grades.noStudents')}</p>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b text-left">
-                    <th className="py-2 whitespace-nowrap">Aluno</th>
-                    <th className="py-2 whitespace-nowrap">Nota (0 a 10)</th>
+                    <th className="py-2 whitespace-nowrap">{t('students.col.student')}</th>
+                    <th className="py-2 whitespace-nowrap">{t('grades.col.grade')}</th>
                     <th className="py-2 whitespace-nowrap" />
                   </tr>
                 </thead>
@@ -218,7 +218,7 @@ export default function GradeEntry() {
                       <td className="py-2 font-medium whitespace-nowrap">{student.nome}</td>
                       <td className="py-2">
                         <Input
-                          aria-label={`Nota de ${student.nome}`}
+                          aria-label={t('grades.gradeAria', { name: student.nome })}
                           inputMode="decimal"
                           className="w-24"
                           value={grades[student.id] ?? ''}
@@ -235,7 +235,7 @@ export default function GradeEntry() {
                           onClick={() => save(student)}
                         >
                           <Save size={14} className="mr-1" />
-                          {savingId === student.id ? 'Salvando…' : 'Salvar'}
+                          {savingId === student.id ? t('common.saving') : t('common.save')}
                         </Button>
                       </td>
                     </tr>
@@ -246,10 +246,7 @@ export default function GradeEntry() {
           )}
 
           {selectedAssessment && (
-            <p className="mt-4 text-xs text-gray-500">
-              Notas já lançadas antes desta sessão não aparecem aqui — a API ainda não expõe leitura
-              por avaliação. Lançar novamente a mesma nota atualiza o registro.
-            </p>
+            <p className="mt-4 text-xs text-gray-500">{t('grades.footnote')}</p>
           )}
         </Card>
       )}

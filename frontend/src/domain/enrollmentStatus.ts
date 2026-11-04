@@ -1,4 +1,5 @@
 import type { BadgeVariant } from '../components/badgeStyles';
+import type { MessageKey } from '../i18n/messages';
 
 /**
  * Máquina de estados da matrícula, do lado do frontend.
@@ -54,21 +55,27 @@ const ACTIONS: Record<EnrollmentStatus, EnrollmentAction[]> = {
   Cancelado: ['reopen'],
 };
 
-const ACTION_LABELS: Record<EnrollmentAction, string> = {
-  submit: 'Enviar',
-  approve: 'Aprovar',
-  reject: 'Rejeitar',
-  cancel: 'Cancelar',
-  reopen: 'Reabrir',
+const ACTION_LABEL_KEYS: Record<EnrollmentAction, MessageKey> = {
+  submit: 'enrollment.action.submit',
+  approve: 'enrollment.action.approve',
+  reject: 'enrollment.action.reject',
+  cancel: 'enrollment.action.cancel',
+  reopen: 'enrollment.action.reopen',
 };
+
+/**
+ * Rótulo de cada estado. O texto mora no catálogo (`i18n/messages.ts`) e o mapa valor → chave
+ * vive em `domain/statusLabels.ts`, junto dos demais status da interface: este módulo cuida da
+ * máquina de estados, não do vocabulário de apresentação.
+ */
 
 /** Só `Rejeitar` exige motivo (10 a 500 caracteres) e por isso abre modal em vez de agir direto. */
 export function actionRequiresReason(action: EnrollmentAction): boolean {
   return action === 'reject';
 }
 
-export function actionLabel(action: EnrollmentAction): string {
-  return ACTION_LABELS[action];
+export function actionLabelKey(action: EnrollmentAction): MessageKey {
+  return ACTION_LABEL_KEYS[action];
 }
 
 export function statusVariant(status: string): BadgeVariant {

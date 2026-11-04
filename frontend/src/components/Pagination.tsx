@@ -1,3 +1,5 @@
+import { useLocale } from '../i18n/LocaleContext';
+
 interface PaginationProps {
   page: number;
   pageSize: number;
@@ -24,6 +26,8 @@ const navButton =
   'px-3 py-1.5 text-sm rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors';
 
 export function Pagination({ page, pageSize, total, onPageChange }: PaginationProps) {
+  const { t } = useLocale();
+
   if (total === 0) return null;
 
   const totalPages = Math.ceil(total / pageSize);
@@ -33,14 +37,17 @@ export function Pagination({ page, pageSize, total, onPageChange }: PaginationPr
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 mt-5 pt-4 border-t border-gray-100">
       <p className="text-sm text-gray-500">
-        Mostrando <span className="font-medium text-gray-700">{firstItem}–{lastItem}</span> de{' '}
-        <span className="font-medium text-gray-700">{total}</span>
+        {t('pagination.showing')}{' '}
+        <span className="font-medium text-gray-700">
+          {firstItem}–{lastItem}
+        </span>{' '}
+        {t('pagination.of')} <span className="font-medium text-gray-700">{total}</span>
       </p>
 
       {totalPages > 1 && (
         <div className="flex items-center gap-1">
           <button type="button" onClick={() => onPageChange(page - 1)} disabled={page <= 1} className={navButton}>
-            Anterior
+            {t('pagination.previous')}
           </button>
 
           {visiblePages(page, totalPages).map((p, index) =>
@@ -71,7 +78,7 @@ export function Pagination({ page, pageSize, total, onPageChange }: PaginationPr
             disabled={page >= totalPages}
             className={navButton}
           >
-            Próximo
+            {t('pagination.next')}
           </button>
         </div>
       )}

@@ -1,4 +1,4 @@
-import { createContext, useContext, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { readStoredLanguage, resolveLocale, storeLanguage, type Language } from './locale.ts';
 import { t as translate, type MessageKey } from './messages.ts';
 
@@ -26,17 +26,32 @@ export function LocaleProvider({ country = null, children }: { country?: string 
     [country, preference],
   );
 
+  /**
+   * Identidade estável: o seletor de idioma é usado como dependência de efeito em telas que
+   * carregam dados, e uma função recriada a cada render provocaria recarga sem mudança real.
+   */
+  const setLanguage = useCallback((language: Language) => {
+    // Estado primeiro, storage depois: uma escrita bloqueada não pode deixar a interface no
+    // idioma anterior (FR-001, modo de falha).
+    setPreference(language);
+    storeLanguage(language);
+  }, []);
+
   const value = useMemo<LocaleContextValue>(() => ({
     language: resolved.language,
     locale: resolved.locale,
     t: (key, params) => translate(key, resolved.language, params),
-    setLanguage: (language) => {
-      // Estado primeiro, storage depois: uma escrita bloqueada não pode deixar a interface no
-      // idioma anterior (FR-001, modo de falha).
-      setPreference(language);
-      storeLanguage(language);
-    },
-  }), [resolved]);
+    setLanguage,
+  }), [resolved, setLanguage]);
+
+  /**
+   * O idioma da página segue o da interface: sem isso o leitor de tela anuncia texto em inglês
+   * com pronúncia de português e o corretor do navegador marca tudo. É também o que `:lang()` e
+   * o hifenizador consultam.
+   */
+  useEffect(() => {
+    document.documentElement.lang = resolved.locale;
+  }, [resolved.locale]);
 
   return <LocaleContext.Provider value={value}>{children}</LocaleContext.Provider>;
 }

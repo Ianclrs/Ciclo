@@ -1,6 +1,8 @@
 // Bandeiras em SVG inline (sem dependências externas e sem emoji, que não
 // renderiza de forma consistente no Windows).
 
+import { useLocale } from '../i18n/LocaleContext';
+
 interface CountryFlagProps {
   code: string;
   className?: string;
@@ -23,12 +25,13 @@ const US_STRIPE_H = 20 / 13;
 const US_CANTON_H = (7 * 20) / 13;
 
 export function CountryFlag({ code, className = 'w-6 h-4' }: CountryFlagProps) {
+  const { t } = useLocale();
   const classes = `inline-block rounded-[2px] ring-1 ring-black/10 shadow-sm ${className}`;
 
   switch (code) {
     case 'BR':
       return (
-        <svg viewBox="0 0 30 20" className={classes} role="img" aria-label="Brasil">
+        <svg viewBox="0 0 30 20" className={classes} role="img" aria-label={t('country.br')}>
           <rect width="30" height="20" fill="#009c3b" />
           <polygon points="15,2 28,10 15,18 2,10" fill="#fedf00" />
           <circle cx="15" cy="10" r="4.5" fill="#002776" />
@@ -43,7 +46,7 @@ export function CountryFlag({ code, className = 'w-6 h-4' }: CountryFlagProps) {
       );
     case 'US':
       return (
-        <svg viewBox="0 0 30 20" className={classes} role="img" aria-label="Estados Unidos">
+        <svg viewBox="0 0 30 20" className={classes} role="img" aria-label={t('country.us')}>
           <rect width="30" height="20" fill="#fff" />
           {[0, 1, 2, 3, 4, 5, 6].map((i) => (
             <rect key={i} y={i * 2 * US_STRIPE_H} width="30" height={US_STRIPE_H} fill="#b22234" />
@@ -62,7 +65,7 @@ export function CountryFlag({ code, className = 'w-6 h-4' }: CountryFlagProps) {
       );
     case 'PT':
       return (
-        <svg viewBox="0 0 30 20" className={classes} role="img" aria-label="Portugal">
+        <svg viewBox="0 0 30 20" className={classes} role="img" aria-label={t('country.pt')}>
           <rect width="30" height="20" fill="#da291c" />
           <rect width="12" height="20" fill="#046a38" />
           <circle cx="12" cy="10" r="4.2" fill="#ffd700" />

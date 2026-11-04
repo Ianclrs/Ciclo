@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { Skeleton } from './Skeleton';
+import { useLocale } from '../i18n/LocaleContext';
 
 interface Column<T> {
   header: string;
@@ -28,10 +29,12 @@ export function Table<T>({
   columns,
   data,
   keyExtractor,
-  emptyMessage = 'Nenhum resultado encontrado.',
+  emptyMessage,
   loading = false,
   loadingRows = DEFAULT_LOADING_ROWS,
 }: TableProps<T>) {
+  const { t } = useLocale();
+  const empty = emptyMessage ?? t('list.emptyTitle');
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
@@ -78,7 +81,7 @@ export function Table<T>({
           {!loading && data.length === 0 && (
             <tr>
               <td colSpan={columns.length} className="py-12 text-center text-gray-500">
-                {emptyMessage}
+                {empty}
               </td>
             </tr>
           )}

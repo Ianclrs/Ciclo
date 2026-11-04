@@ -5,7 +5,11 @@ import { LANGUAGE_ORDER } from '../src/i18n/locale.ts';
 import { ERROR_MESSAGES } from '../src/api/errorMessages.ts';
 import { codeMessage } from '../src/api/errors.ts';
 
-const EXPECTED_KEYS: MessageKey[] = [
+/**
+ * As onze chaves que a Spec 190 declarou. Continuam obrigatórias: o catálogo cresceu para o
+ * shell e a tela de configurações, mas nada que a spec exigia pode desaparecer.
+ */
+const LEGACY_KEYS: MessageKey[] = [
   'common.loading',
   'common.error',
   'common.empty',
@@ -19,15 +23,30 @@ const EXPECTED_KEYS: MessageKey[] = [
   'language.label',
 ];
 
+/** Chaves do catálogo em uso. `pt` é a referência: os outros dois têm de bater com ela. */
+function messageKeys(): MessageKey[] {
+  return Object.keys(MESSAGES.pt) as MessageKey[];
+}
+
 function placeholders(value: string): string[] {
   return [...value.matchAll(/\{(\w+)\}/g)].map((match) => match[1]).sort();
 }
 
-test('o catálogo declara exatamente as onze chaves da spec', () => {
+test('o catálogo mantém as onze chaves originais da spec', () => {
+  for (const language of LANGUAGE_ORDER) {
+    for (const key of LEGACY_KEYS) {
+      assert.ok(key in MESSAGES[language], `${language} perdeu a chave ${key}`);
+    }
+  }
+});
+
+test('os três idiomas declaram exatamente o mesmo conjunto de chaves', () => {
+  const reference = messageKeys().sort();
+
   for (const language of LANGUAGE_ORDER) {
     assert.deepEqual(
       Object.keys(MESSAGES[language]).sort(),
-      [...EXPECTED_KEYS].sort(),
+      reference,
       `chaves divergentes em ${language}`,
     );
   }
@@ -35,7 +54,7 @@ test('o catálogo declara exatamente as onze chaves da spec', () => {
 
 test('nenhum valor é vazio ou só espaço', () => {
   for (const language of LANGUAGE_ORDER) {
-    for (const key of EXPECTED_KEYS) {
+    for (const key of messageKeys()) {
       const value = MESSAGES[language][key];
       assert.equal(typeof value, 'string', `${language}/${key} não é texto`);
       assert.notEqual(value.trim(), '', `${language}/${key} está vazio`);
@@ -44,7 +63,7 @@ test('nenhum valor é vazio ou só espaço', () => {
 });
 
 test('os placeholders de cada chave são idênticos nos três idiomas', () => {
-  for (const key of EXPECTED_KEYS) {
+  for (const key of messageKeys()) {
     const reference = placeholders(MESSAGES.pt[key]);
     for (const language of LANGUAGE_ORDER) {
       assert.deepEqual(

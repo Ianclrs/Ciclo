@@ -5,7 +5,7 @@ import { LocaleProvider } from './i18n/LocaleContext';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { SplashGate } from './components/SplashGate';
-import { Sidebar } from './components/Sidebar';
+import { Sidebar, type SidebarItem } from './components/Sidebar';
 import DocumentTitle from './components/DocumentTitle';
 import { LayoutDashboard, Users, FileText, Bell, GraduationCap, UserCog, BookOpen, Settings, Shield } from 'lucide-react';
 import { useAuth } from './hooks/useAuth';
@@ -32,29 +32,33 @@ import ChildDocuments from './pages/parent/ChildDocuments';
 import NotificationInbox from './pages/parent/NotificationInbox';
 import PrivacyCenter from './pages/parent/PrivacyCenter';
 
-const adminItems = [
-  { label: 'Dashboard', path: '/admin', icon: <LayoutDashboard size={20} />, color: 'violet' as const },
-  { label: 'Alunos', path: '/admin/students', icon: <Users size={20} />, color: 'blue' as const },
-  { label: 'Matrículas', path: '/admin/enrollments', icon: <GraduationCap size={20} />, color: 'green' as const },
-  { label: 'Documentos', path: '/admin/documents', icon: <FileText size={20} />, color: 'amber' as const },
-  { label: 'Acadêmico', path: '/admin/academico', icon: <BookOpen size={20} />, color: 'cyan' as const },
-  { label: 'Notificações', path: '/admin/notifications', icon: <Bell size={20} />, color: 'red' as const },
+/**
+ * Menu por perfil. O rótulo é uma chave do catálogo (`i18n/messages.ts`), resolvida pela
+ * `Sidebar` com o idioma ativo: o mesmo menu aparece em pt, en e es sem lista duplicada.
+ */
+const adminItems: SidebarItem[] = [
+  { labelKey: 'nav.dashboard', path: '/admin', icon: <LayoutDashboard size={20} />, color: 'violet' },
+  { labelKey: 'nav.students', path: '/admin/students', icon: <Users size={20} />, color: 'blue' },
+  { labelKey: 'nav.enrollments', path: '/admin/enrollments', icon: <GraduationCap size={20} />, color: 'green' },
+  { labelKey: 'nav.documents', path: '/admin/documents', icon: <FileText size={20} />, color: 'amber' },
+  { labelKey: 'nav.academic', path: '/admin/academico', icon: <BookOpen size={20} />, color: 'cyan' },
+  { labelKey: 'nav.notifications', path: '/admin/notifications', icon: <Bell size={20} />, color: 'red' },
 ];
 
-const parentItems = [
-  { label: 'Dashboard', path: '/parent', icon: <LayoutDashboard size={20} />, color: 'violet' as const },
-  { label: 'Notificações', path: '/parent/notifications', icon: <Bell size={20} />, color: 'red' as const },
-  { label: 'Privacidade', path: '/parent/privacy', icon: <Shield size={20} />, color: 'indigo' as const },
+const parentItems: SidebarItem[] = [
+  { labelKey: 'nav.dashboard', path: '/parent', icon: <LayoutDashboard size={20} />, color: 'violet' },
+  { labelKey: 'nav.notifications', path: '/parent/notifications', icon: <Bell size={20} />, color: 'red' },
+  { labelKey: 'nav.privacy', path: '/parent/privacy', icon: <Shield size={20} />, color: 'indigo' },
 ];
 
 function AdminLayout() {
   const { user } = useAuth();
-  const items = user?.role === 'Admin'
+  const items: SidebarItem[] = user?.role === 'Admin'
     ? [
         ...adminItems,
-        { label: 'Usuários', path: '/admin/users', icon: <UserCog size={20} />, color: 'teal' as const },
-        { label: 'Configurações', path: '/admin/settings', icon: <Settings size={20} />, color: 'indigo' as const },
-        { label: 'Privacidade', path: '/admin/privacy', icon: <Shield size={20} />, color: 'sky' as const },
+        { labelKey: 'nav.users', path: '/admin/users', icon: <UserCog size={20} />, color: 'teal' },
+        { labelKey: 'nav.settings', path: '/admin/settings', icon: <Settings size={20} />, color: 'indigo' },
+        { labelKey: 'nav.privacy', path: '/admin/privacy', icon: <Shield size={20} />, color: 'sky' },
       ]
     : adminItems;
 

@@ -30,24 +30,26 @@ function formatAverage(media: number, locale: string): string {
 }
 
 function PerformanceLine({ value, loading }: { value: Performance | null | undefined; loading: boolean }) {
-  const { locale } = useLocale();
+  const { locale, t } = useLocale();
 
   if (loading) {
     return <Skeleton className="mt-4 h-4 w-32" />;
   }
   // null (falha na busca) e undefined (ainda não buscado) são ambos "indisponível".
   if (value === null || value === undefined) {
-    return <p className="mt-4 text-xs text-gray-400">Desempenho indisponível.</p>;
+    return <p className="mt-4 text-xs text-gray-400">{t('parent.performanceUnavailable')}</p>;
   }
   if (value.media === null) {
-    return <p className="mt-4 text-xs text-gray-400">Sem notas lançadas.</p>;
+    return <p className="mt-4 text-xs text-gray-400">{t('parent.noGrades')}</p>;
   }
   return (
     <p className="mt-4 text-sm text-gray-600">
-      Média <span className="font-semibold text-gray-900">{formatAverage(value.media, locale)}</span>
+      {t('parent.average')}{' '}
+      <span className="font-semibold text-gray-900">{formatAverage(value.media, locale)}</span>
       <span className="text-gray-400">
         {' '}
-        · {value.count} disciplina{value.count === 1 ? '' : 's'}
+        ·{' '}
+        {t(value.count === 1 ? 'parent.subjectOne' : 'parent.subjectMany', { count: value.count })}
       </span>
     </p>
   );
@@ -55,6 +57,7 @@ function PerformanceLine({ value, loading }: { value: Performance | null | undef
 
 export default function ParentDashboard() {
   const { user } = useAuth();
+  const { t } = useLocale();
   const [data, setData] = useState<ParentDashboardData | null>(null);
   // Valor `null` no mapa = a busca de notas daquele filho falhou (falha isolada).
   const [performance, setPerformance] = useState<Record<string, Performance | null>>({});
@@ -109,29 +112,29 @@ export default function ParentDashboard() {
   return (
     <div>
       <div className="mb-6">
-        <h2 className="text-3xl font-bold tracking-tight text-gray-900">Meus Filhos</h2>
+        <h2 className="text-3xl font-bold tracking-tight text-gray-900">{t('parent.title')}</h2>
         {user && (
           <p className="mt-1 text-base text-gray-700">
-            Olá, {user.name}. Acompanhe a vida escolar dos seus filhos.
+            {t('parent.greeting', { name: user.name })}
           </p>
         )}
       </div>
 
       {failed && (
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
-          <p className="text-sm text-amber-800">Não foi possível carregar os dados.</p>
+          <p className="text-sm text-amber-800">{t('parent.loadFailed')}</p>
           <Button variant="secondary" size="sm" onClick={retry}>
-            Tentar de novo
+            {t('common.retry')}
           </Button>
         </div>
       )}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-        <StatCard label="Filhos vinculados" value={data?.totalChildren ?? 0} icon={Users} accent="violet" loading={loading} />
-        <StatCard label="Matrículas ativas" value={data?.activeEnrollments ?? 0} icon={GraduationCap} accent="green" loading={loading} />
-        <StatCard label="Docs Pendentes" value={data?.pendingDocuments ?? 0} icon={FileText} accent="amber" loading={loading} />
+        <StatCard label={t('parent.childrenLinked')} value={data?.totalChildren ?? 0} icon={Users} accent="violet" loading={loading} />
+        <StatCard label={t('parent.activeEnrollments')} value={data?.activeEnrollments ?? 0} icon={GraduationCap} accent="green" loading={loading} />
+        <StatCard label={t('parent.pendingDocs')} value={data?.pendingDocuments ?? 0} icon={FileText} accent="amber" loading={loading} />
         <StatCard
-          label="Não Lidas"
+          label={t('parent.unread')}
           value={data?.unreadNotifications ?? 0}
           icon={Bell}
           accent="red"
@@ -142,10 +145,10 @@ export default function ParentDashboard() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6">
         <div className="lg:col-span-2">
-          <h3 className="font-semibold text-gray-800 mb-4">Meus filhos</h3>
+          <h3 className="font-semibold text-gray-800 mb-4">{t('parent.myChildren')}</h3>
           {children.length === 0 ? (
             <Card tone="glass">
-              <p className="text-gray-500 text-center">Nenhum filho vinculado.</p>
+              <p className="text-gray-500 text-center">{t('parent.noChildren')}</p>
             </Card>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
@@ -167,7 +170,9 @@ export default function ParentDashboard() {
                     <div className="flex gap-2 flex-wrap">
                       {child.enrollmentStatus && <StatusBadge status={child.enrollmentStatus} variant="success" />}
                       {child.pendingDocuments > 0 && (
-                        <Badge variant="warning">{`${child.pendingDocuments} doc(s) pendente(s)`}</Badge>
+                        <Badge variant="warning">
+                          {t('parent.pendingDocsBadge', { count: child.pendingDocuments })}
+                        </Badge>
                       )}
                     </div>
                     <PerformanceLine value={performance[child.studentId]} loading={loading} />

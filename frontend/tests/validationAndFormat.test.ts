@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { MOTIVO_MAX_LENGTH, MOTIVO_MIN_LENGTH, motivoValidationError } from '../src/domain/validation.ts';
+import { t } from '../src/i18n/messages.ts';
+
+const translatePt = (key, params) => t(key, 'pt', params);
 import {
   formatCurrency,
   formatDate,
@@ -10,16 +13,16 @@ import {
 } from '../src/utils/format.ts';
 
 test('motivo aceito apenas na faixa que o backend aceita', () => {
-  assert.equal(motivoValidationError('   '), 'Informe o motivo da rejeição.');
+  assert.equal(motivoValidationError('   ', translatePt), 'Informe o motivo da rejeição.');
   assert.equal(
-    motivoValidationError('curto'),
+    motivoValidationError('curto', translatePt),
     `O motivo deve ter ao menos ${MOTIVO_MIN_LENGTH} caracteres.`,
   );
-  assert.equal(motivoValidationError('a'.repeat(9)), `O motivo deve ter ao menos ${MOTIVO_MIN_LENGTH} caracteres.`);
-  assert.equal(motivoValidationError('a'.repeat(MOTIVO_MIN_LENGTH)), null);
-  assert.equal(motivoValidationError('a'.repeat(MOTIVO_MAX_LENGTH)), null);
+  assert.equal(motivoValidationError('a'.repeat(9), translatePt), `O motivo deve ter ao menos ${MOTIVO_MIN_LENGTH} caracteres.`);
+  assert.equal(motivoValidationError('a'.repeat(MOTIVO_MIN_LENGTH), translatePt), null);
+  assert.equal(motivoValidationError('a'.repeat(MOTIVO_MAX_LENGTH), translatePt), null);
   assert.equal(
-    motivoValidationError('a'.repeat(MOTIVO_MAX_LENGTH + 1)),
+    motivoValidationError('a'.repeat(MOTIVO_MAX_LENGTH + 1), translatePt),
     `O motivo deve ter no máximo ${MOTIVO_MAX_LENGTH} caracteres.`,
   );
 });

@@ -9,7 +9,8 @@ import { LoadError } from '../../components/LoadError';
 import { SkeletonRows } from '../../components/Skeleton';
 import * as api from '../../api/enrollments';
 import { apiErrorMessage, codeMessage } from '../../api/errors';
-import { describeOutcome, selectableStudentIds } from '../../domain/renewalBatch';
+import { outcomeLabelKey, selectableStudentIds } from '../../domain/renewalBatch';
+import { useLocale } from '../../i18n/LocaleContext';
 import type { BadgeVariant } from '../../components/badgeStyles';
 import type {
   EnrollmentPeriod,
@@ -38,6 +39,7 @@ const OUTCOME_VARIANTS: Record<RenewalOutcome, BadgeVariant> = {
 };
 
 export default function EnrollmentRenewal() {
+  const { language, t } = useLocale();
   const [periods, setPeriods] = useState<EnrollmentPeriod[]>([]);
   const [loadingPeriods, setLoadingPeriods] = useState(true);
   const [periodsError, setPeriodsError] = useState<string | null>(null);
@@ -64,13 +66,13 @@ export default function EnrollmentRenewal() {
       })
       .catch((err) => {
         if (!active) return;
-        setPeriodsError(apiErrorMessage(err, 'Não foi possível carregar os períodos.'));
+        setPeriodsError(apiErrorMessage(err, t('renewal.periodsError'), language));
         setLoadingPeriods(false);
       });
     return () => {
       active = false;
     };
-  }, [reloadKey]);
+  }, [reloadKey, t, language]);
 
   useEffect(() => {
     if (!periodId) return;
@@ -84,12 +86,12 @@ export default function EnrollmentRenewal() {
       })
       .catch((err) => {
         if (!active) return;
-        setPreviewError(apiErrorMessage(err, 'Não foi possível carregar a prévia.'));
+        setPreviewError(apiErrorMessage(err, t('renewal.previewError'), language));
       });
     return () => {
       active = false;
     };
-  }, [periodId, reloadKey]);
+  }, [periodId, reloadKey, t, language]);
 
   const loadingPreview = periodId !== '' && preview === undefined && previewError === null;
 
@@ -125,7 +127,7 @@ export default function EnrollmentRenewal() {
     const studentIds = selectableStudentIds(chosen);
     if (studentIds.length === 0) {
       // Sem seleção não há requisição: o lote não deve ser disparado "no vazio".
-      toast.error('Selecione ao menos um aluno elegível.');
+      toast.error(t('renewal.noSelection'));
       return;
     }
 
@@ -137,9 +139,9 @@ export default function EnrollmentRenewal() {
       });
       setResult(batch);
       setSelected(new Set());
-      toast.success('Lote processado. Confira o desfecho de cada aluno.');
+      toast.success(t('renewal.batchDone'));
     } catch (err) {
-      toast.error(apiErrorMessage(err, 'Não foi possível executar o lote.'));
+      toast.error(apiErrorMessage(err, t('renewal.batchError'), language));
     } finally {
       setSubmitting(false);
     }
@@ -149,10 +151,7 @@ export default function EnrollmentRenewal() {
 
   return (
     <div>
-      <PageHeader
-        title="Rematrícula em lote"
-        subtitle="Prévia por aluno, com os documentos reaproveitados antes de confirmar."
-      />
+      <PageHeader title={t('renewal.title')} subtitle={t('renewal.subtitle')} />
 
       {periodsError ? (
         <LoadError message={periodsError} onRetry={reload} />
@@ -162,20 +161,18 @@ export default function EnrollmentRenewal() {
         </Card>
       ) : periods.length === 0 ? (
         <Card tone="glass">
-          <p className="py-2 text-sm text-gray-500">
-            Nenhum período de matrícula cadastrado. Crie o período do próximo ano antes de renovar.
-          </p>
+          <p className="py-2 text-sm text-gray-500">{t('renewal.noPeriods')}</p>
         </Card>
       ) : (
         <div className="space-y-6">
           <Card tone="glass">
             <div className="mb-4 flex flex-wrap items-end gap-4">
               <Select
-                label="Período de destino"
+                label={t('renewal.periodLabel')}
                 value={periodId}
                 onChange={(event) => changePeriod(event.target.value)}
               >
-                <option value="">Selecione um período</option>
+                <option value="">{t('renewal.selectPeriod')}</option>
                 {periods.map((item) => (
                   <option key={item.id} value={item.id}>
                     {item.nome} · {item.anoLetivo}
@@ -184,35 +181,37 @@ export default function EnrollmentRenewal() {
               </Select>
               {preview && (
                 <Button onClick={confirm} disabled={submitting || selected.size === 0}>
-                  {submitting ? 'Processando…' : `Renovar ${selected.size} selecionado(s)`}
+                  {submitting
+                    ? t('renewal.processing')
+                    : t('renewal.renewCount', { count: selected.size })}
                 </Button>
               )}
             </div>
 
             {!periodId ? (
-              <p className="py-2 text-sm text-gray-500">Escolha um período para ver a prévia.</p>
+              <p className="py-2 text-sm text-gray-500">{t('renewal.choosePeriod')}</p>
             ) : previewError ? (
               <LoadError message={previewError} onRetry={reload} />
             ) : loadingPreview ? (
               <SkeletonRows rows={6} />
             ) : !preview || preview.items.length === 0 ? (
-              <p className="py-2 text-sm text-gray-500">
-                Nenhum aluno candidato à renovação neste período.
-              </p>
+              <p className="py-2 text-sm text-gray-500">{t('renewal.noCandidates')}</p>
             ) : (
               <>
                 <p className="mb-3 text-xs text-gray-500">
-                  {preview.items.length} aluno(s) candidato(s) · {eligibleCount} elegível(is). A
-                  prévia não grava nada: só a confirmação renova.
+                  {t('renewal.summary', {
+                    total: preview.items.length,
+                    eligible: eligibleCount,
+                  })}
                 </p>
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b text-left">
                         <th className="py-2 whitespace-nowrap" />
-                        <th className="py-2 whitespace-nowrap">Aluno</th>
-                        <th className="py-2 whitespace-nowrap">Documentos reaproveitados</th>
-                        <th className="py-2 whitespace-nowrap">Pendências</th>
+                        <th className="py-2 whitespace-nowrap">{t('students.col.student')}</th>
+                        <th className="py-2 whitespace-nowrap">{t('renewal.col.carried')}</th>
+                        <th className="py-2 whitespace-nowrap">{t('renewal.col.pending')}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -221,7 +220,7 @@ export default function EnrollmentRenewal() {
                           <td className="py-2">
                             <input
                               type="checkbox"
-                              aria-label={`Selecionar ${item.studentName}`}
+                              aria-label={t('renewal.selectStudent', { name: item.studentName })}
                               disabled={!item.eligible}
                               checked={selected.has(item.studentId)}
                               onChange={() => toggle(item.studentId, item.eligible)}
@@ -231,13 +230,13 @@ export default function EnrollmentRenewal() {
                             {item.studentName}
                             {!item.eligible && (
                               <p className="text-xs font-normal text-red-700">
-                                {codeMessage(item.blockReason, 'Não elegível para renovação.')}
+                                {codeMessage(item.blockReason, t('renewal.notEligible'), language)}
                               </p>
                             )}
                           </td>
                           <td className="py-2 text-xs text-gray-600">
                             {item.carriedDocuments.length === 0 ? (
-                              <span className="text-gray-400">Nenhum documento</span>
+                              <span className="text-gray-400">{t('renewal.noDoc')}</span>
                             ) : (
                               <ul className="space-y-1">
                                 {item.carriedDocuments.map((doc) => (
@@ -246,7 +245,7 @@ export default function EnrollmentRenewal() {
                                     <span
                                       className={doc.isExpired ? 'text-red-700' : 'text-green-700'}
                                     >
-                                      {doc.isExpired ? 'vencido' : 'reaproveitado'}
+                                      {doc.isExpired ? t('renewal.expired') : t('renewal.reused')}
                                     </span>
                                   </li>
                                 ))}
@@ -255,7 +254,7 @@ export default function EnrollmentRenewal() {
                           </td>
                           <td className="py-2 text-xs text-gray-600">
                             {item.missingDocumentTypes.length === 0 ? (
-                              <span className="text-gray-400">Nenhuma</span>
+                              <span className="text-gray-400">{t('renewal.none')}</span>
                             ) : (
                               item.missingDocumentTypes.join(', ')
                             )}
@@ -270,10 +269,14 @@ export default function EnrollmentRenewal() {
           </Card>
 
           {result && (
-            <Card tone="glass" title={`Desfecho do lote · ano letivo ${result.anoLetivo}`}>
+            <Card tone="glass" title={t('renewal.batchTitle', { year: result.anoLetivo })}>
               <p className="mb-3 text-xs text-gray-500">
-                {result.renewed} renovado(s) · {result.skipped} já existia(m) · {result.blocked}{' '}
-                bloqueado(s) · {result.failed} falha(s)
+                {t('renewal.batchSummary', {
+                  renewed: result.renewed,
+                  skipped: result.skipped,
+                  blocked: result.blocked,
+                  failed: result.failed,
+                })}
               </p>
               <ul className="divide-y text-sm">
                 {result.items.map((item) => (
@@ -283,7 +286,7 @@ export default function EnrollmentRenewal() {
                       {item.message && <p className="text-xs text-gray-500">{item.message}</p>}
                     </div>
                     <Badge variant={OUTCOME_VARIANTS[item.outcome]}>
-                      {describeOutcome(item.outcome)}
+                      {t(outcomeLabelKey(item.outcome))}
                     </Badge>
                   </li>
                 ))}

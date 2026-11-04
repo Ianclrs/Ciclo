@@ -14,11 +14,13 @@ import { Select } from '../../components/Select';
 import { Table } from '../../components/Table';
 import { EmptyState } from '../../components/EmptyState';
 import { LoadError } from '../../components/LoadError';
+import { useLocale } from '../../i18n/LocaleContext';
 import * as api from '../../api/enrollments';
 import { motivoValidationError } from '../../domain/validation';
+import { statusLabelKey } from '../../domain/statusLabels';
 import {
   ENROLLMENT_STATUSES,
-  actionLabel,
+  actionLabelKey,
   actionRequiresReason,
   actionsFor,
   statusVariant,
@@ -38,6 +40,7 @@ const INITIAL_QUERY: Query = { page: 1, periodId: '', status: '' };
 
 export default function EnrollmentList() {
   const { user } = useAuth();
+  const { t } = useLocale();
   const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
   const [periods, setPeriods] = useState<EnrollmentPeriod[]>([]);
   const [total, setTotal] = useState(0);
@@ -48,7 +51,7 @@ export default function EnrollmentList() {
   const [rejectId, setRejectId] = useState('');
   const [motivo, setMotivo] = useState('');
   const [reopenId, setReopenId] = useState('');
-  const motivoError = motivo === '' ? null : motivoValidationError(motivo);
+  const motivoError = motivo === '' ? null : motivoValidationError(motivo, t);
 
   useEffect(() => {
     let cancelled = false;
@@ -87,14 +90,15 @@ export default function EnrollmentList() {
         const list = await api.getEnrollmentPeriods();
         if (!cancelled) setPeriods(list);
       } catch {
-        if (!cancelled) toast.error('Não foi possível carregar os períodos.');
+        if (!cancelled) toast.error(t('renewal.periodsError'));
       }
     })();
 
     return () => {
       cancelled = true;
     };
-  }, []);
+    // `t` entra porque a mensagem de erro é traduzida; trocar de idioma refaz a consulta.
+  }, [t]);
 
   const applyQuery = (next: Query) => {
     setLoading(true);
@@ -151,12 +155,12 @@ export default function EnrollmentList() {
   const handleReject = async () => {
     try {
       await api.rejectEnrollment(rejectId, motivo);
-      toast.success('Matrícula rejeitada.');
+      toast.success(t('enrollments.rejectedToast'));
       setRejectId('');
       setMotivo('');
       refresh();
     } catch {
-      toast.error('Não foi possível rejeitar a matrícula.');
+      toast.error(t('enrollments.rejectError'));
     }
   };
 
@@ -182,7 +186,7 @@ export default function EnrollmentList() {
       ),
     },
     {
-      header: 'Aluno',
+      header: t('enrollments.column.student'),
       className: 'text-center',
       accessor: (enrollment: Enrollment) => (
         <div className="min-w-0">
@@ -197,7 +201,7 @@ export default function EnrollmentList() {
       ),
     },
     {
-      header: 'Status',
+      header: t('enrollments.column.status'),
       className: 'text-center',
       accessor: (enrollment: Enrollment) => (
         <StatusBadge status={enrollment.status} variant={statusVariant(enrollment.status)} />
@@ -224,7 +228,7 @@ export default function EnrollmentList() {
                 }
                 onClick={() => runAction(enrollment.id, action)}
               >
-                {actionLabel(action)}
+                {t(actionLabelKey(action))}
               </Button>
             ))}
           </div>
@@ -238,12 +242,12 @@ export default function EnrollmentList() {
   return (
     <div>
       <PageHeader
-        title="Matrículas"
-        subtitle="Acompanhe e aprove as matrículas por período."
+        title={t('nav.enrollments')}
+        subtitle={t('enrollments.listSubtitle')}
         actions={
           <Link to="/admin/enrollment-renewal">
             <Button variant="secondary" className="shrink-0">
-              Rematrícula em lote
+              {t('enrollments.batchRenewal')}
             </Button>
           </Link>
         }
@@ -252,12 +256,12 @@ export default function EnrollmentList() {
       <Card tone="glass">
         <div className="flex flex-wrap items-end gap-3 mb-5">
           <Select
-            label="Período"
+            label={t('enrollments.field.period')}
             className="min-w-[210px]"
             value={query.periodId}
             onChange={(event) => applyQuery({ ...query, page: 1, periodId: event.target.value })}
           >
-            <option value="">Todos os períodos</option>
+            <option value="">{t('enrollments.allPeriods')}</option>
             {periods.map((period) => (
               <option key={period.id} value={period.id}>
                 {period.nome} ({period.anoLetivo})
@@ -266,28 +270,31 @@ export default function EnrollmentList() {
           </Select>
 
           <Select
-            label="Status"
+            label={t('common.status')}
             className="min-w-[170px]"
             value={query.status}
             onChange={(event) => applyQuery({ ...query, page: 1, status: event.target.value })}
           >
-            <option value="">Todos os status</option>
-            {ENROLLMENT_STATUSES.map((status) => (
-              <option key={status} value={status}>
-                {status}
-              </option>
-            ))}
+            <option value="">{t('students.allStatus')}</option>
+            {ENROLLMENT_STATUSES.map((status) => {
+              const key = statusLabelKey(status);
+              return (
+                <option key={status} value={status}>
+                  {key ? t(key) : status}
+                </option>
+              );
+            })}
           </Select>
 
           {hasFilters && (
             <Button type="button" variant="ghost" onClick={() => applyQuery(INITIAL_QUERY)}>
-              Limpar
+              {t('enrollments.clear')}
             </Button>
           )}
         </div>
 
         {failed ? (
-          <LoadError message="Não foi possível carregar as matrículas. Tente novamente." onRetry={refresh} />
+          <LoadError message={t('enrollments.loadListError')} onRetry={refresh} />
         ) : loading || enrollments.length > 0 ? (
           <Table
             columns={columns}
@@ -314,14 +321,14 @@ export default function EnrollmentList() {
           setRejectId('');
           setMotivo('');
         }}
-        title="Rejeitar matrícula"
+        title={t('enrollments.rejectTitle')}
         onConfirm={handleReject}
-        confirmLabel="Rejeitar"
+        confirmLabel={t('enrollment.action.reject')}
         confirmVariant="danger"
         confirmDisabled={motivo.trim() === '' || motivoError !== null}
       >
         <Input
-          label="Motivo da rejeição"
+          label={t('enrollments.rejectReason')}
           value={motivo}
           onChange={(event) => setMotivo(event.target.value)}
         />
@@ -331,14 +338,13 @@ export default function EnrollmentList() {
       <Modal
         open={reopenId !== ''}
         onClose={() => setReopenId('')}
-        title="Reabrir matrícula"
+        title={t('enrollments.reopenTitle')}
         onConfirm={handleReopen}
-        confirmLabel="Reabrir"
+        confirmLabel={t('enrollment.action.reopen')}
         confirmVariant="primary"
       >
         <p className="text-sm text-gray-700">
-          A matrícula volta para a fila de análise. A decisão anterior é desfeita e o registro
-          guarda quem reabriu e quando.
+          {t('enrollments.reopenMessage')}
         </p>
       </Modal>
     </div>

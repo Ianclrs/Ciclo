@@ -11,6 +11,7 @@ import { EmptyState } from '../../components/EmptyState';
 import { LoadError } from '../../components/LoadError';
 import { apiErrorMessage } from '../../api/errors';
 import { useLocale } from '../../i18n/LocaleContext';
+import type { MessageKey } from '../../i18n/messages';
 import { formatDate, formatDateTime } from '../../utils/format';
 import { getStudents } from '../../api/students';
 import {
@@ -23,17 +24,17 @@ import {
 } from '../../api/privacy';
 
 /** Rótulos de exibição; o identificador da API continua sendo o nome do membro do enum. */
-const TYPE_LABELS: Record<PrivacyRequestType, string> = {
-  Export: 'Exportação',
-  Anonymization: 'Anonimização',
-  ConsentRevocation: 'Revogação de consentimento',
+const TYPE_LABEL_KEYS: Record<PrivacyRequestType, MessageKey> = {
+  Export: 'priv.type.export',
+  Anonymization: 'priv.type.anonymization',
+  ConsentRevocation: 'priv.type.revocation',
 };
 
-const STATUS_LABELS: Record<PrivacyRequestStatus, string> = {
-  Submitted: 'Aguardando decisão',
-  Approved: 'Aprovada',
-  Rejected: 'Recusada',
-  Completed: 'Concluída',
+const STATUS_LABEL_KEYS: Record<PrivacyRequestStatus, MessageKey> = {
+  Submitted: 'priv.status.submitted',
+  Approved: 'priv.status.approved',
+  Rejected: 'priv.status.rejected',
+  Completed: 'priv.status.completed',
 };
 
 const STATUS_VARIANTS: Record<PrivacyRequestStatus, 'warning' | 'info' | 'danger' | 'success'> = {
@@ -52,7 +53,7 @@ const STATUS_VARIANTS: Record<PrivacyRequestStatus, 'warning' | 'info' | 'danger
  * responde 409 e a linha continua na situação anterior.
  */
 export default function PrivacyRequests() {
-  const { locale } = useLocale();
+  const { language, locale, t } = useLocale();
   const [requests, setRequests] = useState<PrivacyRequest[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
@@ -78,13 +79,14 @@ export default function PrivacyRequests() {
       })
       .catch((err: unknown) => {
         if (!active) return;
-        setError(apiErrorMessage(err, 'Não foi possível carregar as solicitações.'));
+        setError(apiErrorMessage(err, t('priv.loadError'), language));
       });
 
     return () => {
       active = false;
     };
-  }, [reloadKey]);
+    // `t`/`language` entram porque a mensagem de erro é traduzida.
+  }, [reloadKey, t, language]);
 
   // Nome do aluno é conforto de leitura: a API devolve só o id. Se esta consulta falhar, a
   // lista continua correta e a coluna mostra o id curto — nenhuma linha desaparece por isso.
@@ -143,12 +145,12 @@ export default function PrivacyRequests() {
         legalHold: approving ? legalHold : false,
         retainUntil: approving && retainUntil !== '' ? retainUntil : null,
       });
-      toast.success(approving ? 'Solicitação aprovada.' : 'Solicitação recusada.');
+      toast.success(t(approving ? 'priv.approved' : 'priv.refused'));
       closeDecision();
       setReloadKey((key) => key + 1);
     } catch (err: unknown) {
       // A lista anterior fica na tela: o erro é da ação, não do que já foi carregado.
-      toast.error(apiErrorMessage(err, 'Não foi possível registrar a decisão.'));
+      toast.error(apiErrorMessage(err, t('priv.decisionError'), language));
       setDeciding(false);
     }
   };
@@ -158,67 +160,75 @@ export default function PrivacyRequests() {
 
     try {
       await completePrivacyRequest(request.id);
-      toast.success('Solicitação concluída.');
+      toast.success(t('priv.completed'));
       setReloadKey((key) => key + 1);
     } catch (err: unknown) {
       // Bloqueio legal em anonimização chega aqui como `legal_hold_active` (409).
-      toast.error(apiErrorMessage(err, 'Não foi possível concluir a solicitação.'));
+      toast.error(apiErrorMessage(err, t('priv.completeError'), language));
     } finally {
       setBusyId(null);
     }
   };
 
+  const typeLabel = (type: PrivacyRequestType): string => {
+    const key = TYPE_LABEL_KEYS[type];
+    return key ? t(key) : type;
+  };
+
   const columns = [
     {
-      header: 'Tipo',
-      accessor: (request: PrivacyRequest) => TYPE_LABELS[request.type] ?? request.type,
+      header: t('priv.column.type'),
+      accessor: (request: PrivacyRequest) => typeLabel(request.type),
     },
     {
-      header: 'Situação',
-      accessor: (request: PrivacyRequest) => (
-        <Badge variant={STATUS_VARIANTS[request.status] ?? 'default'}>
-          {STATUS_LABELS[request.status] ?? request.status}
-        </Badge>
-      ),
+      header: t('priv.column.status'),
+      accessor: (request: PrivacyRequest) => {
+        const key = STATUS_LABEL_KEYS[request.status];
+        return (
+          <Badge variant={STATUS_VARIANTS[request.status] ?? 'default'}>
+            {key ? t(key) : request.status}
+          </Badge>
+        );
+      },
     },
     {
-      header: 'Aluno',
+      header: t('priv.column.student'),
       accessor: (request: PrivacyRequest) => (
         <span title={request.subjectStudentId}>{subjectLabel(request)}</span>
       ),
     },
     {
-      header: 'Bloqueio legal',
+      header: t('priv.column.legalHold'),
       accessor: (request: PrivacyRequest) => (
         <Badge variant={request.legalHold ? 'danger' : 'default'}>
-          {request.legalHold ? 'Sim' : 'Não'}
+          {request.legalHold ? t('priv.yes') : t('priv.no')}
         </Badge>
       ),
     },
     {
-      header: 'Reter até',
+      header: t('priv.column.retainUntil'),
       accessor: (request: PrivacyRequest) =>
         request.retainUntil === null ? '—' : formatDate(request.retainUntil, locale),
     },
     {
-      header: 'Enviada em',
+      header: t('priv.column.submittedAt'),
       accessor: (request: PrivacyRequest) => formatDateTime(request.submittedAt, locale),
     },
     {
-      header: 'Ações',
+      header: t('priv.column.actions'),
       accessor: (request: PrivacyRequest) => {
         if (request.status === 'Submitted') {
           return (
             <div className="flex flex-wrap gap-2">
               <Button size="sm" onClick={() => openDecision(request, 'approve')}>
-                Aprovar
+                {t('priv.approve')}
               </Button>
               <Button
                 size="sm"
                 variant="danger"
                 onClick={() => openDecision(request, 'reject')}
               >
-                Recusar
+                {t('priv.reject')}
               </Button>
             </div>
           );
@@ -232,7 +242,7 @@ export default function PrivacyRequests() {
               onClick={() => handleComplete(request)}
               disabled={busyId === request.id}
             >
-              {busyId === request.id ? 'Concluindo…' : 'Concluir'}
+              {busyId === request.id ? t('priv.completing') : t('priv.complete')}
             </Button>
           );
         }
@@ -245,8 +255,8 @@ export default function PrivacyRequests() {
   return (
     <div>
       <PageHeader
-        title="Privacidade"
-        subtitle="Solicitações de titulares, decisões e execução do colégio."
+        title={t('nav.privacy')}
+        subtitle={t('priv.requestsSubtitle')}
       />
 
       {error !== null ? (
@@ -263,7 +273,7 @@ export default function PrivacyRequests() {
         </Card>
       ) : requests.length === 0 ? (
         <Card>
-          <EmptyState message="Nenhuma solicitação registrada." />
+          <EmptyState message={t('priv.emptyRequests')} />
         </Card>
       ) : (
         <Card>
@@ -274,9 +284,9 @@ export default function PrivacyRequests() {
       <Modal
         open={selected !== null}
         onClose={closeDecision}
-        title={decision === 'approve' ? 'Aprovar solicitação' : 'Recusar solicitação'}
+        title={t(decision === 'approve' ? 'priv.approveTitle' : 'priv.rejectTitle')}
         onConfirm={confirmDecision}
-        confirmLabel={decision === 'approve' ? 'Aprovar' : 'Recusar'}
+        confirmLabel={t(decision === 'approve' ? 'priv.approve' : 'priv.reject')}
         confirmVariant={decision === 'approve' ? 'primary' : 'danger'}
         confirmDisabled={deciding}
       >
@@ -284,11 +294,11 @@ export default function PrivacyRequests() {
           <p className="text-sm text-gray-700">
             {selected === null
               ? ''
-              : `${TYPE_LABELS[selected.type] ?? selected.type} — ${subjectLabel(selected)}`}
+              : `${typeLabel(selected.type)} — ${subjectLabel(selected)}`}
           </p>
 
           <Input
-            label={decision === 'approve' ? 'Parecer (opcional)' : 'Motivo da recusa (opcional)'}
+            label={t(decision === 'approve' ? 'priv.resolutionOptional' : 'priv.reasonOptional')}
             value={resolution}
             onChange={(event) => setResolution(event.target.value)}
             maxLength={500}
@@ -302,11 +312,11 @@ export default function PrivacyRequests() {
                   checked={legalHold}
                   onChange={(event) => setLegalHold(event.target.checked)}
                 />
-                Bloqueio legal: impede a anonimização até a liberação
+                {t('priv.legalHoldHint')}
               </label>
 
               <Input
-                label="Reter até (opcional)"
+                label={t('priv.holdUntil')}
                 type="date"
                 value={retainUntil}
                 onChange={(event) => setRetainUntil(event.target.value)}

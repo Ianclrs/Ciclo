@@ -1,3 +1,4 @@
+import type { MessageKey } from '../i18n/messages';
 import type { RenewalOutcome, RenewalPreviewItem } from '../types';
 
 /**
@@ -13,14 +14,14 @@ export function selectableStudentIds(items: RenewalPreviewItem[]): string[] {
   return items.filter((item) => item.eligible === true).map((item) => item.studentId);
 }
 
-const OUTCOME_LABELS: Record<RenewalOutcome, string> = {
-  Renewed: 'Renovado',
-  SkippedAlreadyExists: 'Já existia',
-  BlockedPendingDocuments: 'Documentação pendente',
-  Failed: 'Falhou',
+const OUTCOME_LABEL_KEYS: Record<RenewalOutcome, MessageKey> = {
+  Renewed: 'renewal.outcome.renewed',
+  SkippedAlreadyExists: 'renewal.outcome.skipped',
+  BlockedPendingDocuments: 'renewal.outcome.blocked',
+  Failed: 'renewal.outcome.failed',
 };
 
-/** Rótulo do desfecho por aluno. */
-export function describeOutcome(outcome: RenewalOutcome): string {
-  return OUTCOME_LABELS[outcome];
+/** Chave do rótulo do desfecho por aluno — o texto mora no catálogo, não aqui. */
+export function outcomeLabelKey(outcome: RenewalOutcome): MessageKey {
+  return OUTCOME_LABEL_KEYS[outcome];
 }

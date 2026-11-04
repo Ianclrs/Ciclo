@@ -140,7 +140,10 @@ test('cada seção do menu usa uma cor própria, existente na paleta', async () 
   const accents = new Set(
     [...(palette.match(/export type Accent = ([^;]+);/)?.[1] ?? '').matchAll(/'(\w+)'/g)].map((m) => m[1]),
   );
-  const sections = [...app.matchAll(/\{ label: '([^']+)', path: '\/admin[^']*'[\s\S]{0,120}?color: '(\w+)'/g)]
+  // O item passou a guardar a chave do catálogo (`labelKey`), não o texto: o menu acompanha o
+  // idioma sem duplicar a lista. A garantia continua a mesma — toda seção com cor da paleta e
+  // nenhuma cor repetida.
+  const sections = [...app.matchAll(/\{ labelKey: '([^']+)', path: '\/admin[^']*'[\s\S]{0,120}?color: '(\w+)'/g)]
     .map((m) => ({ label: m[1], color: m[2] }));
 
   assert.ok(sections.length >= 6, `esperava o menu de administração completo, achei ${sections.length} seções`);

@@ -11,12 +11,14 @@ import { apiErrorMessage } from '../../api/errors';
 import { LoadError } from '../../components/LoadError';
 import { Skeleton } from '../../components/Skeleton';
 import { EmptyState } from '../../components/EmptyState';
+import { useLocale } from '../../i18n/LocaleContext';
 import { formatDateTime } from '../../utils/format';
 import type { Notification } from '../../types';
 
 const PAGE_SIZE = 10;
 
 export default function NotificationInbox() {
+  const { language, locale, t } = useLocale();
   const [items, setItems] = useState<Notification[] | null>(null);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -55,12 +57,12 @@ export default function NotificationInbox() {
       })
       .catch((err) => {
         if (!active) return;
-        setError(apiErrorMessage(err, 'Não foi possível carregar as notificações.'));
+        setError(apiErrorMessage(err, t('notifications.loadError'), language));
       });
     return () => {
       active = false;
     };
-  }, [page, unreadOnly, reloadKey]);
+  }, [page, unreadOnly, reloadKey, t, language]);
 
   const handleMarkRead = async (notificationId: string) => {
     try {
@@ -71,17 +73,17 @@ export default function NotificationInbox() {
         ),
       );
     } catch (err) {
-      toast.error(apiErrorMessage(err, 'Não foi possível marcar como lida.'));
+      toast.error(apiErrorMessage(err, t('inbox.markReadError'), language));
     }
   };
 
   const handleMarkAll = async () => {
     try {
       const res = await api.markAllRead();
-      toast.success(`${res.updatedCount} marcadas como lidas.`);
+      toast.success(t('inbox.markedAll', { count: res.updatedCount }));
       setReloadKey((k) => k + 1);
     } catch (err) {
-      toast.error(apiErrorMessage(err, 'Não foi possível marcar todas como lidas.'));
+      toast.error(apiErrorMessage(err, t('inbox.markAllError'), language));
     }
   };
 
@@ -89,8 +91,10 @@ export default function NotificationInbox() {
     <div>
       <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h2 className="text-3xl font-bold tracking-tight text-gray-900">Notificações</h2>
-          <p className="mt-1 text-base text-gray-700">Avisos da escola para você.</p>
+          <h2 className="text-3xl font-bold tracking-tight text-gray-900">
+            {t('nav.notifications')}
+          </h2>
+          <p className="mt-1 text-base text-gray-700">{t('inbox.subtitle')}</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button
@@ -99,10 +103,10 @@ export default function NotificationInbox() {
             aria-pressed={unreadOnly}
             onClick={toggleUnreadOnly}
           >
-            Não lidas
+            {t('parent.unread')}
           </Button>
           <Button variant="ghost" size="sm" className="gap-1.5" onClick={handleMarkAll}>
-            <CheckCheck size={14} /> Marcar todas
+            <CheckCheck size={14} /> {t('inbox.markAll')}
           </Button>
         </div>
       </div>
@@ -110,11 +114,11 @@ export default function NotificationInbox() {
       <Card tone="glass">
         <CardHeading
           icon={Inbox}
-          title={unreadOnly ? 'Não lidas' : 'Caixa de entrada'}
+          title={t(unreadOnly ? 'parent.unread' : 'inbox.title')}
           action={
             total > 0 ? (
               <span className="shrink-0 rounded-full bg-white/80 px-3 py-1 text-xs font-medium text-gray-700">
-                {total} {total === 1 ? 'aviso' : 'avisos'}
+                {t(total === 1 ? 'inbox.countOne' : 'inbox.countMany', { count: total })}
               </span>
             ) : undefined
           }
@@ -133,7 +137,7 @@ export default function NotificationInbox() {
           </ul>
         ) : items.length === 0 ? (
           <EmptyState
-            message={unreadOnly ? 'Nenhuma notificação não lida.' : 'Nenhuma notificação por aqui.'}
+            message={t(unreadOnly ? 'inbox.emptyUnread' : 'notifications.empty')}
           />
         ) : (
           <ul className="-mx-2 space-y-0.5">
@@ -164,7 +168,7 @@ export default function NotificationInbox() {
                           {n.titulo}
                         </p>
                         <span className="shrink-0 text-xs text-gray-500">
-                          {formatDateTime(n.createdAt)}
+                          {formatDateTime(n.createdAt, locale)}
                         </span>
                       </div>
                       <p className="mt-0.5 text-sm text-gray-600">{n.mensagem}</p>
@@ -172,7 +176,7 @@ export default function NotificationInbox() {
                         <Badge>{n.tipo}</Badge>
                         {!n.isRead && (
                           <span className="text-xs font-medium text-violet-700">
-                            Marcar como lida
+                            {t('inbox.markRead')}
                           </span>
                         )}
                       </div>

@@ -13,6 +13,17 @@ export type Language = 'pt' | 'en' | 'es';
 
 export const LANGUAGE_ORDER: readonly Language[] = ['pt', 'en', 'es'];
 
+/**
+ * Nome nativo de cada idioma. É rótulo de exibição, nunca contrato: a API transporta o
+ * locale (`pt-BR`), não o nome. Fica aqui porque este arquivo é o dono único dos metadados
+ * de idioma — o seletor da topbar e o formulário da escola leem daqui.
+ */
+export const LANGUAGE_NAMES: Record<Language, string> = {
+  pt: 'Português',
+  en: 'English',
+  es: 'Español',
+};
+
 export const DEFAULT_LANGUAGE: Language = 'pt';
 
 export const DEFAULT_LOCALE = 'pt-BR';
@@ -47,6 +58,19 @@ export function languageForCountry(code: string | null | undefined): Language {
 
 export function defaultLocaleForLanguage(language: Language): string {
   return LANGUAGE_LOCALES[language];
+}
+
+/**
+ * Locale completo → idioma (`pt-BR` e `pt-PT` ⇒ `pt`). Devolve `null` para valor ausente,
+ * vazio ou fora da tabela, para que o chamador decida o padrão em vez de herdar `pt` sem
+ * perceber. Cobre o caminho inverso de `defaultLocaleForLanguage`, usado quando o locale
+ * vem da API (configuração da escola) e precisa virar preferência da interface.
+ */
+export function languageForLocale(locale: string | null | undefined): Language | null {
+  if (typeof locale !== 'string') return null;
+
+  const base = locale.trim().slice(0, 2).toLowerCase();
+  return isLanguage(base) ? base : null;
 }
 
 /**

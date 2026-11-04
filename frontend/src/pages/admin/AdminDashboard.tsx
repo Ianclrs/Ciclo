@@ -65,11 +65,19 @@ function elapsedPercent(period: EnrollmentPeriod): number {
   return Math.min(100, Math.max(0, Math.round(percent)));
 }
 
-function remainingBadge(days: number): { text: string; variant: 'success' | 'warning' | 'danger' | 'default' } {
-  if (days < 0) return { text: 'Encerrado', variant: 'default' };
-  if (days === 0) return { text: 'Encerra hoje', variant: 'danger' };
-  if (days <= 7) return { text: `${days} dia${days === 1 ? '' : 's'} restante${days === 1 ? '' : 's'}`, variant: 'warning' };
-  return { text: `${days} dias restantes`, variant: 'success' };
+function remainingBadge(
+  days: number,
+  t: ReturnType<typeof useLocale>['t'],
+): { text: string; variant: 'success' | 'warning' | 'danger' | 'default' } {
+  if (days < 0) return { text: t('dash.closed'), variant: 'default' };
+  if (days === 0) return { text: t('dash.closesToday'), variant: 'danger' };
+  if (days <= 7) {
+    return {
+      text: t(days === 1 ? 'dash.daysLeftOne' : 'dash.daysLeftMany', { days }),
+      variant: 'warning',
+    };
+  }
+  return { text: t('dash.daysLeftMany', { days }), variant: 'success' };
 }
 
 /** Fração parte/total, com 0 quando não há base — evita divisão por zero e barra cheia falsa. */
@@ -79,7 +87,7 @@ function share(part: number, total: number): number {
 
 export default function AdminDashboard() {
   const { user } = useAuth();
-  const { locale } = useLocale();
+  const { locale, t } = useLocale();
   const [stats, setStats] = useState<Stats>(EMPTY_STATS);
   const [period, setPeriod] = useState<EnrollmentPeriod | null>(null);
   const [loading, setLoading] = useState(true);
@@ -157,28 +165,27 @@ export default function AdminDashboard() {
   };
 
   const progress = period ? elapsedPercent(period) : 0;
-  const badge = period ? remainingBadge(daysUntil(period.dataFim)) : null;
+  const badge = period ? remainingBadge(daysUntil(period.dataFim), t) : null;
 
   return (
     <div>
       <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div className="min-w-0">
-          <h2 className="text-3xl font-bold tracking-tight text-gray-900">Dashboard</h2>
+          <h2 className="text-3xl font-bold tracking-tight text-gray-900">{t('nav.dashboard')}</h2>
           <p className="mt-1 text-base text-gray-700">
-            {user ? `Olá, ${user.name}. Visão geral da escola.` : 'Visão geral da escola.'}
+            {user ? t('dash.greeting', { name: user.name }) : t('dash.subtitle')}
           </p>
         </div>
 
         <div className="flex items-center gap-3">
           {updatedAt && !loading && (
             <span className="rounded-full bg-white/80 px-3 py-1 text-sm font-medium text-gray-700">
-              Atualizado às{' '}
-              {formatTime(updatedAt, locale)}
+              {t('dash.updatedAt', { time: formatTime(updatedAt, locale) })}
             </span>
           )}
           <Button variant="secondary" size="sm" className="gap-2" onClick={retry} disabled={loading}>
             <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-            Atualizar
+            {t('dash.refresh')}
           </Button>
         </div>
       </div>
@@ -186,53 +193,53 @@ export default function AdminDashboard() {
       {failed && (
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200/70 bg-amber-50/90 px-4 py-3 backdrop-blur-md">
           <p className="text-sm text-amber-800">
-            Alguns indicadores não puderam ser carregados — os valores abaixo podem estar incompletos.
+            {t('dash.partialWarning')}
           </p>
           <Button variant="secondary" size="sm" onClick={retry}>
-            Tentar de novo
+            {t('common.retry')}
           </Button>
         </div>
       )}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         <StatCard
-          label="Alunos"
+          label={t('nav.students')}
           value={stats.students}
           icon={UsersRound}
           accent="blue"
           to="/admin/students"
           loading={loading}
-          detail={`${stats.activeStudents} ativos de ${stats.students}`}
+          detail={t('dash.activeOfTotal', { active: stats.activeStudents, total: stats.students })}
           ratio={share(stats.activeStudents, stats.students)}
         />
         <StatCard
-          label="Matrículas"
+          label={t('nav.enrollments')}
           value={stats.enrollments}
           icon={ClipboardList}
           accent="green"
           to="/admin/enrollments"
           loading={loading}
-          detail={`${stats.awaitingEnrollments} aguardando análise`}
+          detail={t('dash.awaitingReview', { count: stats.awaitingEnrollments })}
           ratio={share(stats.awaitingEnrollments, stats.enrollments)}
         />
         <StatCard
-          label="Documentos pendentes"
+          label={t('dash.pendingDocs')}
           value={stats.documents}
           icon={FileClock}
           accent="amber"
           to="/admin/documents"
           loading={loading}
-          detail={`${stats.expiringDocuments} vencem em 30 dias`}
+          detail={t('dash.expiringIn30', { count: stats.expiringDocuments })}
           ratio={share(stats.expiringDocuments, stats.documents)}
         />
         <StatCard
-          label="Não lidas"
+          label={t('parent.unread')}
           value={stats.notifications}
           icon={BellDot}
           accent="red"
           to="/admin/notifications"
           loading={loading}
-          detail={`de ${stats.totalNotifications} no total`}
+          detail={t('dash.ofTotal', { total: stats.totalNotifications })}
           ratio={share(stats.notifications, stats.totalNotifications)}
         />
       </div>
@@ -241,7 +248,7 @@ export default function AdminDashboard() {
         <Card tone="glass">
           <CardHeading
             icon={CalendarDays}
-            title="Período de matrícula"
+            title={t('dash.enrollmentPeriod')}
             action={badge ? <Badge variant={badge.variant}>{badge.text}</Badge> : undefined}
           />
 
@@ -265,18 +272,24 @@ export default function AdminDashboard() {
             <div>
               <p className="truncate text-lg font-semibold text-gray-900">{period.nome}</p>
               <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-sm text-gray-600">
-                <span>Ano letivo {period.anoLetivo}</span>
+                <span>{t('struct.yearLabel', { year: period.anoLetivo })}</span>
                 <span aria-hidden="true" className="text-gray-400">·</span>
                 <span>
-                  {formatDate(period.dataInicio, locale)} a{' '}
-                  {formatDate(period.dataFim, locale)}
+                  {t('struct.dateRange', {
+                    start: formatDate(period.dataInicio, locale),
+                    end: formatDate(period.dataFim, locale),
+                  })}
                 </span>
               </p>
 
               <div className="mt-5 border-t border-gray-200/70 pt-4">
                 <div className="flex items-center justify-between text-xs text-gray-600">
-                  <span>{progress}% do período transcorrido</span>
-                  <span>{daysUntil(period.dataFim) > 0 ? `restam ${daysUntil(period.dataFim)} dias` : 'último dia'}</span>
+                  <span>{t('dash.progressPercent', { percent: progress })}</span>
+                  <span>
+                    {daysUntil(period.dataFim) > 0
+                      ? t('dash.daysLeftMany', { days: daysUntil(period.dataFim) })
+                      : t('dash.lastDay')}
+                  </span>
                 </div>
                 <div className="mt-2 h-2 overflow-hidden rounded-full bg-gray-200">
                   <div className="h-full rounded-full bg-violet-500" style={{ width: `${progress}%` }} />
@@ -287,13 +300,13 @@ export default function AdminDashboard() {
                 to="/admin/enrollments"
                 className="mt-4 inline-flex items-center gap-1 text-sm font-medium text-violet-700 hover:text-violet-800"
               >
-                Ver matrículas <ArrowRight size={14} />
+                {t('dash.viewEnrollments')} <ArrowRight size={14} />
               </Link>
             </div>
           ) : (
             <div className="flex flex-col items-center py-8 text-center">
               <CalendarDays size={28} className="text-gray-300" />
-              <p className="mt-2 text-sm text-gray-600">Nenhum período de matrícula aberto.</p>
+              <p className="mt-2 text-sm text-gray-600">{t('dash.noOpenPeriod')}</p>
             </div>
           )}
         </Card>

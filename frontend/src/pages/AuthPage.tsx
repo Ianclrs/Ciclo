@@ -17,8 +17,11 @@ import { useAuth } from '../hooks/useAuth';
 import { setAccessToken } from '../api/client';
 import { Button } from '../components/Button';
 import { ShaderBackground } from '../components/ShaderBackground';
+import { LanguageSwitcher } from '../components/LanguageSwitcher';
 import { SchoolRegisterForm } from '../components/SchoolRegisterForm';
 import { ParentRegisterForm } from '../components/ParentRegisterForm';
+import { useLocale } from '../i18n/LocaleContext';
+import type { MessageKey } from '../i18n/messages';
 import { DEMO_ACCOUNTS } from '../mocks/accounts';
 import { isDemoMode } from '../mocks/mode';
 
@@ -37,55 +40,69 @@ const fieldClass =
  *
  * Cada ícone diz o que o card faz: chapéu de formatura para o fluxo acadêmico, documento
  * conferido para o que é enviado e acompanhado, escudo para o recorte por perfil.
+ *
+ * O texto é uma chave do catálogo: a tela acompanha o idioma sem lista duplicada.
  */
-const CAPABILITIES = [
+const CAPABILITIES: ReadonlyArray<{
+  titleKey: MessageKey;
+  textKey: MessageKey;
+  icon: typeof GraduationCap;
+  tone: string;
+}> = [
   {
-    title: 'Matrículas e turmas',
-    text: 'Alunos, turmas e matrículas organizados em um fluxo só.',
+    titleKey: 'auth.capability.enrollments.title',
+    textKey: 'auth.capability.enrollments.text',
     icon: GraduationCap,
     tone: 'bg-amber-50 border-amber-100 text-amber-600',
   },
   {
-    title: 'Documentos e avisos',
-    text: 'Envio de documentos e comunicados com acompanhamento.',
+    titleKey: 'auth.capability.documents.title',
+    textKey: 'auth.capability.documents.text',
     icon: FileCheck2,
     tone: 'bg-emerald-50 border-emerald-100 text-emerald-600',
   },
   {
-    title: 'Acesso por perfil',
-    text: 'Administração e responsáveis veem apenas o que é de cada um.',
+    titleKey: 'auth.capability.roles.title',
+    textKey: 'auth.capability.roles.text',
     icon: ShieldCheck,
     tone: 'bg-indigo-50 border-indigo-100 text-indigo-600',
   },
 ];
+
+type PanelMode = 'login' | 'register' | 'parent';
+
+interface PanelCopy {
+  brand: MessageKey;
+  chip: MessageKey;
+  title: MessageKey;
+  subtitle: MessageKey;
+}
 
 /**
  * Os três conteúdos que o painel hospeda. Cada entrada é uma rota, com o texto da marca ao
  * lado da logo, o selo, o título e o subtítulo. Acrescentar um conteúdo é acrescentar uma
  * entrada aqui — o JSX não carrega texto de modo nenhum.
  */
-const PANEL_COPY = {
+const PANEL_COPY: Record<PanelMode, PanelCopy> = {
   login: {
-    brand: 'Sua Plataforma Educacional',
-    chip: 'Acesso institucional',
-    title: 'Acesse seu espaço de trabalho',
-    subtitle: 'Entre com suas credenciais para acompanhar alunos, matrículas e documentos.',
+    brand: 'auth.brand.login',
+    chip: 'auth.chip.access',
+    title: 'auth.title.login',
+    subtitle: 'auth.subtitle.login',
   },
   register: {
-    brand: 'Cadastro de colégio',
-    chip: 'Ambiente institucional',
-    title: 'Cadastre seu colégio',
-    subtitle: 'Leve a gestão escolar da sua escola para o Ciclo em três passos.',
+    brand: 'auth.brand.register',
+    chip: 'auth.chip.institutional',
+    title: 'auth.title.register',
+    subtitle: 'auth.subtitle.register',
   },
   parent: {
-    brand: 'Conta de responsável',
-    chip: 'Ambiente institucional',
-    title: 'Crie sua conta de responsável',
-    subtitle: 'Informe o código do colégio e defina seu acesso.',
+    brand: 'auth.brand.parent',
+    chip: 'auth.chip.institutional',
+    title: 'auth.title.parent',
+    subtitle: 'auth.subtitle.parent',
   },
-} as const;
-
-type PanelMode = keyof typeof PANEL_COPY;
+};
 
 /** Endereço de cada conteúdo. É a rota que manda no modo, não o contrário. */
 const MODE_ROUTES: Record<PanelMode, string> = {
@@ -101,6 +118,7 @@ function modeFromPath(pathname: string): PanelMode {
 }
 
 export default function AuthPage() {
+  const { language, t } = useLocale();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -140,11 +158,11 @@ export default function AuthPage() {
         if (u) {
           navigate(u.role === 'Parent' ? '/parent' : '/admin', { replace: true });
         } else {
-          toast.error('Falha na autenticação Google.');
+          toast.error(t('auth.googleFailed'));
         }
       });
     }
-  }, [searchParams, navigate, getCurrentUser]);
+  }, [searchParams, navigate, getCurrentUser, t]);
 
   /** Entrada de um clique na demonstração: a senha é ignorada pelo mock. */
   const enterDemo = async (demoEmail: string) => {
@@ -155,7 +173,7 @@ export default function AuthPage() {
       // A entrada de demonstração respeita a mesma escolha de "lembrar" do formulário.
       await login(demoEmail, 'demo', remember);
     } catch (err) {
-      toast.error(apiErrorMessage(err, 'Não foi possível entrar na demonstração.'));
+      toast.error(apiErrorMessage(err, t('auth.demoFailed'), language));
     } finally {
       setLoading(false);
     }
@@ -166,17 +184,12 @@ export default function AuthPage() {
     setLoading(true);
     try {
       await login(email, password, remember);
-      toast.success('Login realizado!');
+      toast.success(t('auth.loginSuccess'));
     } catch (err) {
       // Sem resposta da API não é "senha errada": é falha de conexão.
       const offline = apiErrorCode(err) === null;
       toast.error(
-        apiErrorMessage(
-          err,
-          offline
-            ? 'Não foi possível conectar ao servidor. Verifique sua conexão.'
-            : 'E-mail ou senha incorretos.',
-        ),
+        apiErrorMessage(err, offline ? t('auth.offline') : t('auth.badCredentials'), language),
       );
     } finally {
       setLoading(false);
@@ -213,25 +226,32 @@ export default function AuthPage() {
         }`}
       >
         <div>
-          {/* Cabeçalho institucional */}
+          {/* Cabeçalho institucional. O seletor de idioma mora aqui porque esta é a única
+              tela alcançável antes do login: sem ele, quem não lê português não consegue
+              trocar de idioma para entrar. */}
           <div className="mb-6 flex items-center gap-3">
             <img src="/Ciclo_favicon.png" alt="" className="h-16 w-16 shrink-0 object-contain" />
             <span className="block text-base leading-tight font-bold tracking-tight text-slate-900">
               Ciclo <span className="mx-1 font-normal text-slate-400">|</span>{' '}
-              <span className="text-xs font-semibold text-slate-600">{copy.brand}</span>
+              <span className="text-xs font-semibold text-slate-600">{t(copy.brand)}</span>
             </span>
+            <div className="ml-auto shrink-0">
+              <LanguageSwitcher />
+            </div>
           </div>
 
           {/* Título e subtítulo — acompanham o conteúdo que está no painel. */}
           <div className="mb-5">
             <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-indigo-100 bg-indigo-50 px-2.5 py-1 text-[11px] font-semibold text-indigo-700">
               <span className="h-1.5 w-1.5 rounded-full bg-indigo-600" />
-              {copy.chip}
+              {t(copy.chip)}
             </div>
             <h1 className="text-2xl font-extrabold tracking-tight text-slate-900 sm:text-3xl">
-              {copy.title}
+              {t(copy.title)}
             </h1>
-            <p className="mt-1.5 text-xs leading-relaxed text-slate-500 sm:text-sm">{copy.subtitle}</p>
+            <p className="mt-1.5 text-xs leading-relaxed text-slate-500 sm:text-sm">
+              {t(copy.subtitle)}
+            </p>
           </div>
 
           {mode === 'register' ? (
@@ -245,7 +265,7 @@ export default function AuthPage() {
                 htmlFor="login-email"
                 className="mb-1.5 block text-xs font-semibold text-slate-700"
               >
-                E-mail
+                {t('field.email')}
               </label>
               <div className="relative">
                 <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5 text-slate-400">
@@ -264,7 +284,7 @@ export default function AuthPage() {
                   autoComplete="email"
                   autoFocus
                   required
-                  placeholder="nome@colegio.com.br"
+                  placeholder={t('field.emailExample')}
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className={`${fieldClass} pr-4`}
@@ -278,13 +298,13 @@ export default function AuthPage() {
                   htmlFor="login-password"
                   className="block text-xs font-semibold text-slate-700"
                 >
-                  Senha
+                  {t('auth.field.password')}
                 </label>
                 <Link
                   to="/forgot-password"
                   className="text-xs font-semibold text-indigo-600 transition-colors hover:text-indigo-800 hover:underline"
                 >
-                  Esqueceu a senha?
+                  {t('auth.forgot')}
                 </Link>
               </div>
               <div className="relative">
@@ -310,7 +330,7 @@ export default function AuthPage() {
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
+                  aria-label={showPassword ? t('auth.hidePassword') : t('auth.showPassword')}
                   aria-pressed={showPassword}
                   className="absolute inset-y-0 right-0 flex items-center pr-3.5 text-slate-400 transition-colors hover:text-slate-600"
                 >
@@ -348,7 +368,7 @@ export default function AuthPage() {
                   strokeWidth={4}
                 />
               </span>
-              Lembrar neste navegador por 30 dias
+              {t('auth.remember')}
             </label>
 
             <div className="pt-2">
@@ -357,7 +377,7 @@ export default function AuthPage() {
                 disabled={loading}
                 className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-indigo-600 to-indigo-700 px-4 py-3 text-sm font-semibold text-white shadow-md transition-all hover:-translate-y-0.5 hover:from-indigo-700 hover:to-indigo-800 hover:shadow-indigo-500/25 active:translate-y-0 disabled:translate-y-0 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                <span>{loading ? 'Entrando...' : 'Entrar na plataforma'}</span>
+                <span>{loading ? t('auth.submitting') : t('auth.submit')}</span>
                 {!loading && <ArrowRight className="h-4 w-4" />}
               </button>
             </div>
@@ -365,7 +385,7 @@ export default function AuthPage() {
             <div className="relative flex items-center justify-center py-2">
               <div className="w-full border-t border-slate-200/90" />
               <span className="absolute rounded-full bg-white/95 px-3 text-[11px] font-medium tracking-tight text-slate-400 lowercase">
-                ou acesso com Google
+                {t('auth.or')}
               </span>
             </div>
 
@@ -392,14 +412,12 @@ export default function AuthPage() {
                   d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
                 />
               </svg>
-              Entrar com Google
+              {t('auth.google')}
             </button>
 
             {isDemoMode && (
               <div className="rounded-xl border border-violet-300 bg-violet-50 p-3">
-                <p className="text-xs font-medium text-violet-900">
-                  Demonstração — dados fictícios gravados neste navegador, sem backend.
-                </p>
+                <p className="text-xs font-medium text-violet-900">{t('auth.demoNotice')}</p>
                 <div className="mt-2 flex flex-col gap-2">
                   <Button
                     type="button"
@@ -407,7 +425,7 @@ export default function AuthPage() {
                     disabled={loading}
                     onClick={() => enterDemo(DEMO_ACCOUNTS.admin.email)}
                   >
-                    Entrar como administração
+                    {t('auth.demoAdmin')}
                   </Button>
                   <Button
                     type="button"
@@ -416,7 +434,7 @@ export default function AuthPage() {
                     disabled={loading}
                     onClick={() => enterDemo(DEMO_ACCOUNTS.parent.email)}
                   >
-                    Entrar como responsável
+                    {t('auth.demoParent')}
                   </Button>
                 </div>
               </div>
@@ -430,23 +448,23 @@ export default function AuthPage() {
           {mode === 'login' ? (
             <>
               <p className="text-xs text-slate-500">
-                Precisa cadastrar sua instituição?{' '}
+                {t('auth.registerPrompt')}{' '}
                 <button
                   type="button"
                   onClick={() => navigate(MODE_ROUTES.register)}
                   className="font-semibold text-indigo-600 transition-colors hover:text-indigo-800 hover:underline"
                 >
-                  Cadastrar meu colégio
+                  {t('auth.registerAction')}
                 </button>
               </p>
               <p className="text-xs text-slate-500">
-                É responsável por um aluno?{' '}
+                {t('auth.parentPrompt')}{' '}
                 <button
                   type="button"
                   onClick={() => navigate(MODE_ROUTES.parent)}
                   className="font-semibold text-indigo-600 transition-colors hover:text-indigo-800 hover:underline"
                 >
-                  Criar conta de responsável
+                  {t('auth.parentAction')}
                 </button>
               </p>
             </>
@@ -457,7 +475,7 @@ export default function AuthPage() {
               className="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-600 transition-colors hover:text-indigo-800 hover:underline"
             >
               <ArrowLeft className="h-3.5 w-3.5" />
-              Voltar para o login
+              {t('auth.backToLogin')}
             </button>
           )}
         </div>
@@ -467,7 +485,7 @@ export default function AuthPage() {
       <main className="relative z-10 hidden flex-1 flex-col justify-between p-6 sm:p-8 md:flex lg:p-12">
         <header className="flex w-full items-center justify-between gap-4">
           <div className="glass-pill flex items-center gap-2 rounded-full px-3.5 py-1.5 text-xs font-medium text-slate-700 shadow-sm">
-            Sua Plataforma Educacional
+            {t('auth.brand.login')}
           </div>
         </header>
 
@@ -478,18 +496,18 @@ export default function AuthPage() {
             </div>
             <div>
               <span className="block text-[11px] font-bold tracking-wider text-indigo-700 uppercase">
-                Visão pedagógica
+                {t('auth.pedagogical.title')}
               </span>
               <span className="text-sm font-semibold text-slate-800">
-                Gestão escolar próxima e organizada.
+                {t('auth.pedagogical.text')}
               </span>
             </div>
           </div>
 
           <div className="flex w-full max-w-md flex-col gap-4">
-            {CAPABILITIES.map(({ title, text, icon: Icon, tone }, index) => (
+            {CAPABILITIES.map(({ titleKey, textKey, icon: Icon, tone }, index) => (
               <div
-                key={title}
+                key={titleKey}
                 className={`glass-card flex items-center gap-3.5 rounded-2xl p-4 sm:p-5 ${
                   index === 1 ? 'animate-float' : 'animate-float-delayed'
                 }`}
@@ -500,8 +518,8 @@ export default function AuthPage() {
                   <Icon className="h-[22px] w-[22px]" strokeWidth={1.9} />
                 </div>
                 <div className="min-w-0">
-                  <p className="text-xs font-medium text-slate-500">{title}</p>
-                  <p className="text-sm font-bold text-slate-900">{text}</p>
+                  <p className="text-xs font-medium text-slate-500">{t(titleKey)}</p>
+                  <p className="text-sm font-bold text-slate-900">{t(textKey)}</p>
                 </div>
               </div>
             ))}
@@ -509,10 +527,8 @@ export default function AuthPage() {
         </div>
 
         <footer className="flex w-full items-center justify-between gap-3 pt-4 text-xs text-slate-600">
-          <span className="font-medium text-slate-700">
-            © 2026 Ciclo Plataforma Educacional
-          </span>
-          <span className="hidden sm:inline">Todos os direitos reservados</span>
+          <span className="font-medium text-slate-700">{t('auth.copyright')}</span>
+          <span className="hidden sm:inline">{t('auth.rights')}</span>
         </footer>
       </main>
     </div>

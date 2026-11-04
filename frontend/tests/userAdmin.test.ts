@@ -2,9 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   INVITE_ROLES,
-  activationLabel,
+  activationLabelKey,
   canChangeRole,
-  roleLabel,
+  roleLabelKey,
   validateInvite,
 } from '../src/domain/userAdmin.ts';
 
@@ -15,11 +15,11 @@ import {
  * (chamadas, tabela) é verificado pelo build e pela API, que recusa as mesmas ações.
  */
 
-test('papéis têm rótulo legível e papel desconhecido não vira texto inventado', () => {
-  assert.equal(roleLabel('Admin'), 'Administração');
-  assert.equal(roleLabel('Staff'), 'Secretaria');
-  assert.equal(roleLabel('Parent'), 'Responsável');
-  assert.equal(roleLabel('Outro'), 'Outro');
+test('papéis têm chave de rótulo e papel desconhecido não inventa texto', () => {
+  assert.equal(roleLabelKey('Admin'), 'role.admin');
+  assert.equal(roleLabelKey('Staff'), 'role.staff');
+  assert.equal(roleLabelKey('Parent'), 'role.parent');
+  assert.equal(roleLabelKey('Outro'), null);
 });
 
 test('convite válido não tem erro', () => {
@@ -27,14 +27,14 @@ test('convite válido não tem erro', () => {
 });
 
 test('convite sem nome é rejeitado', () => {
-  assert.equal(validateInvite({ name: '   ', email: 'ana@escola.com', role: 'Staff' }), 'Informe o nome.');
+  assert.equal(validateInvite({ name: '   ', email: 'ana@escola.com', role: 'Staff' }), 'users.validate.name');
 });
 
 test('e-mail inválido é rejeitado', () => {
   for (const email of ['ana', 'ana@', 'ana@escola', 'ana escola@x.com']) {
     assert.equal(
       validateInvite({ name: 'Ana', email, role: 'Staff' }),
-      'Informe um e-mail válido.',
+      'users.validate.email',
       `deveria recusar: ${email}`,
     );
   }
@@ -42,7 +42,7 @@ test('e-mail inválido é rejeitado', () => {
 
 test('papel fora da lista de convite é rejeitado', () => {
   const invalid = { name: 'Ana', email: 'ana@escola.com', role: 'Parent' as never };
-  assert.equal(validateInvite(invalid), 'Escolha um papel válido.');
+  assert.equal(validateInvite(invalid), 'users.validate.role');
 });
 
 test('apenas Admin e Staff podem ser convidados (responsável se cadastra sozinho)', () => {
@@ -54,7 +54,7 @@ test('o próprio usuário não pode trocar o próprio papel', () => {
   assert.equal(canChangeRole('u1', 'u1'), false);
 });
 
-test('rótulo da ação de status acompanha o estado', () => {
-  assert.equal(activationLabel(true), 'Desativar');
-  assert.equal(activationLabel(false), 'Ativar');
+test('chave da ação de status acompanha o estado', () => {
+  assert.equal(activationLabelKey(true), 'user.deactivate');
+  assert.equal(activationLabelKey(false), 'user.activate');
 });

@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { describeOutcome, selectableStudentIds } from '../src/domain/renewalBatch.ts';
+import { outcomeLabelKey, selectableStudentIds } from '../src/domain/renewalBatch.ts';
+import { MESSAGES } from '../src/i18n/messages.ts';
+import { LANGUAGE_ORDER } from '../src/i18n/locale.ts';
 import type { RenewalOutcome, RenewalPreviewItem } from '../src/types/index.ts';
 
 const item = (studentId: string, eligible: boolean): RenewalPreviewItem => ({
@@ -26,23 +28,23 @@ test('lista só com bloqueados devolve lista vazia', () => {
   assert.deepEqual(selectableStudentIds([item('x', false), item('y', false)]), []);
 });
 
-test('cada desfecho tem rótulo próprio, não vazio e distinto', () => {
+test('cada desfecho tem chave própria, com texto nos três idiomas', () => {
   const outcomes: RenewalOutcome[] = [
     'Renewed',
     'SkippedAlreadyExists',
     'BlockedPendingDocuments',
     'Failed',
   ];
-  const labels = outcomes.map(describeOutcome);
+  const keys = outcomes.map(outcomeLabelKey);
 
-  for (const label of labels) {
-    assert.equal(typeof label, 'string');
-    assert.ok(label.trim().length > 0, 'rótulo do desfecho não pode ser vazio');
+  assert.equal(new Set(keys).size, outcomes.length, `chaves repetidas: ${keys.join(', ')}`);
+
+  // A chave só serve se o catálogo tiver texto para ela em pt, en e es.
+  for (const language of LANGUAGE_ORDER) {
+    for (const key of keys) {
+      const label = MESSAGES[language][key];
+      assert.equal(typeof label, 'string', `${language}/${key} não é texto`);
+      assert.ok(label.trim().length > 0, `${language}/${key} está vazio`);
+    }
   }
-
-  assert.equal(new Set(labels).size, outcomes.length, `rótulos repetidos: ${labels.join(', ')}`);
-  assert.equal(describeOutcome('Renewed'), 'Renovado');
-  assert.equal(describeOutcome('SkippedAlreadyExists'), 'Já existia');
-  assert.equal(describeOutcome('BlockedPendingDocuments'), 'Documentação pendente');
-  assert.equal(describeOutcome('Failed'), 'Falhou');
 });

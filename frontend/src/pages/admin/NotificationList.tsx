@@ -12,11 +12,13 @@ import { LoadError } from '../../components/LoadError';
 import { Skeleton } from '../../components/Skeleton';
 import { EmptyState } from '../../components/EmptyState';
 import { formatDateTime } from '../../utils/format';
+import { useLocale } from '../../i18n/LocaleContext';
 import type { Notification } from '../../types';
 
 const PAGE_SIZE = 10;
 
 export default function NotificationList() {
+  const { language, locale, t } = useLocale();
   const [items, setItems] = useState<Notification[] | null>(null);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -48,23 +50,25 @@ export default function NotificationList() {
       })
       .catch((err) => {
         if (!active) return;
-        setError(apiErrorMessage(err, 'Não foi possível carregar as notificações.'));
+        setError(apiErrorMessage(err, t('notifications.loadError'), language));
       });
     return () => {
       active = false;
     };
-  }, [page, reloadKey]);
+  }, [page, reloadKey, t, language]);
 
   return (
     <div>
       <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h2 className="text-3xl font-bold tracking-tight text-gray-900">Notificações</h2>
-          <p className="mt-1 text-base text-gray-700">Avisos enviados e recebidos na escola.</p>
+          <h2 className="text-3xl font-bold tracking-tight text-gray-900">
+            {t('nav.notifications')}
+          </h2>
+          <p className="mt-1 text-base text-gray-700">{t('notifications.subtitle')}</p>
         </div>
         <Link to="/admin/notifications/create">
           <Button className="gap-2 shrink-0">
-            <Plus size={16} /> Nova
+            <Plus size={16} /> {t('notifications.new')}
           </Button>
         </Link>
       </div>
@@ -72,11 +76,13 @@ export default function NotificationList() {
       <Card tone="glass">
         <CardHeading
           icon={BellDot}
-          title="Histórico"
+          title={t('notifications.history')}
           action={
             total > 0 ? (
               <span className="shrink-0 rounded-full bg-white/80 px-3 py-1 text-xs font-medium text-gray-700">
-                {total} {total === 1 ? 'registro' : 'registros'}
+                {t(total === 1 ? 'notifications.countOne' : 'notifications.countMany', {
+                  count: total,
+                })}
               </span>
             ) : undefined
           }
@@ -94,7 +100,7 @@ export default function NotificationList() {
             ))}
           </ul>
         ) : items.length === 0 ? (
-          <EmptyState message="Nenhuma notificação registrada." />
+          <EmptyState message={t('notifications.empty')} />
         ) : (
           <ul className="-mx-2 space-y-0.5">
             {items.map((n) => (
@@ -110,11 +116,13 @@ export default function NotificationList() {
                   <div className="flex shrink-0 items-center gap-3">
                     <Badge>{n.tipo}</Badge>
                     <span className="hidden text-xs text-gray-500 sm:inline">
-                      {formatDateTime(n.createdAt)}
+                      {formatDateTime(n.createdAt, locale)}
                     </span>
                   </div>
                 </div>
-                <p className="mt-1 text-xs text-gray-500 sm:hidden">{formatDateTime(n.createdAt)}</p>
+                <p className="mt-1 text-xs text-gray-500 sm:hidden">
+                  {formatDateTime(n.createdAt, locale)}
+                </p>
               </li>
             ))}
           </ul>

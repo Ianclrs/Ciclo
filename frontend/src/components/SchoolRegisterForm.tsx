@@ -8,6 +8,7 @@ import { CountryFlag } from './CountryFlag';
 import { registerSchool } from '../api/tenants';
 import { COUNTRIES, COUNTRY_ORDER, getCountry, applyMask, digitCount } from '../config/countries';
 import { passwordError } from '../domain/password';
+import { useLocale } from '../i18n/LocaleContext';
 
 /**
  * Formulário de cadastro de colégio.
@@ -36,9 +37,10 @@ const emptyForm = {
   confirmPassword: '',
 };
 
-const STEPS = ['Escola', 'Cadastro', 'Administrador'] as const;
+const STEPS = ['reg.step.school', 'reg.step.data', 'reg.step.admin'] as const;
 
 export function SchoolRegisterForm({ onSuccess }: { onSuccess: () => void }) {
+  const { t } = useLocale();
   const [form, setForm] = useState(emptyForm);
   const [showPassword, setShowPassword] = useState(false);
   const [countryOpen, setCountryOpen] = useState(false);
@@ -74,7 +76,7 @@ export function SchoolRegisterForm({ onSuccess }: { onSuccess: () => void }) {
 
     const pwError = passwordError(form.adminPassword);
     if (pwError) nextErrors.adminPassword = pwError;
-    if (form.adminPassword !== form.confirmPassword) nextErrors.confirmPassword = 'As senhas não conferem.';
+    if (form.adminPassword !== form.confirmPassword) nextErrors.confirmPassword = t('reg.passwordMismatch');
 
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) return;
@@ -94,7 +96,7 @@ export function SchoolRegisterForm({ onSuccess }: { onSuccess: () => void }) {
         adminEmail: form.adminEmail,
         adminPassword: form.adminPassword,
       });
-      toast.success('Colégio cadastrado! Faça login com o email do administrador.');
+      toast.success(t('reg.schoolCreated'));
       onSuccess();
     } catch (err) {
       const title =
@@ -102,11 +104,11 @@ export function SchoolRegisterForm({ onSuccess }: { onSuccess: () => void }) {
           ? err.response.data.title
           : '';
       if (title === 'email_already_registered') {
-        toast.error('Este email já está cadastrado.');
+        toast.error(t('reg.emailTaken'));
       } else if (title === 'unsupported_country') {
-        toast.error('País não suportado.');
+        toast.error(t('reg.countryUnsupported'));
       } else {
-        toast.error('Não foi possível concluir o cadastro. Verifique os dados.');
+        toast.error(t('reg.createFailed'));
       }
     } finally {
       setLoading(false);
@@ -137,7 +139,7 @@ export function SchoolRegisterForm({ onSuccess }: { onSuccess: () => void }) {
                 i <= activeStep ? 'font-medium text-stone-700' : 'text-stone-400'
               }`}
             >
-              {label}
+              {t(label)}
             </span>
             {i < STEPS.length - 1 && (
               <span
@@ -153,16 +155,16 @@ export function SchoolRegisterForm({ onSuccess }: { onSuccess: () => void }) {
       <form onSubmit={handleSubmit} className="space-y-4">
         {/* Gaveta 1 — sempre visível: nome do colégio e país */}
         <Input
-          label="Nome do colégio"
+          label={t('reg.schoolName')}
           value={form.schoolName}
           onChange={(e) => setForm({ ...form, schoolName: e.target.value })}
           required
-          placeholder="Ex.: Colégio Dom Bosco"
+          placeholder={t('reg.schoolNamePlaceholder')}
           className="bg-white !border-stone-400 focus:!ring-stone-500"
         />
 
         <div className="relative">
-          <span className="mb-1 block text-xs font-medium text-gray-600">País</span>
+          <span className="mb-1 block text-xs font-medium text-gray-600">{t('reg.country')}</span>
           <button
             type="button"
             onClick={() => setCountryOpen((o) => !o)}
@@ -177,7 +179,7 @@ export function SchoolRegisterForm({ onSuccess }: { onSuccess: () => void }) {
                   <span>{country.label}</span>
                 </>
               ) : (
-                <span className="text-gray-400">Selecione um país</span>
+                <span className="text-gray-400">{t('reg.selectCountry')}</span>
               )}
             </span>
             <ChevronDown
@@ -218,17 +220,17 @@ export function SchoolRegisterForm({ onSuccess }: { onSuccess: () => void }) {
         {/* Gaveta 2 — abre após escolher o país */}
         {showSchoolDetails && country && (
           <div className="animate-drawer space-y-4 border-t border-stone-300 pt-4">
-            <p className="text-sm font-medium text-stone-700">Dados da escola</p>
+            <p className="text-sm font-medium text-stone-700">{t('reg.schoolData')}</p>
 
             <div className="flex flex-wrap gap-x-4 gap-y-1 rounded-lg border border-stone-300 bg-stone-100 px-3 py-2 text-xs text-stone-600">
               <span>
-                Moeda: <strong>{country.moeda} ({country.moedaSimbolo})</strong>
+                {t('reg.currencyLabel')} <strong>{country.moeda} ({country.moedaSimbolo})</strong>
               </span>
               <span>
-                Data: <strong>{country.formatoData}</strong>
+                {t('reg.dateLabel')} <strong>{country.formatoData}</strong>
               </span>
               <span>
-                Ano letivo: <strong>{country.calendarioLabel}</strong>
+                {t('reg.schoolYearLabel')} <strong>{country.calendarioLabel}</strong>
               </span>
             </div>
 
@@ -244,7 +246,7 @@ export function SchoolRegisterForm({ onSuccess }: { onSuccess: () => void }) {
             />
 
             <Input
-              label="Telefone"
+              label={t('reg.phone')}
               value={form.telefone}
               onChange={(e) => setForm({ ...form, telefone: e.target.value })}
               placeholder={`${country.ddi} ${country.telefonePlaceholder}`}
@@ -252,16 +254,16 @@ export function SchoolRegisterForm({ onSuccess }: { onSuccess: () => void }) {
             />
 
             <Input
-              label="Endereço"
+              label={t('reg.address')}
               value={form.endereco}
               onChange={(e) => setForm({ ...form, endereco: e.target.value })}
-              placeholder="Rua, número, bairro"
+              placeholder={t('reg.addressPlaceholder')}
               className="bg-white !border-stone-400 focus:!ring-stone-500"
             />
 
             <div className="grid grid-cols-2 gap-3">
               <Input
-                label="Cidade"
+                label={t('reg.city')}
                 value={form.cidade}
                 onChange={(e) => setForm({ ...form, cidade: e.target.value })}
                 className="bg-white !border-stone-400 focus:!ring-stone-500"
@@ -288,27 +290,27 @@ export function SchoolRegisterForm({ onSuccess }: { onSuccess: () => void }) {
         {/* Gaveta 3 — abre após completar os dados da escola */}
         {schoolDetailsComplete && (
           <div className="animate-drawer space-y-3 border-t border-stone-300 pt-4">
-            <p className="text-sm font-medium text-stone-700">Administrador da conta</p>
+            <p className="text-sm font-medium text-stone-700">{t('reg.adminData')}</p>
 
             <Input
-              label="Nome"
+              label={t('reg.yourName')}
               value={form.adminName}
               onChange={(e) => setForm({ ...form, adminName: e.target.value })}
               required
               className="bg-white !border-stone-400 focus:!ring-stone-500"
             />
             <Input
-              label="Email"
+              label={t('field.email')}
               type="email"
               value={form.adminEmail}
               onChange={(e) => setForm({ ...form, adminEmail: e.target.value })}
               required
-              placeholder="voce@colegio.com"
+              placeholder={t('field.emailExample')}
               className="bg-white !border-stone-400 focus:!ring-stone-500"
             />
             <div className="relative">
               <Input
-                label="Senha"
+                label={t('reg.password')}
                 type={showPassword ? 'text' : 'password'}
                 value={form.adminPassword}
                 onChange={(e) => setForm({ ...form, adminPassword: e.target.value })}
@@ -326,7 +328,7 @@ export function SchoolRegisterForm({ onSuccess }: { onSuccess: () => void }) {
               </button>
             </div>
             <Input
-              label="Confirmar senha"
+              label={t('reg.confirmPassword')}
               type={showPassword ? 'text' : 'password'}
               value={form.confirmPassword}
               onChange={(e) => setForm({ ...form, confirmPassword: e.target.value })}
@@ -336,7 +338,7 @@ export function SchoolRegisterForm({ onSuccess }: { onSuccess: () => void }) {
             />
 
             <Button type="submit" className="mt-1 w-full !bg-stone-700 shadow-md hover:!bg-stone-800" disabled={loading}>
-              {loading ? 'Cadastrando...' : 'Cadastrar colégio'}
+              {loading ? t('reg.submitting') : t('reg.submitSchool')}
             </Button>
           </div>
         )}
