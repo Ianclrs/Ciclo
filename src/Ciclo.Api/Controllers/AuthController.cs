@@ -149,7 +149,30 @@ public class AuthController : ControllerBase
             role = user.Role.ToString(),
             user.TenantId,
             user.EmailConfirmed,
+            user.Foto,
         });
+    }
+
+    /// <summary>
+    /// Foto de perfil do próprio usuário — Admin, Staff e responsável. É a única escrita de
+    /// `User` aberta a qualquer papel autenticado: ninguém edita o perfil de outra pessoa por aqui.
+    /// </summary>
+    [HttpPut("me/photo")]
+    [Authorize]
+    public async Task<IActionResult> UpdateMyPhoto([FromBody] UpdateUserPhotoRequest request)
+    {
+        var userIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (string.IsNullOrEmpty(userIdStr) || !Guid.TryParse(userIdStr, out var userId))
+            return Unauthorized();
+
+        try
+        {
+            return Ok(await _authService.UpdateMyPhotoAsync(userId, request.Foto));
+        }
+        catch (AuthException ex)
+        {
+            return ProblemResponse.FromCode(ex.Message, ex.StatusCode);
+        }
     }
 
     /// <summary>FR-007: Forgot password — sends reset token.</summary>

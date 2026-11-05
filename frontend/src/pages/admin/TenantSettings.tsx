@@ -17,6 +17,7 @@ import {
   readStoredLanguage,
 } from '../../i18n/locale';
 import type { MessageKey } from '../../i18n/messages';
+import { TENANT_FEATURES, type TenantFeatureName } from '../../domain/features';
 import {
   getTenantConfiguration,
   updateTenantConfiguration,
@@ -28,17 +29,20 @@ import {
 const PLANS = ['Basic', 'Standard', 'Premium'];
 
 /**
- * Flags conhecidas (`TenantFeature`). O `value` é o identificador persistido pela API; o texto
- * vem do catálogo, então o rótulo acompanha o idioma sem tocar no contrato.
+ * Texto de cada funcionalidade conhecida. O mapa é exaustivo pelo tipo: uma flag nova no dono
+ * único (`domain/features`) quebra a compilação aqui até ganhar rótulo no catálogo.
  */
-const FEATURE_FLAGS: ReadonlyArray<{ value: string; labelKey: MessageKey }> = [
-  { value: 'Documents', labelKey: 'settings.flag.documents' },
-  { value: 'Notifications', labelKey: 'settings.flag.notifications' },
-  { value: 'ParentPortal', labelKey: 'settings.flag.parentPortal' },
-  { value: 'AcademicPerformance', labelKey: 'settings.flag.academic' },
-  { value: 'BatchReenrollment', labelKey: 'settings.flag.reenrollment' },
-  { value: 'AuditExport', labelKey: 'settings.flag.audit' },
-];
+const FEATURE_LABELS: Record<TenantFeatureName, MessageKey> = {
+  Documents: 'settings.flag.documents',
+  Notifications: 'settings.flag.notifications',
+  ParentPortal: 'settings.flag.parentPortal',
+  AcademicPerformance: 'settings.flag.academic',
+  BatchReenrollment: 'settings.flag.reenrollment',
+  AuditExport: 'settings.flag.audit',
+};
+
+/** Opções do painel na ordem do dono único; o `value` é o identificador persistido pela API. */
+const FEATURE_FLAGS = TENANT_FEATURES.map((value) => ({ value, labelKey: FEATURE_LABELS[value] }));
 
 /**
  * Opções de idioma da escola: o valor é o locale que a API persiste, o rótulo é o nome nativo.
@@ -50,9 +54,6 @@ const LOCALE_OPTIONS = LANGUAGE_ORDER.map((language) => ({
 }));
 
 const BYTES_PER_MB = 1024 * 1024;
-
-/** `#RGB` ou `#RRGGBB`; a API aceita e normaliza para maiúsculas. */
-const HEX_COLOR = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;
 
 let cachedTimeZones: string[] | null = null;
 
@@ -81,9 +82,6 @@ function supportedTimeZones(): string[] {
  */
 interface FormState {
   displayName: string;
-  logoUrl: string;
-  primaryColor: string;
-  secondaryColor: string;
   timeZone: string;
   defaultSchoolYear: string;
   locale: string;
@@ -102,9 +100,6 @@ interface Numbers {
 function formFrom(config: TenantConfiguration): FormState {
   return {
     displayName: config.displayName,
-    logoUrl: config.logoUrl ?? '',
-    primaryColor: config.primaryColor ?? '',
-    secondaryColor: config.secondaryColor ?? '',
     timeZone: config.timeZone,
     defaultSchoolYear: String(config.defaultSchoolYear),
     locale: config.locale,
@@ -136,12 +131,6 @@ function parseNumber(value: string): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-/** Cor válida em forma canônica, ou `null` quando o texto atual não é uma cor. */
-function colorPreview(value: string): string | null {
-  const trimmed = value.trim();
-  return HEX_COLOR.test(trimmed) ? trimmed : null;
-}
-
 /**
  * Só o que mudou vai no corpo: campo ausente preserva o valor atual (ADR-200-3). As regras de
  * faixa continuam só na API — aqui não há validação de domínio duplicada.
@@ -154,13 +143,6 @@ function buildPayload(
   const payload: UpdateTenantConfiguration = {};
 
   if (textChanged(config.displayName, form.displayName)) payload.displayName = form.displayName.trim();
-  if (textChanged(config.logoUrl, form.logoUrl)) payload.logoUrl = form.logoUrl.trim();
-  if (textChanged(config.primaryColor, form.primaryColor, true)) {
-    payload.primaryColor = form.primaryColor.trim();
-  }
-  if (textChanged(config.secondaryColor, form.secondaryColor, true)) {
-    payload.secondaryColor = form.secondaryColor.trim();
-  }
   if (textChanged(config.timeZone, form.timeZone)) payload.timeZone = form.timeZone.trim();
   if (numbers.defaultSchoolYear !== config.defaultSchoolYear) {
     payload.defaultSchoolYear = numbers.defaultSchoolYear;
@@ -181,6 +163,11 @@ function buildPayload(
  * regionais, limites e plano. Agrupar por significado — e não por quantidade de campos — é o
  * que permite abrir a tela sabendo onde cada ajuste mora.
  *
+ * As quatro seções ficam numa mesma grade, preenchida na ordem: identidade ao lado de
+ * preferências regionais, e limites ao lado de plano e funcionalidades. Uma grade só mantém o
+ * par alinhado sem duplicar contêineres. Ela abre duas colunas a partir de `md` — a janela
+ * pela metade já mostra o arranjo 2×2 — e abaixo disso empilha na mesma ordem.
+ *
  * A autorização real é da API: o `GET` exige sessão e o `PUT` exige papel Admin. A rota já é
  * restrita ao Admin em `App.tsx`; a tela não repete a regra, apenas apresenta o código de erro
  * devolvido em recusa (400/403) sem limpar o que está na tela.
@@ -197,7 +184,6 @@ export default function TenantSettings() {
   const [loadError, setLoadError] = useState<{ error: unknown } | null>(null);
   const [saveError, setSaveError] = useState<{ error: unknown } | { textKey: MessageKey } | null>(null);
   const [saving, setSaving] = useState(false);
-  const [logoBroken, setLogoBroken] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
 
   const timeZones = useMemo(() => supportedTimeZones(), []);
@@ -288,13 +274,6 @@ export default function TenantSettings() {
     if (!config) return;
     setForm(formFrom(config));
     setSaveError(null);
-    setLogoBroken(false);
-  }
-
-  function colorError(value: string): string | undefined {
-    return value.trim() !== '' && colorPreview(value) === null
-      ? t('settings.error.color')
-      : undefined;
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
@@ -305,6 +284,13 @@ export default function TenantSettings() {
       setSaveError({ textKey: 'settings.error.numbers' });
       return;
     }
+    // Conjunto vazio é recusado aqui porque não é distinguível de "nunca configurado" no banco —
+    // e essa ambiguidade faria o portão da API tratar uma escola desligada como escola padrão.
+    if (draft.featureFlags !== undefined && draft.featureFlags.length === 0) {
+      setSaveError({ textKey: 'settings.error.featuresRequired' });
+      return;
+    }
+
 
     // Envio sem alteração não chama a API: evita escrita vazia e revalidação sem motivo.
     if (Object.keys(draft).length === 0) {
@@ -318,7 +304,6 @@ export default function TenantSettings() {
       const updated = await updateTenantConfiguration(draft);
       setConfig(updated);
       setForm(formFrom(updated));
-      setLogoBroken(false);
       toast.success(t('settings.state.saved'));
     } catch (error: unknown) {
       // Recusa mantém os valores carregados: o formulário não é limpo.
@@ -327,10 +312,6 @@ export default function TenantSettings() {
       setSaving(false);
     }
   }
-
-  const logoUrl = form?.logoUrl.trim() ?? '';
-  const primaryColor = form ? colorPreview(form.primaryColor) : null;
-  const secondaryColor = form ? colorPreview(form.secondaryColor) : null;
 
   return (
     <>
@@ -344,7 +325,7 @@ export default function TenantSettings() {
       )}
 
       {loading && !loadError && (
-        <Card>
+        <Card tone="glass">
           <SkeletonRows rows={6} />
         </Card>
       )}
@@ -362,84 +343,16 @@ export default function TenantSettings() {
             </div>
           )}
 
-          <Card title={t('settings.section.identity')}>
-            <div className="grid gap-4 md:grid-cols-2">
+          <div className="grid gap-6 md:grid-cols-2">
+            <Card tone="glass" title={t('settings.section.identity')}>
               <Input
                 label={t('settings.field.displayName')}
                 value={form.displayName}
                 onChange={(event) => update({ displayName: event.target.value })}
               />
+            </Card>
 
-              <div>
-                <Input
-                  label={t('settings.field.logoUrl')}
-                  placeholder="https://…/logo.png"
-                  value={form.logoUrl}
-                  onChange={(event) => {
-                    update({ logoUrl: event.target.value });
-                    setLogoBroken(false);
-                  }}
-                />
-                <div className="mt-2 flex h-16 items-center gap-3 rounded-lg border border-dashed border-gray-300 px-3">
-                  {logoUrl !== '' && !logoBroken ? (
-                    <img
-                      src={logoUrl}
-                      alt={t('settings.field.logoUrl')}
-                      className="h-12 w-auto max-w-[10rem] object-contain"
-                      onError={() => setLogoBroken(true)}
-                    />
-                  ) : (
-                    <span className={`text-xs ${logoBroken ? 'text-red-600' : 'text-gray-500'}`}>
-                      {logoBroken ? t('settings.error.logo') : t('settings.hint.logoNone')}
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              <div>
-                <Input
-                  label={t('settings.field.primaryColor')}
-                  placeholder="#1A2B3C"
-                  value={form.primaryColor}
-                  error={colorError(form.primaryColor)}
-                  onChange={(event) => update({ primaryColor: event.target.value })}
-                />
-                {primaryColor && (
-                  <span className="mt-1 flex items-center gap-2 text-xs text-gray-500">
-                    <span
-                      aria-hidden="true"
-                      className="inline-block h-3 w-3 rounded-full border border-gray-300"
-                      style={{ backgroundColor: primaryColor }}
-                    />
-                    {primaryColor}
-                  </span>
-                )}
-              </div>
-
-              <div>
-                <Input
-                  label={t('settings.field.secondaryColor')}
-                  placeholder="#1A2B3C"
-                  value={form.secondaryColor}
-                  error={colorError(form.secondaryColor)}
-                  onChange={(event) => update({ secondaryColor: event.target.value })}
-                />
-                {secondaryColor && (
-                  <span className="mt-1 flex items-center gap-2 text-xs text-gray-500">
-                    <span
-                      aria-hidden="true"
-                      className="inline-block h-3 w-3 rounded-full border border-gray-300"
-                      style={{ backgroundColor: secondaryColor }}
-                    />
-                    {secondaryColor}
-                  </span>
-                )}
-              </div>
-            </div>
-          </Card>
-
-          <div className="grid gap-6 lg:grid-cols-2">
-            <Card title={t('settings.section.regional')}>
+            <Card tone="glass" title={t('settings.section.regional')}>
               <div className="space-y-4">
                 <div>
                   <Input
@@ -485,7 +398,7 @@ export default function TenantSettings() {
               </div>
             </Card>
 
-            <Card title={t('settings.section.limits')}>
+            <Card tone="glass" title={t('settings.section.limits')}>
               <div className="space-y-4">
                 <Input
                   label={t('settings.field.storage')}
@@ -503,48 +416,54 @@ export default function TenantSettings() {
                 />
               </div>
             </Card>
-          </div>
 
-          <Card title={t('settings.section.plan')}>
-            <Select
-              label={t('settings.field.plan')}
-              className="md:w-64"
-              value={form.plan}
-              onChange={(event) => update({ plan: event.target.value })}
-            >
-              {PLANS.map((plan) => (
-                <option key={plan} value={plan}>
-                  {plan}
-                </option>
-              ))}
-            </Select>
-
-            <fieldset className="mt-4">
-              <legend className="text-sm font-medium text-gray-700">
-                {t('settings.features.legend')}
-              </legend>
-              <div className="mt-2 grid gap-2 md:grid-cols-2">
-                {FEATURE_FLAGS.map((flag) => (
-                  <label
-                    key={flag.value}
-                    htmlFor={`flag-${flag.value}`}
-                    className="flex items-center gap-2 text-sm text-gray-700"
-                  >
-                    <input
-                      id={`flag-${flag.value}`}
-                      type="checkbox"
-                      checked={form.featureFlags.includes(flag.value)}
-                      onChange={() => toggleFlag(flag.value)}
-                      className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                    />
-                    {t(flag.labelKey)}
-                  </label>
+            <Card tone="glass" title={t('settings.section.plan')}>
+              <Select
+                label={t('settings.field.plan')}
+                className="w-full"
+                value={form.plan}
+                onChange={(event) => update({ plan: event.target.value })}
+              >
+                {PLANS.map((plan) => (
+                  <option key={plan} value={plan}>
+                    {plan}
+                  </option>
                 ))}
-              </div>
-            </fieldset>
+              </Select>
 
-            <p className="mt-3 text-xs text-gray-500">{t('settings.hint.plan')}</p>
-          </Card>
+              <fieldset className="mt-4">
+                <legend className="text-sm font-medium text-gray-700">
+                  {t('settings.features.legend')}
+                </legend>
+                {/*
+                 * Largura da coluna manda nesta grade: em `md` o cartão passa a dividir a linha
+                 * e duas colunas de caixas de seleção ficariam com ~100px cada, quebrando
+                 * rótulos como "Portal do responsável". Por isso duas colunas só quando o cartão
+                 * está largo (tela cheia em `sm`, metade larga a partir de `lg`).
+                 */}
+                <div className="mt-2 grid gap-2 sm:grid-cols-2 md:grid-cols-1 lg:grid-cols-2">
+                  {FEATURE_FLAGS.map((flag) => (
+                    <label
+                      key={flag.value}
+                      htmlFor={`flag-${flag.value}`}
+                      className="flex items-center gap-2 text-sm text-gray-700"
+                    >
+                      <input
+                        id={`flag-${flag.value}`}
+                        type="checkbox"
+                        checked={form.featureFlags.includes(flag.value)}
+                        onChange={() => toggleFlag(flag.value)}
+                        className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                      />
+                      {t(flag.labelKey)}
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+
+              <p className="mt-3 text-xs text-gray-500">{t('settings.hint.plan')}</p>
+            </Card>
+          </div>
 
           <div className="flex flex-wrap items-center justify-end gap-3">
             {isDirty && (

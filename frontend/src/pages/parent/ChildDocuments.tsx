@@ -1,23 +1,35 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
+import { ArrowLeft, Upload } from 'lucide-react';
 import { Card } from '../../components/Card';
 import { PageHeader } from '../../components/PageHeader';
-import { StatusBadge } from '../../components/StatusBadge';
 import { Button } from '../../components/Button';
-import { ArrowLeft, Upload } from 'lucide-react';
-import * as api from '../../api/parent';
-import { apiErrorMessage } from '../../api/errors';
+import { Input } from '../../components/Input';
+import { Select } from '../../components/Select';
+import { DocumentRow } from '../../components/DocumentRow';
+import { EmptyState } from '../../components/EmptyState';
 import { LoadError } from '../../components/LoadError';
 import { SkeletonRows } from '../../components/Skeleton';
+import * as api from '../../api/parent';
+import { apiErrorMessage } from '../../api/errors';
 import { getDocumentTypes } from '../../api/documents';
 import { useLocale } from '../../i18n/LocaleContext';
-import { formatDate } from '../../utils/format';
 import type { Document, DocumentType } from '../../types';
 
+/** Limite aceito no envio; o mesmo que a API recusa. */
+const MAX_FILE_BYTES = 10 * 1024 * 1024;
+
+/**
+ * Documentos do filho: envio e histórico, para o responsável.
+ *
+ * A lista usa a mesma linha da ficha do filho (`DocumentRow`). Antes eram dois blocos parecidos,
+ * e este usava `divide-y` sem cor — no Tailwind v4 a divisória herda `currentColor` e aparecia
+ * escura, quase preta, entre os documentos.
+ */
 export default function ChildDocuments() {
   const { id } = useParams();
-  const { language, locale, t } = useLocale();
+  const { language, t } = useLocale();
   const [docs, setDocs] = useState<Document[]>([]);
   const [docTypes, setDocTypes] = useState<DocumentType[]>([]);
   const [selectedTypeId, setSelectedTypeId] = useState('');
@@ -65,7 +77,7 @@ export default function ChildDocuments() {
       toast.error(t('docs.selectType'));
       return;
     }
-    if (file.size > 10 * 1024 * 1024) {
+    if (file.size > MAX_FILE_BYTES) {
       toast.error(t('docs.tooLarge'));
       return;
     }
@@ -87,19 +99,25 @@ export default function ChildDocuments() {
 
   return (
     <div>
-      <Link to={`/parent/children/${id}`} className="flex items-center gap-1 text-sm text-gray-500 mb-4">
+      <Link to={`/parent/children/${id}`} className="mb-4 flex items-center gap-1 text-sm text-gray-500">
         <ArrowLeft size={16} /> {t('common.back')}
       </Link>
       <PageHeader title={t('nav.documents')} subtitle={t('docs.subtitle')} />
-      {error && <div className="mb-6"><LoadError message={error} onRetry={() => setReloadKey((k) => k + 1)} /></div>}
+
+      {error && (
+        <div className="mb-6">
+          <LoadError message={error} onRetry={() => setReloadKey((k) => k + 1)} />
+        </div>
+      )}
+
       <Card tone="glass" className="mb-6">
-        <form onSubmit={handleUpload} className="flex flex-col sm:flex-row gap-4 items-stretch sm:items-end">
+        <form onSubmit={handleUpload} className="flex flex-col gap-4 sm:flex-row sm:items-end">
           <div className="flex-1">
-            <label className="block text-sm font-medium text-gray-700 mb-1">{t('docs.field.type')}</label>
-            <select
+            <Select
+              label={t('docs.field.type')}
+              className="w-full"
               value={selectedTypeId}
               onChange={(e) => setSelectedTypeId(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
               required
             >
               <option value="" disabled>{t('docs.selectPlaceholder')}</option>
@@ -108,38 +126,35 @@ export default function ChildDocuments() {
                   {type.nome}{type.isRequired ? t('docs.requiredSuffix') : ''}
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
+
           <div className="flex-1">
-            <label className="block text-sm font-medium text-gray-700 mb-1">{t('docs.field.file')}</label>
-            <input type="file" ref={fileRef} className="text-sm w-full" accept=".pdf,.jpg,.jpeg,.png" required />
+            <Input
+              label={t('docs.field.file')}
+              type="file"
+              ref={fileRef}
+              accept=".pdf,.jpg,.jpeg,.png"
+              required
+            />
           </div>
-          <Button type="submit" disabled={uploading}>
-            <Upload size={14} className="mr-1" />
+
+          <Button type="submit" disabled={uploading} className="gap-1.5">
+            <Upload size={14} aria-hidden="true" />
             {uploading ? t('docs.sending') : t('docs.upload')}
           </Button>
         </form>
       </Card>
+
       <Card tone="glass">
         {loading ? (
           <SkeletonRows rows={4} />
-        ) : docs.length === 0 ? (!error && <p className="text-gray-500 text-center py-4">{t('docs.empty')}</p>) : (
-          <ul className="divide-y">
-            {docs.map((d) => (
-              <li key={d.id} className="py-3 flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium">{d.nomeArquivo}</p>
-                  <p className="text-xs text-gray-500">{d.documentTypeName} • {formatDate(d.createdAt, locale)}</p>
-                  {/* A7: o motivo já vinha no DTO e não era exibido — sem ele o responsável sabe que
-                      o documento foi recusado, mas não o que corrigir para reenviar. */}
-                  {d.motivoRejeicao && (
-                    <p className="text-xs text-red-600 mt-1">
-                      {t('docs.rejectReason', { reason: d.motivoRejeicao })}
-                    </p>
-                  )}
-                </div>
-                <StatusBadge status={d.status} variant={d.status === 'Aprovado' ? 'success' : d.status === 'Pendente' ? 'warning' : 'danger'} />
-              </li>
+        ) : docs.length === 0 ? (
+          !error && <EmptyState message={t('docs.empty')} />
+        ) : (
+          <ul className="space-y-1">
+            {docs.map((doc) => (
+              <DocumentRow key={doc.id} document={doc} />
             ))}
           </ul>
         )}

@@ -17,7 +17,6 @@ import { useAuth } from '../hooks/useAuth';
 import { setAccessToken } from '../api/client';
 import { Button } from '../components/Button';
 import { ShaderBackground } from '../components/ShaderBackground';
-import { LanguageSwitcher } from '../components/LanguageSwitcher';
 import { SchoolRegisterForm } from '../components/SchoolRegisterForm';
 import { ParentRegisterForm } from '../components/ParentRegisterForm';
 import { useLocale } from '../i18n/LocaleContext';
@@ -226,18 +225,16 @@ export default function AuthPage() {
         }`}
       >
         <div>
-          {/* Cabeçalho institucional. O seletor de idioma mora aqui porque esta é a única
-              tela alcançável antes do login: sem ele, quem não lê português não consegue
-              trocar de idioma para entrar. */}
+          {/*
+           * Cabeçalho institucional. Sem seletor de idioma: a troca fica na topbar, já
+           * autenticado. Aqui sobra só a marca, que acompanha o idioma ativo pelo catálogo.
+           */}
           <div className="mb-6 flex items-center gap-3">
             <img src="/Ciclo_favicon.png" alt="" className="h-16 w-16 shrink-0 object-contain" />
             <span className="block text-base leading-tight font-bold tracking-tight text-slate-900">
               Ciclo <span className="mx-1 font-normal text-slate-400">|</span>{' '}
               <span className="text-xs font-semibold text-slate-600">{t(copy.brand)}</span>
             </span>
-            <div className="ml-auto shrink-0">
-              <LanguageSwitcher />
-            </div>
           </div>
 
           {/* Título e subtítulo — acompanham o conteúdo que está no painel. */}

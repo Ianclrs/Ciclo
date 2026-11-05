@@ -39,7 +39,13 @@ export function loadDemoState(): DemoState {
   }
 
   try {
-    return JSON.parse(raw) as DemoState;
+    const parsed = JSON.parse(raw) as Partial<DemoState> | null;
+    if (parsed === null || typeof parsed !== 'object') {
+      return resetDemoState();
+    }
+    // A semente preenche os campos que a versão gravada não tinha — a estrutura acadêmica
+    // entrou depois do primeiro deploy — sem descartar o que o usuário já criou na demonstração.
+    return { ...createSeed(), ...parsed } as DemoState;
   } catch {
     // Registro corrompido (versão antiga do formato, edição manual): recomeça da semente.
     return resetDemoState();

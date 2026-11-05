@@ -1,14 +1,29 @@
-import { useCallback, useState, useEffect, useLayoutEffect, useRef, type ReactNode } from 'react';
+import { useCallback, useState, useEffect, useLayoutEffect, useRef, type ChangeEvent, type ReactNode } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { ChevronRight, Settings } from 'lucide-react';
+import toast from 'react-hot-toast';
 import { useAuth } from '../hooks/useAuth';
 import { useLocale } from '../i18n/LocaleContext';
 import type { MessageKey } from '../i18n/messages';
 import { Button } from './Button';
+import { Badge } from './Badge';
+import { Modal } from './Modal';
+import { StudentAvatar } from './StudentAvatar';
 import { ShaderBackground } from './ShaderBackground';
 import { TopbarActions } from './TopbarActions';
+import { apiErrorMessage } from '../api/errors';
+import { toResizedDataUrl } from '../utils/image';
 import { cutoutMask, type CutoutRect } from './sidebarCutout';
-import { clearJustLoggedIn, wasJustLoggedIn } from '../utils/sessionMarks';
 import type { Accent } from './accentStyles';
+import type { TenantFeatureName } from '../domain/features';
+import type { User } from '../types';
+
+/** Rótulo do papel no idioma ativo — o valor da API (`Admin`) não é texto para tela. */
+const ROLE_KEYS: Record<User['role'], MessageKey> = {
+  Admin: 'role.admin',
+  Staff: 'role.staff',
+  Parent: 'role.parent',
+};
 
 export interface SidebarItem {
   /** Chave do catálogo: o texto é resolvido no idioma ativo, não guardado no item. */
@@ -16,6 +31,11 @@ export interface SidebarItem {
   path: string;
   icon: ReactNode;
   color?: Accent;
+  /**
+   * Funcionalidade que o item exige (ADR-200-2). Sem ela, o item não aparece — e a rota,
+   * aberta direto, recebe 403 `feature_disabled` da API.
+   */
+  feature?: TenantFeatureName;
 }
 
 /**
@@ -48,16 +68,23 @@ interface SidebarProps {
 export function Sidebar({ items, children, notificationsTo }: SidebarProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
   /**
-   * Recolhida é o padrão (a barra some e sobra a tela). Exceção: logo depois do login, quando
-   * a marca de sessão nova manda abrir — quem acabou de entrar precisa ver o menu, não procurar
-   * o botão que o revela. A leitura no inicializador só espia; quem apaga é o efeito abaixo,
-   * porque o `StrictMode` executa o inicializador duas vezes em desenvolvimento.
+   * Abre aberta. O menu é a única navegação da área logada: começar recolhida obrigava a procurar
+   * o botão que o revela antes de qualquer clique. Recolher continua disponível, e a escolha vale
+   * para a sessão corrente — não é preferência persistida, então recarregar volta a abrir.
    */
-  const [desktopCollapsed, setDesktopCollapsed] = useState(() => !wasJustLoggedIn());
+  const [desktopCollapsed, setDesktopCollapsed] = useState(false);
+  /**
+   * Ficha da conta. Antes, o bloco de perfil no rodapé era só texto: mostrava nome e papel, sem
+   * nada a clicar. Agora ele abre o diálogo da conta — dados de quem está logado, atalho para as
+   * configurações (Admin) e a saída do sistema, no mesmo lugar.
+   */
+  const [accountOpen, setAccountOpen] = useState(false);
+  /** Enquanto a foto sobe, os controles ficam desabilitados (evita dois envios concorrentes). */
+  const [photoBusy, setPhotoBusy] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, logout } = useAuth();
-  const { t } = useLocale();
+  const { user, logout, updatePhoto } = useAuth();
+  const { t, language } = useLocale();
   const desktopAsideRef = useRef<HTMLElement>(null);
   const mobileAsideRef = useRef<HTMLElement>(null);
 
@@ -189,18 +216,41 @@ export function Sidebar({ items, children, notificationsTo }: SidebarProps) {
     return () => { document.body.style.overflow = ''; };
   }, [mobileOpen]);
 
-  /*
-   * A marca de "acabou de entrar" vale uma vez: apagar aqui garante que a sidebar não se
-   * reabra sozinha numa remontagem depois de a pessoa tê-la fechado.
-   */
-  useEffect(() => {
-    clearJustLoggedIn();
-  }, []);
-
   const handleLogout = async () => {
     await logout();
     navigate('/login');
   };
+
+  /** Reduz no navegador e envia. A API devolve o usuário já com a foto; o contexto propaga. */
+  async function handlePhotoChange(event: ChangeEvent<HTMLInputElement>): Promise<void> {
+    const file = event.target.files?.[0];
+    // Limpa a seleção para que escolher o MESMO arquivo de novo dispare `change` outra vez.
+    event.target.value = '';
+    if (!file) return;
+
+    setPhotoBusy(true);
+    try {
+      const dataUrl = await toResizedDataUrl(file);
+      await updatePhoto(dataUrl);
+      toast.success(t('profile.photoSaved'));
+    } catch (error: unknown) {
+      toast.error(apiErrorMessage(error, t('profile.photoError'), language));
+    } finally {
+      setPhotoBusy(false);
+    }
+  }
+
+  async function handlePhotoRemove(): Promise<void> {
+    setPhotoBusy(true);
+    try {
+      await updatePhoto(null);
+      toast.success(t('profile.photoSaved'));
+    } catch (error: unknown) {
+      toast.error(apiErrorMessage(error, t('profile.photoError'), language));
+    } finally {
+      setPhotoBusy(false);
+    }
+  }
 
   const toggle = () => {
     if (window.innerWidth < 768) {
@@ -242,16 +292,26 @@ export function Sidebar({ items, children, notificationsTo }: SidebarProps) {
         })}
       </nav>
       <div className="p-4 border-t border-stone-200 shrink-0">
-        <div className="flex items-center gap-3 mb-3">
-          <div className="w-8 h-8 rounded-full bg-stone-300 flex items-center justify-center text-stone-700 font-semibold text-sm shrink-0">
-            {user?.name?.[0]?.toUpperCase()}
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-stone-800 truncate">{user?.name}</p>
-            <p className="text-xs text-stone-500">{user?.role}</p>
-          </div>
-        </div>
-        <Button variant="ghost" size="sm" className="w-full justify-center bg-white text-stone-700 shadow-sm hover:bg-red-100 hover:text-red-700 font-medium transition-all" onClick={handleLogout}>
+        <button
+          type="button"
+          onClick={() => setAccountOpen(true)}
+          aria-haspopup="dialog"
+          className="flex w-full items-center gap-3 rounded-lg p-1.5 text-left transition-colors hover:bg-white/70 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+        >
+          <StudentAvatar name={user?.name ?? ''} photo={user?.foto} size="sm" />
+          <span className="flex-1 min-w-0">
+            <span className="block text-sm font-medium text-stone-800 truncate">{user?.name}</span>
+            <span className="block text-xs text-stone-500 truncate">
+              {user ? t(ROLE_KEYS[user.role]) : ''}
+            </span>
+          </span>
+        </button>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="mt-3 w-full justify-center bg-white text-stone-700 shadow-sm hover:bg-red-100 hover:text-red-700 font-medium transition-all"
+          onClick={handleLogout}
+        >
           {t('nav.logout')}
         </Button>
       </div>
@@ -290,9 +350,15 @@ export function Sidebar({ items, children, notificationsTo }: SidebarProps) {
             onClick={toggle}
             aria-label={menuOpen ? t('nav.closeMenu') : t('nav.openMenu')}
             aria-expanded={menuOpen}
-            className="-ml-2 rounded-xl p-1 hover:bg-white/40 active:scale-95 transition-all"
+            className="-ml-2 flex items-center gap-2 rounded-xl p-1 pr-2 hover:bg-white/40 active:scale-95 transition-all"
           >
             <img src="/Ciclo_favicon.png" alt="" className="w-12 h-12 shrink-0" />
+            {/* A marca fica ao lado da logo, e o botão segue sendo o controle do menu: o
+                `aria-label` sobrepõe o conteúdo, então o leitor de tela continua ouvindo
+                "abrir/fechar menu", não o nome. A fonte é a mesma da marca no login. */}
+            <span className="font-brand text-lg font-bold tracking-tight text-stone-800">
+              Ciclo
+            </span>
           </button>
 
           <TopbarActions notificationsTo={notificationsTo} />
@@ -337,6 +403,70 @@ export function Sidebar({ items, children, notificationsTo }: SidebarProps) {
         />
         <div className="relative w-full flex flex-col h-full">{navContent}</div>
       </aside>
+
+      {/* Uma instância só: `navContent` é renderizado nas duas asides, e o diálogo duplicado
+          criaria dois `role="dialog"` no DOM. */}
+      <Modal
+        open={accountOpen}
+        onClose={() => setAccountOpen(false)}
+        title={t('nav.account')}
+        closeLabel={t('common.close')}
+      >
+        {/* Identidade primeiro: quem está logado é a resposta da pergunta que abriu o diálogo. */}
+        <div className="flex items-center gap-4">
+          <StudentAvatar name={user?.name ?? ''} photo={user?.foto} size="lg" />
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-base font-semibold text-gray-900">{user?.name}</p>
+            <p className="mt-0.5 truncate text-xs text-gray-500">{user?.email}</p>
+          </div>
+          {user && <Badge variant="info">{t(ROLE_KEYS[user.role])}</Badge>}
+        </div>
+
+        {/* A foto é a mesma da lista de usuários: trocar aqui muda o reconhecimento em todo o app. */}
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          <label
+            className={`inline-flex cursor-pointer items-center rounded-lg bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-200 focus-within:ring-2 focus-within:ring-indigo-500 ${
+              photoBusy ? 'pointer-events-none opacity-60' : ''
+            }`}
+          >
+            <input
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              className="sr-only"
+              onChange={handlePhotoChange}
+              disabled={photoBusy}
+            />
+            {t('profile.changePhoto')}
+          </label>
+          {user?.foto && (
+            <button
+              type="button"
+              onClick={handlePhotoRemove}
+              disabled={photoBusy}
+              className="rounded-lg px-3 py-1.5 text-xs font-medium text-red-700 transition-colors hover:bg-red-50 disabled:opacity-60"
+            >
+              {t('profile.removePhoto')}
+            </button>
+          )}
+        </div>
+
+        {user?.role === 'Admin' && (
+          <div className="mt-5 border-t border-gray-200 pt-3">
+            <button
+              type="button"
+              onClick={() => {
+                setAccountOpen(false);
+                navigate('/admin/settings');
+              }}
+              className="flex w-full items-center gap-3 rounded-lg px-2 py-2.5 text-left text-sm font-medium text-gray-700 transition-colors hover:bg-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+            >
+              <Settings size={18} className="shrink-0 text-gray-500" aria-hidden="true" />
+              <span className="flex-1">{t('nav.settings')}</span>
+              <ChevronRight size={16} className="shrink-0 text-gray-400" aria-hidden="true" />
+            </button>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }

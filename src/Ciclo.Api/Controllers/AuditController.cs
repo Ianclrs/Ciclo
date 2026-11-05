@@ -1,4 +1,6 @@
+using Ciclo.Api.Authorization;
 using Ciclo.Api.Middleware;
+using Ciclo.Core.Entities;
 using Ciclo.Infrastructure.Contracts;
 using Ciclo.Infrastructure.Security;
 using Ciclo.Infrastructure.Services;
@@ -39,6 +41,7 @@ public class AuditController : ControllerBase
     }
 
     [HttpGet("export")]
+    [RequiresFeature(TenantFeature.AuditExport)]
     public async Task<IActionResult> Export(
         [FromQuery] DateTime? from,
         [FromQuery] DateTime? to,

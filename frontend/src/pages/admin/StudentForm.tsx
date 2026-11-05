@@ -12,43 +12,7 @@ import { useLocale } from '../../i18n/LocaleContext';
 import type { MessageKey } from '../../i18n/messages';
 import * as api from '../../api/students';
 import { apiErrorMessage } from '../../api/errors';
-
-const MAX_SIDE = 256;
-const JPEG_QUALITY = 0.82;
-
-function loadImage(url: string): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const image = new Image();
-    image.onload = () => resolve(image);
-    image.onerror = () => reject(new Error('image_load_failed'));
-    image.src = url;
-  });
-}
-
-/**
- * Reduz a imagem no próprio navegador antes de enviar: a foto é guardada como texto
- * no banco, então o tamanho do payload importa. O servidor valida o tamanho de novo.
- */
-async function toResizedDataUrl(file: File): Promise<string> {
-  const objectUrl = URL.createObjectURL(file);
-  try {
-    const image = await loadImage(objectUrl);
-    const scale = Math.min(1, MAX_SIDE / Math.max(image.width, image.height));
-    const width = Math.max(1, Math.round(image.width * scale));
-    const height = Math.max(1, Math.round(image.height * scale));
-
-    const canvas = document.createElement('canvas');
-    canvas.width = width;
-    canvas.height = height;
-    const context = canvas.getContext('2d');
-    if (!context) throw new Error('canvas_unavailable');
-    context.drawImage(image, 0, 0, width, height);
-
-    return canvas.toDataURL('image/jpeg', JPEG_QUALITY);
-  } finally {
-    URL.revokeObjectURL(objectUrl);
-  }
-}
+import { PHOTO_MAX_SIDE, toResizedDataUrl } from '../../utils/image';
 
 export default function StudentForm() {
   const { id } = useParams();
@@ -134,7 +98,7 @@ export default function StudentForm() {
               </div>
             </div>
             <p className="mt-2 text-xs text-gray-500">
-              {t('students.field.photoHint', { size: MAX_SIDE })}
+              {t('students.field.photoHint', { size: PHOTO_MAX_SIDE })}
             </p>
             {fotoError && <p className="mt-1 text-sm text-red-600">{t(fotoError)}</p>}
           </div>

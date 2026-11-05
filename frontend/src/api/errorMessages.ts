@@ -420,6 +420,11 @@ export const ERROR_MESSAGES: Record<string, Record<Language, string>> = {
     en: 'Unsupported language. Use pt-BR, en-US or es-ES.',
     es: 'Idioma no admitido. Usa pt-BR, en-US o es-ES.',
   },
+  feature_disabled: {
+    pt: 'Esta funcionalidade não está habilitada para esta escola.',
+    en: 'This feature is not enabled for this school.',
+    es: 'Esta funcionalidad no está habilitada para esta escuela.',
+  },
   invalid_user_quota: {
     pt: 'A cota de usuários deve estar entre 1 e 10000.',
     en: 'The user quota must be between 1 and 10000.',

@@ -6,6 +6,7 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { SplashGate } from './components/SplashGate';
 import { Sidebar, type SidebarItem } from './components/Sidebar';
+import { useTenantFeatures } from './hooks/useTenantFeatures';
 import DocumentTitle from './components/DocumentTitle';
 import { LayoutDashboard, Users, FileText, Bell, GraduationCap, UserCog, BookOpen, Settings, Shield } from 'lucide-react';
 import { useAuth } from './hooks/useAuth';
@@ -40,20 +41,21 @@ const adminItems: SidebarItem[] = [
   { labelKey: 'nav.dashboard', path: '/admin', icon: <LayoutDashboard size={20} />, color: 'violet' },
   { labelKey: 'nav.students', path: '/admin/students', icon: <Users size={20} />, color: 'blue' },
   { labelKey: 'nav.enrollments', path: '/admin/enrollments', icon: <GraduationCap size={20} />, color: 'green' },
-  { labelKey: 'nav.documents', path: '/admin/documents', icon: <FileText size={20} />, color: 'amber' },
-  { labelKey: 'nav.academic', path: '/admin/academico', icon: <BookOpen size={20} />, color: 'cyan' },
-  { labelKey: 'nav.notifications', path: '/admin/notifications', icon: <Bell size={20} />, color: 'red' },
+  { labelKey: 'nav.documents', path: '/admin/documents', icon: <FileText size={20} />, color: 'amber', feature: 'Documents' },
+  { labelKey: 'nav.academic', path: '/admin/academico', icon: <BookOpen size={20} />, color: 'cyan', feature: 'AcademicPerformance' },
+  { labelKey: 'nav.notifications', path: '/admin/notifications', icon: <Bell size={20} />, color: 'red', feature: 'Notifications' },
 ];
 
 const parentItems: SidebarItem[] = [
   { labelKey: 'nav.dashboard', path: '/parent', icon: <LayoutDashboard size={20} />, color: 'violet' },
-  { labelKey: 'nav.notifications', path: '/parent/notifications', icon: <Bell size={20} />, color: 'red' },
+  { labelKey: 'nav.notifications', path: '/parent/notifications', icon: <Bell size={20} />, color: 'red', feature: 'Notifications' },
   { labelKey: 'nav.privacy', path: '/parent/privacy', icon: <Shield size={20} />, color: 'indigo' },
 ];
 
 function AdminLayout() {
   const { user } = useAuth();
-  const items: SidebarItem[] = user?.role === 'Admin'
+  const { enabled } = useTenantFeatures(user?.tenantId);
+  const menu: SidebarItem[] = user?.role === 'Admin'
     ? [
         ...adminItems,
         { labelKey: 'nav.users', path: '/admin/users', icon: <UserCog size={20} />, color: 'teal' },
@@ -61,6 +63,10 @@ function AdminLayout() {
         { labelKey: 'nav.privacy', path: '/admin/privacy', icon: <Shield size={20} />, color: 'sky' },
       ]
     : adminItems;
+
+  // Funcionalidade desligada não aparece no menu. Enquanto a leitura não conclui (ou se ela
+  // falha), `enabled` responde `true`: a API é quem recusa de fato.
+  const items = menu.filter((item) => !item.feature || enabled(item.feature));
 
   return (
     <Sidebar items={items} notificationsTo="/admin/notifications">
@@ -101,8 +107,12 @@ function AdminLayout() {
 }
 
 function ParentLayout() {
+  const { user } = useAuth();
+  const { enabled } = useTenantFeatures(user?.tenantId);
+  const items = parentItems.filter((item) => !item.feature || enabled(item.feature));
+
   return (
-    <Sidebar items={parentItems} notificationsTo="/parent/notifications">
+    <Sidebar items={items} notificationsTo="/parent/notifications">
         <Routes>
           <Route index element={<ParentDashboard />} />
           <Route path="children/:id" element={<ChildDetail />} />

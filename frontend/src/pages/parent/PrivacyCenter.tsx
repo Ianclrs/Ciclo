@@ -1,12 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
+import { Check, CircleX, Download, ShieldCheck } from 'lucide-react';
 import { Card } from '../../components/Card';
+import { CardHeading } from '../../components/CardHeading';
 import { PageHeader } from '../../components/PageHeader';
 import { Badge } from '../../components/Badge';
 import { Button } from '../../components/Button';
 import { EmptyState } from '../../components/EmptyState';
 import { LoadError } from '../../components/LoadError';
 import { SkeletonRows } from '../../components/Skeleton';
+import { accentChip, type Accent } from '../../components/accentStyles';
 import { apiErrorMessage } from '../../api/errors';
 import { useLocale } from '../../i18n/LocaleContext';
 import type { MessageKey } from '../../i18n/messages';
@@ -28,6 +31,9 @@ const REQUESTABLE: { type: PrivacyRequestType; labelKey: MessageKey }[] = [
   { type: 'Export', labelKey: 'priv.requestExport' },
   { type: 'Anonymization', labelKey: 'priv.requestAnonymization' },
 ];
+
+/** Cor do chip do consentimento: concedido em verde, revogado em vermelho. */
+const CONSENT_ACCENT: Record<string, Accent> = { Granted: 'green', Revoked: 'red' };
 
 /** Solicitação ainda em andamento: impede pedir a mesma coisa duas vezes para o mesmo aluno. */
 function hasOpenRequest(
@@ -52,6 +58,11 @@ function hasOpenRequest(
  *
  * Toda autorização é da API: o vínculo com o aluno é conferido no servidor, e a tela apenas
  * apresenta o erro devolvido, preservando a lista já carregada.
+ *
+ * Apresentação: um cartão por filho, com a identidade no cabeçalho, os consentimentos como
+ * linhas de estado e as ações separadas por uma divisória. O aviso sobre pedidos abertos só
+ * aparece quando existe um — antes ele era texto fixo embaixo de cada filho, mesmo sem nada
+ * desabilitado.
  */
 export default function PrivacyCenter() {
   const { language, locale, t } = useLocale();
@@ -139,86 +150,134 @@ export default function PrivacyCenter() {
 
   return (
     <div>
-      <PageHeader
-        title={t('nav.privacy')}
-        subtitle={t('priv.centerSubtitle')}
-      />
+      <PageHeader title={t('nav.privacy')} subtitle={t('priv.centerSubtitle')} />
 
       {error !== null ? (
         <LoadError message={error} onRetry={retry} />
       ) : children === null ? (
-        <Card>
+        <Card tone="glass">
           <SkeletonRows rows={3} />
         </Card>
       ) : children.length === 0 ? (
-        <Card>
+        <Card tone="glass">
           <EmptyState message={t('priv.noStudents')} />
         </Card>
       ) : (
         <div className="space-y-6">
           {children.map((child) => {
             const childConsents = consents[child.id] ?? [];
+            const openRequests = requests.filter(
+              (request) =>
+                request.subjectStudentId === child.id &&
+                (request.status === 'Submitted' || request.status === 'Approved'),
+            ).length;
+            // O aviso só faz sentido quando há botão desabilitado para explicar.
+            const blocked = REQUESTABLE.some(({ type }) => hasOpenRequest(requests, child.id, type));
 
             return (
-              <Card key={child.id} title={`${child.nome} — ${child.turma}`}>
-                <div className="space-y-4">
-                  {childConsents.length === 0 ? (
-                    <p className="text-sm text-gray-600">{t('priv.noConsents')}</p>
-                  ) : (
-                    <ul className="space-y-2">
-                      {childConsents.map((consent) => (
+              <Card key={child.id} tone="glass">
+                <CardHeading
+                  icon={ShieldCheck}
+                  title={child.nome}
+                  accent="violet"
+                  action={
+                    <div className="flex flex-wrap items-center justify-end gap-2">
+                      <span className="rounded-full bg-white/80 px-3 py-1 text-xs font-medium text-gray-600 ring-1 ring-inset ring-gray-200">
+                        {child.turma}
+                      </span>
+                      {openRequests > 0 && (
+                        <Badge variant="warning">
+                          {t('priv.openRequests', { count: openRequests })}
+                        </Badge>
+                      )}
+                    </div>
+                  }
+                />
+
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
+                  {t('priv.consentsTitle')}
+                </p>
+
+                {childConsents.length === 0 ? (
+                  <p className="py-2 text-sm text-gray-600">{t('priv.noConsents')}</p>
+                ) : (
+                  <ul className="space-y-1">
+                    {childConsents.map((consent) => {
+                      const granted = consent.status === 'Granted';
+                      return (
                         <li
                           key={consent.id}
-                          className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-2 last:border-0 last:pb-0"
+                          className="flex items-start gap-3 rounded-xl px-2 py-2.5 transition-colors hover:bg-white/60"
                         >
-                          <div className="min-w-0">
-                            <p className="text-sm font-medium text-gray-800">{consent.purpose}</p>
-                            <p className="text-xs text-gray-600">
-                              {t('priv.legalBasis', { basis: consent.legalBasis })} ·{' '}
-                              {t('priv.grantedAt', { date: formatDate(consent.grantedAt, locale) })}
+                          <span
+                            className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ring-1 ring-inset ${accentChip[CONSENT_ACCENT[consent.status] ?? 'indigo']}`}
+                          >
+                            {granted ? (
+                              <Check size={16} aria-hidden="true" />
+                            ) : (
+                              <CircleX size={16} aria-hidden="true" />
+                            )}
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-semibold text-gray-900">{consent.purpose}</p>
+                            <p className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-xs text-gray-500">
+                              <span>{t('priv.legalBasis', { basis: consent.legalBasis })}</span>
+                              <span aria-hidden="true" className="text-gray-300">·</span>
+                              <span>
+                                {t('priv.grantedAt', { date: formatDate(consent.grantedAt, locale) })}
+                              </span>
                               {consent.revokedAt !== null && (
-                                <> · {t('priv.revokedAt', { date: formatDate(consent.revokedAt, locale) })}</>
+                                <>
+                                  <span aria-hidden="true" className="text-gray-300">·</span>
+                                  <span className="text-red-600">
+                                    {t('priv.revokedAt', {
+                                      date: formatDate(consent.revokedAt, locale),
+                                    })}
+                                  </span>
+                                </>
                               )}
                             </p>
                           </div>
-                          <Badge variant={consent.status === 'Granted' ? 'success' : 'default'}>
-                            {consent.status === 'Granted' ? t('priv.granted') : t('priv.revoked')}
+                          <Badge variant={granted ? 'success' : 'default'}>
+                            {granted ? t('priv.granted') : t('priv.revoked')}
                           </Badge>
                         </li>
-                      ))}
-                    </ul>
-                  )}
-
-                  <div className="flex flex-wrap gap-2">
-                    {REQUESTABLE.map(({ type, labelKey }) => {
-                      const open = hasOpenRequest(requests, child.id, type);
-                      const key = `${child.id}:${type}`;
-
-                      return (
-                        <Button
-                          key={type}
-                          size="sm"
-                          variant="secondary"
-                          onClick={() => submitRequest(child, type)}
-                          disabled={open || busy === key}
-                        >
-                          {busy === key ? t('priv.sending') : t(labelKey)}
-                        </Button>
                       );
                     })}
+                  </ul>
+                )}
 
-                    <Button
-                      size="sm"
-                      onClick={() => downloadExport(child)}
-                      disabled={busy === `export:${child.id}`}
-                    >
-                      {busy === `export:${child.id}` ? t('priv.downloading') : t('priv.downloadExport')}
-                    </Button>
-                  </div>
+                {/* Ações separadas do conteúdo por uma divisória: são o que se faz com o que
+                    está acima, e a exportação é a única que não depende de aprovação. */}
+                <div className="mt-5 flex flex-wrap items-center gap-2 border-t border-gray-200/70 pt-4">
+                  <Button
+                    size="sm"
+                    className="gap-1.5"
+                    onClick={() => downloadExport(child)}
+                    disabled={busy === `export:${child.id}`}
+                  >
+                    <Download size={14} aria-hidden="true" />
+                    {busy === `export:${child.id}` ? t('priv.downloading') : t('priv.downloadExport')}
+                  </Button>
 
-                  <p className="text-xs text-gray-500">
-                    {t('priv.openRequestHint')}
-                  </p>
+                  {REQUESTABLE.map(({ type, labelKey }) => {
+                    const key = `${child.id}:${type}`;
+                    return (
+                      <Button
+                        key={type}
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => submitRequest(child, type)}
+                        disabled={hasOpenRequest(requests, child.id, type) || busy === key}
+                      >
+                        {busy === key ? t('priv.sending') : t(labelKey)}
+                      </Button>
+                    );
+                  })}
+
+                  {blocked && (
+                    <p className="basis-full text-xs text-gray-500">{t('priv.openRequestHint')}</p>
+                  )}
                 </div>
               </Card>
             );

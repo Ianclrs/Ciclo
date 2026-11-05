@@ -6,6 +6,7 @@ using Ciclo.Infrastructure.Contracts;
 using Ciclo.Infrastructure.Security;
 using Ciclo.Infrastructure.Services;
 
+using Ciclo.Api.Authorization;
 using Ciclo.Api.Middleware;
 
 namespace Ciclo.Api.Controllers;
@@ -13,6 +14,7 @@ namespace Ciclo.Api.Controllers;
 [ApiController]
 [Route("api/parent")]
 [Authorize(Roles = AccessPolicy.Roles.ParentOnly)]
+[RequiresFeature(TenantFeature.ParentPortal)]
 public class ParentController : ControllerBase
 {
     private readonly IParentService _service;

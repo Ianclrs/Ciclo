@@ -1,4 +1,13 @@
 import { matches } from '../utils/search.ts';
+import type {
+  AcademicYear,
+  Assessment,
+  CurriculumComponent,
+  Enrollment,
+  RenewalBatchItemResult,
+  SchoolClass,
+} from '../types';
+import type { PrivacyRequest, PrivacyRequestType } from '../api/privacy';
 import type { DemoState } from './seed';
 
 /**
@@ -51,6 +60,18 @@ function badRequest(message: string): MockResult {
   return { status: 400, data: { title: message } };
 }
 
+/**
+ * Erro no formato do backend: o código vai em `code` (extensão do ProblemDetails), que é o
+ * campo traduzido por `apiErrorMessage`.
+ *
+ * As rotas acadêmicas usam este formato — e não uma frase em português — porque os bloqueios
+ * delas são regra de negócio (ano em uso, turma em uso, nota fora da faixa) e precisam chegar
+ * ao usuário no idioma ativo da interface.
+ */
+function apiError(status: number, code: string): MockResult {
+  return { status, data: { code } };
+}
+
 function unauthorized(): MockResult {
   return { status: 401, data: { title: 'Sessão de demonstração não iniciada.' } };
 }
@@ -73,6 +94,33 @@ function toIsoDay(offsetDays: number): string {
 function daysUntil(dateIso: string): number {
   const day = 86_400_000;
   return Math.round((new Date(dateIso).getTime() - Date.now()) / day);
+}
+
+/** Tipos exigidos pela escola para os quais o aluno não tem documento aprovado e vigente. */
+function missingRequiredTypes(state: DemoState, studentId: string): string[] {
+  const valid = state.documents.filter(
+    (document) =>
+      document.studentId === studentId &&
+      document.status === 'Aprovado' &&
+      (document.dataValidade === null || daysUntil(document.dataValidade) >= 0),
+  );
+
+  return state.documentTypes
+    .filter((type) => type.isRequired && type.isActive)
+    .filter((type) => !valid.some((document) => document.documentTypeId === type.id))
+    .map((type) => type.nome);
+}
+
+/** Documentos aprovados que a rematrícula reaproveita; o vencido vem marcado. */
+function renewalCarriedDocuments(state: DemoState, studentId: string) {
+  return state.documents
+    .filter((document) => document.studentId === studentId && document.status === 'Aprovado')
+    .map((document) => ({
+      documentId: document.id,
+      documentType: document.documentTypeName,
+      dataValidade: document.dataValidade,
+      isExpired: document.dataValidade !== null && daysUntil(document.dataValidade) < 0,
+    }));
 }
 
 export function handleRequest(
@@ -278,6 +326,128 @@ export function handleRequest(
     return { status: 200, data: state.periods.filter((period) => period.isActive) };
   }
 
+  // Spec 160 — rematrícula em lote. A prévia não grava nada; só o lote cria matrícula.
+  if (verb === 'GET' && url === '/api/enrollments/renewal-preview') {
+    const period = state.periods.find((candidate) => candidate.id === text(params.periodId));
+    if (!period) return notFound('Período não encontrado na demonstração.');
+
+    // Candidato = aluno cujo ano letivo difere do ano do período de destino, como no backend.
+    const candidates = state.students
+      .filter((student) => student.anoLetivo !== period.anoLetivo)
+      .sort((a, b) => a.nome.localeCompare(b.nome));
+
+    const items = candidates.map((student) => {
+      const missingDocumentTypes = missingRequiredTypes(state, student.id);
+      const enrollmentAlreadyExists = state.enrollments.some(
+        (enrollment) => enrollment.studentId === student.id && enrollment.periodId === period.id,
+      );
+
+      // Mesma ordem de precedência de `ResolveBlockReason`.
+      const blockReason =
+        student.status === 'Inativo'
+          ? 'student_inactive'
+          : student.status === 'Transferido'
+            ? 'student_transferred'
+            : enrollmentAlreadyExists
+              ? 'enrollment_already_exists'
+              : missingDocumentTypes.length > 0
+                ? 'pending_required_documents'
+                : null;
+
+      return {
+        studentId: student.id,
+        studentName: student.nome,
+        eligible: blockReason === null,
+        blockReason,
+        carriedDocuments: renewalCarriedDocuments(state, student.id),
+        missingDocumentTypes,
+        enrollmentAlreadyExists,
+      };
+    });
+
+    return {
+      status: 200,
+      data: {
+        periodId: period.id,
+        periodName: period.nome,
+        anoLetivo: period.anoLetivo,
+        dataReferencia: nowIso(),
+        items,
+      },
+    };
+  }
+
+  if (verb === 'POST' && url === '/api/enrollments/renewal-batch') {
+    const period = state.periods.find((candidate) => candidate.id === text(body.enrollmentPeriodId));
+    if (!period) return notFound('Período não encontrado na demonstração.');
+
+    const requested = Array.isArray(body.studentIds) ? body.studentIds : [];
+    const items: RenewalBatchItemResult[] = [];
+
+    for (const rawId of requested) {
+      const studentId = String(rawId);
+      const student = state.students.find((candidate) => candidate.id === studentId);
+
+      if (!student) {
+        items.push({ studentId, studentName: studentId, outcome: 'Failed', message: 'not_found' });
+        continue;
+      }
+
+      const alreadyExists = state.enrollments.some(
+        (enrollment) => enrollment.studentId === student.id && enrollment.periodId === period.id,
+      );
+      if (alreadyExists) {
+        items.push({
+          studentId,
+          studentName: student.nome,
+          outcome: 'SkippedAlreadyExists',
+          message: 'enrollment_already_exists',
+        });
+        continue;
+      }
+
+      if (missingRequiredTypes(state, student.id).length > 0) {
+        items.push({
+          studentId,
+          studentName: student.nome,
+          outcome: 'BlockedPendingDocuments',
+          message: 'pending_required_documents',
+        });
+        continue;
+      }
+
+      const enrollment: Enrollment = {
+        id: newId('enrollment'),
+        studentId: student.id,
+        studentName: student.nome,
+        studentFoto: student.foto,
+        periodId: period.id,
+        periodName: period.nome,
+        status: 'Aprovado',
+        motivoRejeicao: null,
+        createdAt: nowIso(),
+        approvedAt: nowIso(),
+      };
+      state.enrollments.unshift(enrollment);
+      // A aprovação promove o aluno (Spec 110) e é o que o tira da prévia na execução seguinte.
+      student.anoLetivo = period.anoLetivo;
+
+      items.push({ studentId, studentName: student.nome, outcome: 'Renewed', message: null });
+    }
+
+    return {
+      status: 200,
+      data: {
+        enrollmentPeriodId: period.id,
+        anoLetivo: period.anoLetivo,
+        items,
+        renewed: items.filter((item) => item.outcome === 'Renewed').length,
+        skipped: items.filter((item) => item.outcome === 'SkippedAlreadyExists').length,
+        blocked: items.filter((item) => item.outcome === 'BlockedPendingDocuments').length,
+        failed: items.filter((item) => item.outcome === 'Failed').length,
+      },
+    };
+  }
   const enrollmentById = url.match(/^\/api\/enrollments\/([^/]+)$/);
   if (verb === 'GET' && enrollmentById) {
     const enrollment = state.enrollments.find((candidate) => candidate.id === enrollmentById[1]);
@@ -317,6 +487,7 @@ export function handleRequest(
     enrollment.approvedAt = enrollmentAction[2] === 'approve' ? nowIso() : null;
     return { status: 204, data: null };
   }
+
 
   // ---------- documentos ----------
   if (verb === 'GET' && url === '/api/document-types') {
@@ -476,6 +647,445 @@ export function handleRequest(
     return { status: 201, data: { recipientCount: student.parents.length } };
   }
 
+  // ---------- estrutura acadêmica ----------
+  if (verb === 'GET' && url === '/api/academic/years') {
+    return { status: 200, data: [...state.academicYears].sort((a, b) => b.year - a.year) };
+  }
+
+  if (verb === 'POST' && url === '/api/academic/years') {
+    const year = Number(body.year);
+    const startDate = text(body.startDate);
+    const endDate = text(body.endDate);
+
+    if (!Number.isInteger(year) || year <= 0) return apiError(400, 'academic_year_invalid');
+    if (!startDate || !endDate || endDate < startDate) {
+      return apiError(400, 'academic_year_range_invalid');
+    }
+    if (state.academicYears.some((candidate) => candidate.year === year)) {
+      return apiError(409, 'academic_year_already_exists');
+    }
+
+    const created: AcademicYear = {
+      id: newId('year'),
+      year,
+      startDate,
+      endDate,
+      isActive: Boolean(body.isActive),
+    };
+    state.academicYears.push(created);
+    return { status: 201, data: created };
+  }
+
+  const academicYearById = url.match(/^\/api\/academic\/years\/([^/]+)$/);
+  if (academicYearById) {
+    const year = state.academicYears.find((candidate) => candidate.id === academicYearById[1]);
+    if (!year) return apiError(404, 'academic_year_not_found');
+
+    if (verb === 'PUT') {
+      const nextYear = Number(body.year);
+      const startDate = text(body.startDate);
+      const endDate = text(body.endDate);
+
+      if (!Number.isInteger(nextYear) || nextYear <= 0) return apiError(400, 'academic_year_invalid');
+      if (!startDate || !endDate || endDate < startDate) {
+        return apiError(400, 'academic_year_range_invalid');
+      }
+      if (
+        state.academicYears.some(
+          (candidate) => candidate.year === nextYear && candidate.id !== year.id,
+        )
+      ) {
+        return apiError(409, 'academic_year_already_exists');
+      }
+
+      year.year = nextYear;
+      year.startDate = startDate;
+      year.endDate = endDate;
+      year.isActive = Boolean(body.isActive);
+
+      // A turma guarda o número do ano resolvido pelo backend: sem esta linha o rótulo da turma
+      // continuaria mostrando o número antigo depois de corrigir o ano.
+      for (const schoolClass of state.classes) {
+        if (schoolClass.academicYearId === year.id) schoolClass.year = year.year;
+      }
+
+      return { status: 200, data: year };
+    }
+
+    if (verb === 'DELETE') {
+      // Mesma regra do backend (`academic_year_in_use`): turma ou aluno preso ao ano bloqueia a
+      // exclusão — mover os dois é decisão do administrador, não efeito colateral de um DELETE.
+      const inUse =
+        state.classes.some((schoolClass) => schoolClass.academicYearId === year.id) ||
+        state.students.some((student) => student.anoLetivo === year.year);
+      if (inUse) return apiError(409, 'academic_year_in_use');
+
+      state.academicYears = state.academicYears.filter((candidate) => candidate.id !== year.id);
+      return { status: 204, data: null };
+    }
+  }
+
+  if (verb === 'GET' && url === '/api/academic/classes') {
+    const academicYearId = text(params.academicYearId);
+    const filtered = state.classes
+      .filter((schoolClass) => !academicYearId || schoolClass.academicYearId === academicYearId)
+      .sort((a, b) => a.name.localeCompare(b.name));
+    return { status: 200, data: filtered };
+  }
+
+  if (verb === 'POST' && url === '/api/academic/classes') {
+    const name = text(body.name);
+    if (!name) return apiError(400, 'class_name_required');
+
+    const year = state.academicYears.find((candidate) => candidate.id === text(body.academicYearId));
+    if (!year) return apiError(404, 'academic_year_not_found');
+    if (
+      state.classes.some(
+        (candidate) => candidate.academicYearId === year.id && candidate.name === name,
+      )
+    ) {
+      return apiError(409, 'class_name_already_exists');
+    }
+
+    const created: SchoolClass = {
+      id: newId('class'),
+      name,
+      academicYearId: year.id,
+      year: year.year,
+    };
+    state.classes.push(created);
+    return { status: 201, data: created };
+  }
+
+  const classStudents = url.match(/^\/api\/academic\/classes\/([^/]+)\/students$/);
+  if (verb === 'GET' && classStudents) {
+    const schoolClass = state.classes.find((candidate) => candidate.id === classStudents[1]);
+    if (!schoolClass) return apiError(404, 'school_class_not_found');
+
+    // O roster sai do campo `turma` do aluno: na demonstração é ele que diz a que turma cada um
+    // pertence, e é o que a tela de notas lista.
+    const roster = state.students
+      .filter(
+        (student) => student.turma === schoolClass.name && student.anoLetivo === schoolClass.year,
+      )
+      .sort((a, b) => a.nome.localeCompare(b.nome));
+    return { status: 200, data: roster };
+  }
+
+  const academicClassById = url.match(/^\/api\/academic\/classes\/([^/]+)$/);
+  if (academicClassById) {
+    const schoolClass = state.classes.find((candidate) => candidate.id === academicClassById[1]);
+    if (!schoolClass) return apiError(404, 'school_class_not_found');
+
+    if (verb === 'PUT') {
+      const name = text(body.name);
+      if (!name) return apiError(400, 'class_name_required');
+
+      const year = state.academicYears.find((candidate) => candidate.id === text(body.academicYearId));
+      if (!year) return apiError(404, 'academic_year_not_found');
+      if (
+        state.classes.some(
+          (candidate) =>
+            candidate.academicYearId === year.id &&
+            candidate.name === name &&
+            candidate.id !== schoolClass.id,
+        )
+      ) {
+        return apiError(409, 'class_name_already_exists');
+      }
+
+      // O aluno guarda o NOME da turma. Renomear move o rótulo junto, senão o roster esvaziaria
+      // e a tela de notas perderia os alunos da turma renomeada.
+      for (const student of state.students) {
+        if (student.turma === schoolClass.name && student.anoLetivo === schoolClass.year) {
+          student.turma = name;
+        }
+      }
+
+      schoolClass.name = name;
+      schoolClass.academicYearId = year.id;
+      schoolClass.year = year.year;
+      return { status: 200, data: schoolClass };
+    }
+
+    if (verb === 'DELETE') {
+      const inUse =
+        state.assessments.some((assessment) => assessment.schoolClassId === schoolClass.id) ||
+        state.students.some(
+          (student) => student.turma === schoolClass.name && student.anoLetivo === schoolClass.year,
+        );
+      if (inUse) return apiError(409, 'school_class_in_use');
+
+      state.classes = state.classes.filter((candidate) => candidate.id !== schoolClass.id);
+      return { status: 204, data: null };
+    }
+  }
+
+  if (verb === 'GET' && url === '/api/academic/components') {
+    return { status: 200, data: [...state.components].sort((a, b) => a.name.localeCompare(b.name)) };
+  }
+
+  if (verb === 'POST' && url === '/api/academic/components') {
+    const name = text(body.name);
+    const code = text(body.code);
+    if (!name) return apiError(400, 'component_name_required');
+    if (!code) return apiError(400, 'component_code_required');
+    if (state.components.some((candidate) => candidate.code === code)) {
+      return apiError(409, 'component_code_already_exists');
+    }
+
+    const created: CurriculumComponent = {
+      id: newId('component'),
+      name,
+      code,
+      isActive: Boolean(body.isActive),
+    };
+    state.components.push(created);
+    return { status: 201, data: created };
+  }
+
+  const componentById = url.match(/^\/api\/academic\/components\/([^/]+)$/);
+  if (componentById) {
+    const component = state.components.find((candidate) => candidate.id === componentById[1]);
+    if (!component) return apiError(404, 'component_not_found');
+
+    if (verb === 'PUT') {
+      const name = text(body.name);
+      const code = text(body.code);
+      if (!name) return apiError(400, 'component_name_required');
+      if (!code) return apiError(400, 'component_code_required');
+      if (
+        state.components.some((candidate) => candidate.code === code && candidate.id !== component.id)
+      ) {
+        return apiError(409, 'component_code_already_exists');
+      }
+
+      component.name = name;
+      component.code = code;
+      component.isActive = Boolean(body.isActive);
+      return { status: 200, data: component };
+    }
+
+    if (verb === 'DELETE') {
+      if (
+        state.assessments.some(
+          (assessment) => assessment.curriculumComponentId === component.id,
+        )
+      ) {
+        return apiError(409, 'component_in_use');
+      }
+
+      state.components = state.components.filter((candidate) => candidate.id !== component.id);
+      return { status: 204, data: null };
+    }
+  }
+
+  if (verb === 'GET' && url === '/api/academic/assessments') {
+    const schoolClassId = text(params.schoolClassId);
+    const curriculumComponentId = text(params.curriculumComponentId);
+    const filtered = state.assessments
+      .filter(
+        (assessment) =>
+          (!schoolClassId || assessment.schoolClassId === schoolClassId) &&
+          (!curriculumComponentId ||
+            assessment.curriculumComponentId === curriculumComponentId),
+      )
+      .sort((a, b) => a.date.localeCompare(b.date));
+    return { status: 200, data: filtered };
+  }
+
+  if (verb === 'POST' && url === '/api/academic/assessments') {
+    const title = text(body.title);
+    const weight = Number(body.weight);
+    if (!title) return apiError(400, 'assessment_title_required');
+    if (!Number.isFinite(weight) || weight <= 0) return apiError(400, 'assessment_weight_invalid');
+
+    const schoolClass = state.classes.find((candidate) => candidate.id === text(body.schoolClassId));
+    if (!schoolClass) return apiError(404, 'school_class_not_found');
+    const component = state.components.find(
+      (candidate) => candidate.id === text(body.curriculumComponentId),
+    );
+    if (!component) return apiError(404, 'component_not_found');
+    if (
+      state.assessments.some(
+        (candidate) =>
+          candidate.schoolClassId === schoolClass.id &&
+          candidate.curriculumComponentId === component.id &&
+          candidate.title === title,
+      )
+    ) {
+      return apiError(409, 'assessment_title_already_exists');
+    }
+
+    const created: Assessment = {
+      id: newId('assessment'),
+      schoolClassId: schoolClass.id,
+      curriculumComponentId: component.id,
+      title,
+      weight,
+      date: text(body.date),
+      isRecovery: Boolean(body.isRecovery),
+    };
+    state.assessments.push(created);
+    return { status: 201, data: created };
+  }
+
+  const assessmentGrade = url.match(/^\/api\/academic\/assessments\/([^/]+)\/grades\/([^/]+)$/);
+  if (verb === 'PUT' && assessmentGrade) {
+    const assessment = state.assessments.find((candidate) => candidate.id === assessmentGrade[1]);
+    if (!assessment) return apiError(404, 'not_found');
+
+    const student = state.students.find((candidate) => candidate.id === assessmentGrade[2]);
+    if (!student) return apiError(404, 'not_found');
+
+    const value = Number(body.value);
+    if (!Number.isFinite(value) || value < 0 || value > 10) return apiError(400, 'grade_out_of_range');
+
+    const schoolClass = state.classes.find((candidate) => candidate.id === assessment.schoolClassId);
+    if (!schoolClass || student.turma !== schoolClass.name || student.anoLetivo !== schoolClass.year) {
+      // Nota de aluno de outra turma corromperia a média: é conflito, e o backend responde 409.
+      return apiError(409, 'student_not_in_class');
+    }
+
+    // Idempotente no servidor: relançar a mesma nota atualiza o registro, e a chave é o par.
+    state.assessmentGrades[`${assessment.id}:${student.id}`] = value;
+
+    const component = state.components.find(
+      (candidate) => candidate.id === assessment.curriculumComponentId,
+    );
+    // Mesmo DTO do backend (`GradeDto`): a disciplina é o nome do componente.
+    return {
+      status: 200,
+      data: { disciplina: component?.name ?? '', nota: value, observacoes: null },
+    };
+  }
+
+  const assessmentById = url.match(/^\/api\/academic\/assessments\/([^/]+)$/);
+  if (assessmentById) {
+    const assessment = state.assessments.find((candidate) => candidate.id === assessmentById[1]);
+    if (!assessment) return apiError(404, 'not_found');
+
+    if (verb === 'PUT') {
+      const title = text(body.title);
+      const weight = Number(body.weight);
+      if (!title) return apiError(400, 'assessment_title_required');
+      if (!Number.isFinite(weight) || weight <= 0) return apiError(400, 'assessment_weight_invalid');
+
+      const schoolClass = state.classes.find((candidate) => candidate.id === text(body.schoolClassId));
+      if (!schoolClass) return apiError(404, 'school_class_not_found');
+      const component = state.components.find(
+        (candidate) => candidate.id === text(body.curriculumComponentId),
+      );
+      if (!component) return apiError(404, 'component_not_found');
+
+      assessment.title = title;
+      assessment.weight = weight;
+      assessment.schoolClassId = schoolClass.id;
+      assessment.curriculumComponentId = component.id;
+      assessment.date = text(body.date);
+      assessment.isRecovery = Boolean(body.isRecovery);
+      return { status: 200, data: assessment };
+    }
+
+    if (verb === 'DELETE') {
+      const hasGrades = Object.keys(state.assessmentGrades).some((key) =>
+        key.startsWith(`${assessment.id}:`),
+      );
+      if (hasGrades) return apiError(409, 'assessment_has_grades');
+
+      state.assessments = state.assessments.filter((candidate) => candidate.id !== assessment.id);
+      return { status: 204, data: null };
+    }
+  }
+
+  // ---------- privacidade (LGPD) ----------
+  if (verb === 'GET' && url === '/api/privacy/requests') {
+    if (!currentUser) return unauthorized();
+    return { status: 200, data: state.privacyRequests };
+  }
+
+  if (verb === 'GET' && url === '/api/privacy/consents') {
+    const subjectId = text(params.subjectId);
+    return {
+      status: 200,
+      data: state.consents.filter((consent) => consent.subjectId === subjectId),
+    };
+  }
+
+  if (verb === 'POST' && url === '/api/privacy/requests') {
+    const created: PrivacyRequest = {
+      id: newId('privacy-request'),
+      type: (text(body.type) || 'Export') as PrivacyRequestType,
+      status: 'Submitted',
+      subjectStudentId: text(body.studentId),
+      requestedByUserId: currentUser?.id ?? 'user-parent',
+      reason: text(body.reason) || null,
+      resolution: null,
+      legalHold: false,
+      retainUntil: null,
+      submittedAt: nowIso(),
+      decidedAt: null,
+      completedAt: null,
+    };
+    state.privacyRequests.unshift(created);
+    return { status: 201, data: created };
+  }
+
+  const privacyDecision = url.match(/^\/api\/privacy\/requests\/([^/]+)\/decision$/);
+  if (verb === 'POST' && privacyDecision) {
+    const request = state.privacyRequests.find(
+      (candidate) => candidate.id === privacyDecision[1],
+    );
+    if (!request) return notFound();
+
+    const approved = text(body.decision) === 'approve';
+    request.status = approved ? 'Approved' : 'Rejected';
+    request.resolution = text(body.resolution) || null;
+    request.legalHold = Boolean(body.legalHold);
+    request.retainUntil = text(body.retainUntil) || null;
+    request.decidedAt = nowIso();
+    return { status: 200, data: request };
+  }
+
+  const privacyComplete = url.match(/^\/api\/privacy\/requests\/([^/]+)\/complete$/);
+  if (verb === 'POST' && privacyComplete) {
+    const request = state.privacyRequests.find(
+      (candidate) => candidate.id === privacyComplete[1],
+    );
+    if (!request) return notFound();
+
+    request.status = 'Completed';
+    request.completedAt = nowIso();
+    // Contrato de `PrivacyRequestCompletion`: a exportação do titular é outra rota.
+    return { status: 200, data: { request, export: null } };
+  }
+
+  const studentExport = url.match(/^\/api\/privacy\/students\/([^/]+)\/export$/);
+  if (verb === 'GET' && studentExport) {
+    const student = state.students.find((candidate) => candidate.id === studentExport[1]);
+    if (!student) return notFound();
+
+    // `Blob` de verdade: a tela entrega o corpo direto para `URL.createObjectURL`.
+    return {
+      status: 200,
+      data: new Blob(
+        [
+          JSON.stringify(
+            {
+              titular: student.nome,
+              exportadoEm: nowIso(),
+              documentos: state.documents.filter((document) => document.studentId === student.id),
+              consentimentos: state.consents.filter((consent) => consent.subjectId === student.id),
+            },
+            null,
+            2,
+          ),
+        ],
+        { type: 'application/json' },
+      ),
+    };
+  }
+
   // ---------- responsável ----------
   if (verb === 'GET' && url === '/api/parent/dashboard') {
     const children = state.students.filter((student) => state.parentStudentIds.includes(student.id));
@@ -526,6 +1136,87 @@ export function handleRequest(
         currentEnrollment:
           state.enrollments.find((enrollment) => enrollment.studentId === student.id) ?? null,
         grades: state.grades[student.id] ?? [],
+      },
+    };
+  }
+
+  // Boletim do filho: mesma fórmula do backend (`GradeCalculation`) — média regular ponderada
+  // sem as recuperações, recuperação nunca reduz a média, limiares 6 (aprovado) e 4 (recuperação).
+  const childReportCard = url.match(/^\/api\/parent\/children\/([^/]+)\/report-card$/);
+  if (verb === 'GET' && childReportCard) {
+    const student = state.students.find((candidate) => candidate.id === childReportCard[1]);
+    if (!student) return notFound();
+
+    const schoolClass = state.classes.find(
+      (item) => item.name === student.turma && item.year === student.anoLetivo,
+    );
+    const daTurma = schoolClass
+      ? state.assessments.filter((item) => item.schoolClassId === schoolClass.id)
+      : [];
+
+    const round2 = (value: number) => Math.round(value * 100) / 100;
+
+    const componentes = state.components
+      .filter((component) => daTurma.some((item) => item.curriculumComponentId === component.id))
+      .map((component) => {
+        const avaliacoes = daTurma
+          .filter((item) => item.curriculumComponentId === component.id)
+          .map((assessment) => ({
+            avaliacao: assessment.title,
+            peso: assessment.weight,
+            nota: state.assessmentGrades[`${assessment.id}:${student.id}`] ?? null,
+            data: assessment.date,
+            recuperacao: assessment.isRecovery,
+          }));
+
+        let pesoRegular = 0;
+        let somaRegular = 0;
+        let notaRecuperacao: number | null = null;
+
+        for (const avaliacao of avaliacoes) {
+          if (avaliacao.nota === null) continue;
+          if (avaliacao.recuperacao) {
+            notaRecuperacao = Math.max(notaRecuperacao ?? 0, avaliacao.nota);
+          } else {
+            pesoRegular += avaliacao.peso;
+            somaRegular += avaliacao.nota * avaliacao.peso;
+          }
+        }
+
+        const mediaRegular = pesoRegular > 0 ? round2(somaRegular / pesoRegular) : null;
+        const mediaFinal =
+          notaRecuperacao === null
+            ? mediaRegular
+            : mediaRegular === null
+              ? notaRecuperacao
+              : round2(Math.max(mediaRegular, notaRecuperacao));
+
+        const situacao =
+          mediaFinal === null
+            ? 'sem_nota'
+            : mediaFinal >= 6
+              ? 'aprovado'
+              : mediaFinal >= 4
+                ? 'recuperacao'
+                : 'reprovado';
+
+        return {
+          componente: component.name,
+          mediaRegular,
+          notaRecuperacao,
+          mediaFinal,
+          situacao,
+          avaliacoes,
+        };
+      });
+
+    return {
+      status: 200,
+      data: {
+        alunoId: student.id,
+        turma: student.turma,
+        anoLetivo: student.anoLetivo,
+        componentes,
       },
     };
   }

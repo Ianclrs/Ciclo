@@ -142,7 +142,16 @@ public class StudentService : IStudentService
 
         ValidateFields(request.Nome, request.DataNascimento, request.Turma, request.AnoLetivo);
         ValidateFoto(request.Foto);
-        var cpf = NormalizeOptionalCpf(request.Cpf);
+
+        // O formulário reenvia o cadastro inteiro, então trocar só a foto manda o CPF que já
+        // estava gravado. Revalidá-lo aqui bloqueava QUALQUER edição de um registro antigo cujo
+        // CPF não passa nos dígitos verificadores (a semente de demonstração, por exemplo), e o
+        // erro chegava na tela como se fosse da alteração em curso. Valor novo continua validado:
+        // só o valor idêntico ao gravado é aceito sem passar pela validação.
+        var requestedCpf = string.IsNullOrWhiteSpace(request.Cpf) ? null : Cpf.Normalize(request.Cpf);
+        var cpf = requestedCpf is not null && requestedCpf == student.Cpf
+            ? student.Cpf
+            : NormalizeOptionalCpf(request.Cpf);
 
         // CPF duplicate check (exclude self)
         if (cpf is not null)

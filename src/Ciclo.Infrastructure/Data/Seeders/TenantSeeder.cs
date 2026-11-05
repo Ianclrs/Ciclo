@@ -30,7 +30,9 @@ public static class TenantSeeder
             Name = "Default School",
             Slug = "default",
             IsActive = true,
-            CreatedAt = DateTime.UtcNow
+            CreatedAt = DateTime.UtcNow,
+            Plan = TenantPlan.Basic,
+            FeatureFlags = TenantFeature.DefaultCsv(TenantPlan.Basic)
         };
 
         dbContext.Tenants.Add(defaultTenant);

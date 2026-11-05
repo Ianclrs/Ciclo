@@ -13,6 +13,13 @@ public class User : IdentityUser<Guid>, ITenantScoped
 
     public string? GoogleId { get; set; }
 
+    /// <summary>
+    /// Foto de perfil como data URL (Base64), já redimensionada pelo navegador antes do envio —
+    /// mesmo formato e mesmos limites da foto do aluno (<c>ImageDataUrl</c>). Serve ao
+    /// reconhecimento em listas longas de usuários.
+    /// </summary>
+    public string? Foto { get; set; }
+
     public bool IsActive { get; set; } = true;
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

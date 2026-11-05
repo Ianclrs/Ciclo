@@ -6,6 +6,7 @@ using Ciclo.Infrastructure.Contracts;
 using Ciclo.Infrastructure.Security;
 using Ciclo.Infrastructure.Services;
 
+using Ciclo.Api.Authorization;
 using Ciclo.Api.Middleware;
 
 namespace Ciclo.Api.Controllers;
@@ -257,6 +258,7 @@ public class EnrollmentController : ControllerBase
     /// </summary>
     [HttpGet("renewal-preview")]
     [Authorize(Roles = AccessPolicy.Roles.EnrollmentPeriodRead)]
+    [RequiresFeature(TenantFeature.BatchReenrollment)]
     public async Task<IActionResult> GetRenewalPreview(
         [FromQuery] Guid periodId, CancellationToken cancellationToken)
     {
@@ -279,6 +281,7 @@ public class EnrollmentController : ControllerBase
     /// </summary>
     [HttpPost("renewal-batch")]
     [Authorize(Roles = AccessPolicy.Roles.EnrollmentWrite)]
+    [RequiresFeature(TenantFeature.BatchReenrollment)]
     public async Task<IActionResult> RenewBatch(
         [FromBody] RenewalBatchRequest request, CancellationToken cancellationToken)
     {

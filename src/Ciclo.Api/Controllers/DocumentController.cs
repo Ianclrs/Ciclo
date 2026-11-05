@@ -12,6 +12,7 @@ using Ciclo.Infrastructure.Security;
 using Ciclo.Infrastructure.Services;
 using Ciclo.Infrastructure.Storage;
 
+using Ciclo.Api.Authorization;
 using Ciclo.Api.Middleware;
 using Ciclo.Api.RateLimiting;
 
@@ -19,6 +20,7 @@ namespace Ciclo.Api.Controllers;
 
 [ApiController]
 [Route("api")]
+[RequiresFeature(TenantFeature.Documents)]
 public class DocumentController : ControllerBase
 {
     private readonly IDocumentService _service;

@@ -896,6 +896,9 @@ namespace Ciclo.Infrastructure.Migrations
                     b.Property<bool>("EmailConfirmed")
                         .HasColumnType("boolean");
 
+                    b.Property<string>("Foto")
+                        .HasColumnType("text");
+
                     b.Property<string>("GoogleId")
                         .HasMaxLength(256)
                         .HasColumnType("character varying(256)");

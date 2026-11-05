@@ -1,10 +1,20 @@
 import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
-import { Download, FileText, Search } from 'lucide-react';
+import {
+  CalendarClock,
+  CircleCheck,
+  CircleX,
+  Download,
+  FileClock,
+  FileText,
+  Search,
+} from 'lucide-react';
 import { Card } from '../../components/Card';
 import { PageHeader } from '../../components/PageHeader';
+import { StatCard } from '../../components/StatCard';
 import { Badge } from '../../components/Badge';
 import { uniformBadgeClass } from '../../components/badgeStyles';
+import { accentChip, type Accent } from '../../components/accentStyles';
 import { StudentAvatar } from '../../components/StudentAvatar';
 import { Button } from '../../components/Button';
 import { Pagination } from '../../components/Pagination';
@@ -14,7 +24,7 @@ import { Select } from '../../components/Select';
 import { Table } from '../../components/Table';
 import { EmptyState } from '../../components/EmptyState';
 import { LoadError } from '../../components/LoadError';
-import { formatDate } from '../../utils/format';
+import { formatDate, share } from '../../utils/format';
 import * as api from '../../api/documents';
 import { apiErrorMessage } from '../../api/errors';
 import { statusLabelKey } from '../../domain/statusLabels';
@@ -24,27 +34,93 @@ import type { Document, DocumentType } from '../../types';
 
 const PAGE_SIZE = 10;
 
+/** Antecedência com que a validade passa a ser sinalizada como próxima do fim. */
+const EXPIRY_WARNING_DAYS = 30;
+
+const DAY_MS = 86_400_000;
+
 /**
  * Status que a API devolve e aceita no filtro. O rótulo vem do dono único do vocabulário
  * (`domain/statusLabels.ts`), o mesmo usado pela etiqueta de status das outras telas.
  */
 const DOCUMENT_STATUSES = ['Pendente', 'Aprovado', 'Rejeitado'] as const;
 
-/** Validade do documento; destaca em vermelho quando a data já passou. */
+/**
+ * Cor do chip do arquivo por status. É o primeiro sinal da linha: o revisor localiza o que
+ * falta decidir antes de ler a etiqueta. O vocabulário é o mesmo dos indicadores e do menu
+ * (`accentChip`), então a cor não ganha um segundo significado.
+ */
+const STATUS_ACCENT: Record<string, Accent> = {
+  Pendente: 'amber',
+  Aprovado: 'green',
+  Rejeitado: 'red',
+};
+
+/**
+ * Recortes que alimentam os indicadores. `DocumentStatus` tem exatamente três valores no
+ * backend, então a soma dos três é o total da escola — o denominador não custa uma consulta.
+ */
+interface Totals {
+  pending: number;
+  approved: number;
+  rejected: number;
+  expiring: number;
+}
+
+/** Valor de uma consulta de `allSettled`, ou `null` quando ela falhou. */
+function settled<T>(result: PromiseSettledResult<T>): T | null {
+  return result.status === 'fulfilled' ? result.value : null;
+}
+
+/** Dias de calendário até a data; a hora é zerada para não errar por arredondamento. */
+function daysUntil(date: string): number {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const target = new Date(date);
+  target.setHours(0, 0, 0, 0);
+  return Math.round((target.getTime() - today.getTime()) / DAY_MS);
+}
+
+/**
+ * Validade do documento com grau de urgência: vencido em vermelho, perto de vencer em âmbar.
+ *
+ * Antes só o vencido era destacado — isto é, apenas o que já tinha passado. O documento que
+ * vence amanhã aparecia igual a um que vence no ano seguinte, e adiantar essa informação é
+ * justamente o que a visão "A vencer" existe para fazer.
+ */
 function Validity({ date }: { date: string | null }) {
   const { locale, t } = useLocale();
   if (!date) return <span className="text-gray-400">—</span>;
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const expired = new Date(date) < today;
+  const days = daysUntil(date);
+  const formatted = formatDate(date, locale);
 
-  return (
-    <span className={expired ? 'text-red-600' : 'text-gray-700'}>
-      <span className={expired ? 'font-medium' : ''}>{formatDate(date, locale)}</span>
-      {expired && <span className="block text-xs text-red-500">{t('renewal.expired')}</span>}
-    </span>
-  );
+  if (days < 0) {
+    return (
+      <span className="text-red-600">
+        <span className="font-medium">{formatted}</span>
+        <span className="block text-xs text-red-500">{t('renewal.expired')}</span>
+      </span>
+    );
+  }
+
+  if (days <= EXPIRY_WARNING_DAYS) {
+    const hint =
+      days === 0
+        ? t('docs.expiresToday')
+        : days === 1
+          ? t('docs.expiresTomorrow')
+          : t('docs.expiringIn', { days });
+
+    return (
+      <span className="text-amber-700">
+        {formatted}
+        <span className="block text-xs text-amber-600">{hint}</span>
+      </span>
+    );
+  }
+
+  return <span className="text-gray-700">{formatted}</span>;
 }
 
 export default function DocumentVerification() {
@@ -65,6 +141,8 @@ export default function DocumentVerification() {
   const [documentTypeId, setDocumentTypeId] = useState('');
   const [search, setSearch] = useState('');
   const [types, setTypes] = useState<DocumentType[]>([]);
+  const [totals, setTotals] = useState<Totals | null>(null);
+  const [totalsFailed, setTotalsFailed] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -110,6 +188,47 @@ export default function DocumentVerification() {
       .then(setTypes)
       .catch((err) => toast.error(apiErrorMessage(err, t('docs.typesError'), language)));
   }, [t, language]);
+
+  // Indicadores da faixa superior: uma consulta por recorte, com `pageSize: 1` — o número que
+  // interessa é o `total`. Depende só do recarregamento, não dos filtros da tabela: os
+  // indicadores descrevem a escola inteira, não a página que está aberta.
+  useEffect(() => {
+    let cancelled = false;
+
+    Promise.allSettled([
+      api.getDocuments({ status: 'Pendente', pageSize: 1 }),
+      api.getDocuments({ status: 'Aprovado', pageSize: 1 }),
+      api.getDocuments({ status: 'Rejeitado', pageSize: 1 }),
+      api.getExpiringDocuments(),
+    ]).then(([pendingRes, approvedRes, rejectedRes, expiringRes]) => {
+      if (cancelled) return;
+
+      const pending = settled(pendingRes);
+      const approved = settled(approvedRes);
+      const rejected = settled(rejectedRes);
+      const expiring = settled(expiringRes);
+
+      // Um recorte que falhou viraria zero no cartão, e "0 pendentes" é uma afirmação falsa
+      // quando a consulta caiu. Sem os quatro, a faixa inteira sai de cena: painel ausente é
+      // honesto, painel com zero inventado não é.
+      if (!pending || !approved || !rejected || !expiring) {
+        setTotalsFailed(true);
+        return;
+      }
+
+      setTotalsFailed(false);
+      setTotals({
+        pending: pending.total,
+        approved: approved.total,
+        rejected: rejected.total,
+        expiring: expiring.length,
+      });
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [reloadKey]);
 
   const changePage = (nextPage: number) => {
     setLoading(true);
@@ -166,6 +285,10 @@ export default function DocumentVerification() {
     }
   };
 
+  // Base dos indicadores. Enquanto os recortes não chegam os cartões mostram esqueleto, então
+  // os valores daqui nunca aparecem zerados para o usuário.
+  const allDocuments = totals ? totals.pending + totals.approved + totals.rejected : 0;
+
   // Na visão filtrável o status é informação; em "A vencer" todos são aprovados e a coluna
   // só repetiria a mesma palavra.
   const statusColumn = {
@@ -189,7 +312,9 @@ export default function DocumentVerification() {
       header: t('docs.col.file'),
       accessor: (doc: Document) => (
         <div className="flex items-center gap-3 min-w-0">
-          <div className="p-2 rounded-lg bg-gray-100 text-gray-500 shrink-0">
+          <div
+            className={`p-2 rounded-lg ring-1 ring-inset shrink-0 ${accentChip[STATUS_ACCENT[doc.status] ?? 'indigo']}`}
+          >
             <FileText size={16} />
           </div>
           <div className="min-w-0">
@@ -267,26 +392,68 @@ export default function DocumentVerification() {
         title={t('nav.documents')}
         subtitle={t(view === 'all' ? 'docs.subtitle.all' : 'docs.subtitle.expiring')}
         actions={
-          <>
-            <Button
-              variant={view === 'all' ? 'primary' : 'secondary'}
-              size="sm"
-              aria-pressed={view === 'all'}
-              onClick={() => switchView('all')}
-            >
-              {t('docs.view.all')}
-            </Button>
-            <Button
-              variant={view === 'expiring' ? 'primary' : 'secondary'}
-              size="sm"
-              aria-pressed={view === 'expiring'}
-              onClick={() => switchView('expiring')}
-            >
-              {t('docs.view.expiring')}
-            </Button>
-          </>
+          <div
+            role="group"
+            aria-label={t('docs.view.label')}
+            className="inline-flex rounded-xl border border-white/60 bg-white/70 p-1 shadow-sm backdrop-blur-md"
+          >
+            {(['all', 'expiring'] as const).map((option) => (
+              <button
+                key={option}
+                type="button"
+                aria-pressed={view === option}
+                onClick={() => switchView(option)}
+                className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+                  view === option ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                {t(option === 'all' ? 'docs.view.all' : 'docs.view.expiring')}
+              </button>
+            ))}
+          </div>
         }
       />
+
+      {!totalsFailed && (
+        <div className="mb-6 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
+          <StatCard
+            label={t('docs.kpi.pending')}
+            value={totals?.pending ?? 0}
+            icon={FileClock}
+            accent="amber"
+            loading={totals === null}
+            detail={t('docs.kpi.ofTotal', { count: totals?.pending ?? 0, total: allDocuments })}
+            ratio={share(totals?.pending ?? 0, allDocuments)}
+          />
+          <StatCard
+            label={t('docs.kpi.approved')}
+            value={totals?.approved ?? 0}
+            icon={CircleCheck}
+            accent="green"
+            loading={totals === null}
+            detail={t('docs.kpi.ofTotal', { count: totals?.approved ?? 0, total: allDocuments })}
+            ratio={share(totals?.approved ?? 0, allDocuments)}
+          />
+          <StatCard
+            label={t('docs.kpi.rejected')}
+            value={totals?.rejected ?? 0}
+            icon={CircleX}
+            accent="red"
+            loading={totals === null}
+            detail={t('docs.kpi.ofTotal', { count: totals?.rejected ?? 0, total: allDocuments })}
+            ratio={share(totals?.rejected ?? 0, allDocuments)}
+          />
+          <StatCard
+            label={t('docs.kpi.expiring')}
+            value={totals?.expiring ?? 0}
+            icon={CalendarClock}
+            accent="sky"
+            loading={totals === null}
+            detail={t('docs.kpi.ofTotal', { count: totals?.expiring ?? 0, total: totals?.approved ?? 0 })}
+            ratio={share(totals?.expiring ?? 0, totals?.approved ?? 0)}
+          />
+        </div>
+      )}
 
       <Card tone="glass">
         {view === 'all' && (
@@ -358,6 +525,8 @@ export default function DocumentVerification() {
             keyExtractor={(doc) => doc.id}
             loading={loading}
             loadingRows={PAGE_SIZE}
+            hideScrollbar
+            dragToScroll
           />
         ) : view === 'all' ? (
           <EmptyState />
@@ -365,7 +534,11 @@ export default function DocumentVerification() {
           <EmptyState message={t('docs.noneExpiring')} />
         )}
 
-        <Pagination page={page} pageSize={PAGE_SIZE} total={total} onPageChange={changePage} />
+        {/* Só a visão "Todos" é paginada. Em "A vencer" o endpoint devolve a lista inteira:
+            a paginação oferecia páginas que não existiam e "próxima" recarregava a mesma lista. */}
+        {view === 'all' && (
+          <Pagination page={page} pageSize={PAGE_SIZE} total={total} onPageChange={changePage} />
+        )}
       </Card>
 
       <Modal

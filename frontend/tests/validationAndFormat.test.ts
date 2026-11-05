@@ -10,6 +10,7 @@ import {
   formatDateTime,
   formatNumber,
   formatPercent,
+  share,
 } from '../src/utils/format.ts';
 
 test('motivo aceito apenas na faixa que o backend aceita', () => {
@@ -41,4 +42,15 @@ test('sem locale, todo formatador mantém a saída pt-BR anterior (Spec 190)', (
   assert.equal(formatNumber(1234567.89), '1.234.567,89');
   assert.match(formatCurrency(1234.5, 'BRL'), /1\.234,50/);
   assert.equal(formatPercent(0.256), '26%');
+});
+
+test('a fração dos indicadores não produz NaN nem barra cheia sem base', () => {
+  assert.equal(share(3, 4), 0.75);
+  assert.equal(share(0, 5), 0);
+  assert.equal(share(5, 5), 1);
+
+  // Base vazia: a barra tem de ficar vazia. `5 / 0` seria `Infinity`, e a barra sairia cheia
+  // afirmando um progresso que não existe.
+  assert.equal(share(5, 0), 0);
+  assert.equal(share(0, 0), 0);
 });

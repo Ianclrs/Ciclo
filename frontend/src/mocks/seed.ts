@@ -1,4 +1,7 @@
 import type {
+  AcademicYear,
+  Assessment,
+  CurriculumComponent,
   Document,
   DocumentType,
   Enrollment,
@@ -6,9 +9,11 @@ import type {
   Grade,
   ManagedUser,
   Notification,
+  SchoolClass,
   Student,
   TenantSummary,
 } from '../types';
+import type { Consent, PrivacyRequest } from '../api/privacy';
 import { DEMO_ACCOUNTS } from './accounts.ts';
 
 /**
@@ -29,6 +34,16 @@ export interface DemoState {
   /** Filhos vinculados ao responsável da demonstração. */
   parentStudentIds: string[];
   grades: Record<string, Grade[]>;
+  /** Estrutura acadêmica: o que a tela de lançamento de notas consome. */
+  academicYears: AcademicYear[];
+  classes: SchoolClass[];
+  components: CurriculumComponent[];
+  assessments: Assessment[];
+  /** Notas lançadas, por `${assessmentId}:${studentId}` — a chave do índice único do backend. */
+  assessmentGrades: Record<string, number>;
+  /** Consentimentos LGPD registrados por aluno (Spec 210). */
+  consents: Consent[];
+  privacyRequests: PrivacyRequest[];
   /** Usuário "logado" — `null` significa que a visita começa na tela de login. */
   sessionUserId: string | null;
 }
@@ -83,6 +98,16 @@ const PERIODS: EnrollmentPeriod[] = [
     dataFim: '2026-01-31',
     isActive: true,
   },
+  // Período do ANO SEGUINTE: é o que dá candidatos à rematrícula em lote (a prévia considera
+  // apenas alunos cujo ano letivo difere do ano do período de destino).
+  {
+    id: 'period-2027',
+    nome: 'Rematrícula 2027',
+    anoLetivo: 2027,
+    dataInicio: '2026-10-01',
+    dataFim: '2027-01-31',
+    isActive: true,
+  },
   {
     id: 'period-2025',
     nome: 'Matrícula 2025',
@@ -98,6 +123,60 @@ const DOCUMENT_TYPES: DocumentType[] = [
   { id: 'dt-cpf', nome: 'CPF', descricao: null, isRequired: true, validadeMeses: 0, isActive: true },
   { id: 'dt-vacina', nome: 'Carteira de vacinação', descricao: null, isRequired: true, validadeMeses: 12, isActive: true },
   { id: 'dt-comprovante', nome: 'Comprovante de residência', descricao: null, isRequired: false, validadeMeses: 12, isActive: true },
+];
+
+/**
+ * Anos letivos da demonstração. O segundo fica inativo de propósito: é o que dá sentido às
+ * etiquetas "Ativo/Inativo" e à proporção de anos ativos nos indicadores da estrutura.
+ */
+const ACADEMIC_YEARS: AcademicYear[] = [
+  { id: 'year-2026', year: 2026, startDate: '2026-02-01', endDate: '2026-12-15', isActive: true },
+  { id: 'year-2025', year: 2025, startDate: '2025-02-03', endDate: '2025-12-16', isActive: false },
+];
+
+const ACTIVE_YEAR = ACADEMIC_YEARS[0];
+
+/**
+ * Turmas da demonstração. Os nomes espelham o campo `turma` dos alunos da semente — é dele que
+ * o roster de cada turma sai, então toda turma tem aluno de verdade para a tela de notas lançar.
+ */
+const CLASSES: SchoolClass[] = ['1º A', '1º B', '2º A', '2º B', '3º A', '3º B'].map((name, index) => ({
+  id: `class-${index + 1}`,
+  name,
+  academicYearId: ACTIVE_YEAR.id,
+  year: ACTIVE_YEAR.year,
+}));
+
+/** Um componente inativo entre os ativos: mostra a proporção de ativos no indicador. */
+const COMPONENTS: CurriculumComponent[] = [
+  { id: 'component-por', name: 'Português', code: 'POR', isActive: true },
+  { id: 'component-mat', name: 'Matemática', code: 'MAT', isActive: true },
+  { id: 'component-cie', name: 'Ciências', code: 'CIE', isActive: true },
+  { id: 'component-his', name: 'História', code: 'HIS', isActive: false },
+];
+
+interface SeedAssessment {
+  class: string;
+  component: string;
+  title: string;
+  weight: number;
+  date: string;
+  isRecovery: boolean;
+}
+
+/**
+ * Avaliações: a turma "3º A" leva três (uma de recuperação) para que trocar de avaliação na
+ * tela de notas seja exercitável, e "1º B" leva uma. As demais ficam sem avaliação de
+ * propósito — é o estado vazio da tela.
+ */
+const SEED_ASSESSMENTS: SeedAssessment[] = [
+  // A turma que a tela de notas abre por padrão é a primeira em ordem alfabética: sem uma
+  // avaliação aqui, a demonstração abriria sempre no estado vazio.
+  { class: '1º A', component: 'component-por', title: 'Prova 1', weight: 2, date: '2026-04-08', isRecovery: false },
+  { class: '3º A', component: 'component-mat', title: 'Prova 1', weight: 2, date: '2026-04-10', isRecovery: false },
+  { class: '3º A', component: 'component-por', title: 'Trabalho de leitura', weight: 1, date: '2026-05-15', isRecovery: false },
+  { class: '3º A', component: 'component-mat', title: 'Recuperação do 1º bimestre', weight: 1, date: '2026-07-01', isRecovery: true },
+  { class: '1º B', component: 'component-cie', title: 'Prova de ciências', weight: 1, date: '2026-04-20', isRecovery: false },
 ];
 
 interface SeedStudent {
@@ -243,7 +322,23 @@ export function createSeed(): DemoState {
       createdAt: isoDaysFromNow(-55 + index),
     };
 
-    return [identidade, vacina];
+    // CPF aprovado para todos: sem ele, todo aluno ficaria com pendência e a prévia de
+    // rematrícula nunca teria um elegível — o caminho de sucesso não apareceria na demonstração.
+    const cpf: Document = {
+      id: `document-${index + 1}-3`,
+      studentId: student.id,
+      studentName: student.nome,
+      studentFoto: null,
+      documentTypeId: DOCUMENT_TYPES[1].id,
+      documentTypeName: DOCUMENT_TYPES[1].nome,
+      nomeArquivo: `cpf-${index + 1}.pdf`,
+      status: 'Aprovado',
+      dataValidade: null,
+      motivoRejeicao: null,
+      createdAt: isoDaysFromNow(-58 + index),
+    };
+
+    return [identidade, vacina, cpf];
   });
 
   const notifications: Notification[] = NOTIFICATION_SEED.map((seed, index) => ({
@@ -269,6 +364,83 @@ export function createSeed(): DemoState {
     ],
   };
 
+  // Estrutura acadêmica: as avaliações apontam para a turma pelo nome, como o resto da semente.
+  const assessments: Assessment[] = SEED_ASSESSMENTS.map((seed, index) => {
+    const schoolClass = CLASSES.find((item) => item.name === seed.class);
+    if (!schoolClass) throw new Error(`turma da semente ausente: ${seed.class}`);
+
+    return {
+      id: `assessment-${index + 1}`,
+      schoolClassId: schoolClass.id,
+      curriculumComponentId: seed.component,
+      title: seed.title,
+      weight: seed.weight,
+      date: seed.date,
+      isRecovery: seed.isRecovery,
+    };
+  });
+
+  // Notas da turma "3º A": sem elas toda componente do boletim apareceria como "sem nota" e a
+  // aba de notas do responsável nunca mostraria situação nenhuma.
+  const terceiroA = assessments.filter(
+    (assessment) => assessment.schoolClassId === CLASSES.find((item) => item.name === '3º A')?.id,
+  );
+  const NOTAS_POR_TITULO: Record<string, number> = {
+    'Prova 1': 7.5,
+    'Trabalho de leitura': 9,
+    'Recuperação do 1º bimestre': 7,
+  };
+  const assessmentGrades: Record<string, number> = {};
+  for (const assessment of terceiroA) {
+    const nota = NOTAS_POR_TITULO[assessment.title];
+    if (nota !== undefined) {
+      assessmentGrades[`${assessment.id}:student-1`] = nota;
+      // Camila fica abaixo da média sem recuperação: exercita a situação "em recuperação".
+      assessmentGrades[`${assessment.id}:student-4`] = nota - 2;
+    }
+  }
+
+  const consents: Consent[] = students.slice(0, 2).flatMap((student, index) => [
+    {
+      id: `consent-${index + 1}-imagem`,
+      subjectType: 'Student' as const,
+      subjectId: student.id,
+      purpose: 'Uso de imagem em atividades pedagógicas',
+      legalBasis: 'Consentimento',
+      status: 'Granted' as const,
+      grantedAt: isoDaysFromNow(-120 + index * 10),
+      revokedAt: null,
+    },
+    {
+      id: `consent-${index + 1}-saude`,
+      subjectType: 'Student' as const,
+      subjectId: student.id,
+      purpose: 'Compartilhamento com plano de saúde',
+      legalBasis: 'Consentimento',
+      status: 'Revoked' as const,
+      grantedAt: isoDaysFromNow(-300),
+      revokedAt: isoDaysFromNow(-40),
+    },
+  ]);
+
+  // Uma solicitação aberta: é o que desabilita o pedido do mesmo tipo e mostra o aviso na tela.
+  const privacyRequests: PrivacyRequest[] = [
+    {
+      id: 'privacy-request-1',
+      type: 'Export',
+      status: 'Submitted',
+      subjectStudentId: 'student-2',
+      requestedByUserId: 'user-parent',
+      reason: null,
+      resolution: null,
+      legalHold: false,
+      retainUntil: null,
+      submittedAt: isoDaysFromNow(-3),
+      decidedAt: null,
+      completedAt: null,
+    },
+  ];
+
   return {
     tenant: TENANT,
     users: USERS,
@@ -280,6 +452,13 @@ export function createSeed(): DemoState {
     notifications,
     parentStudentIds: ['student-1', 'student-2'],
     grades,
+    academicYears: ACADEMIC_YEARS,
+    classes: CLASSES,
+    components: COMPONENTS,
+    assessments,
+    assessmentGrades,
+    consents,
+    privacyRequests,
     sessionUserId: null,
   };
 }

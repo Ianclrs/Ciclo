@@ -209,7 +209,7 @@ export default function UserManagement() {
       accessor: (item: ManagedUser) => (
         <div className="flex min-w-0 items-center gap-3">
           {/* Mesmo avatar de iniciais das outras listas: nome sem foto não vira texto solto. */}
-          <StudentAvatar name={item.name} size="sm" />
+          <StudentAvatar name={item.name} photo={item.foto} size="sm" />
           <div className="min-w-0">
             <p className="flex items-center gap-2 font-medium text-gray-900">
               <span className="truncate">{item.name}</span>

@@ -34,6 +34,12 @@ public static class TenantFeature
         return Order(flags);
     }
 
+    /// <summary>
+    /// Estado inicial de um tenant recém-criado: o CSV do conjunto padrão do plano. Existe para que
+    /// o plano declarado e as flags efetivas nunca nasçam divergentes (ver <see cref="Tenant.Plan"/>).
+    /// </summary>
+    public static string DefaultCsv(TenantPlan plan) => ToCsv(DefaultFor(plan));
+
     /// <summary>Lista ordenada, sem duplicatas e validada contra as flags conhecidas.</summary>
     public static IReadOnlyList<string> Normalize(string? csv)
     {

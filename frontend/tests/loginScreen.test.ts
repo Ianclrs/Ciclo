@@ -46,26 +46,29 @@ test('a tela de entrada mantém as portas de entrada reais', async () => {
   assert.match(source, /DEMO_ACCOUNTS\.parent\.email/, 'a entrada de demonstração do responsável desapareceu');
 });
 
-test('depois do login a sidebar do desktop abre aberta', async () => {
+test('a sidebar do desktop começa aberta, sem depender de marca de sessão', async () => {
   const context = await readText('src/context/AuthContext.tsx');
   const sidebar = await readText('src/components/Sidebar.tsx');
-  const marks = await readText('src/utils/sessionMarks.ts');
 
-  // O login grava a marca de sessão nova...
-  assert.match(context, /markJustLoggedIn\(\)/, 'o login deixou de marcar a sessão nova');
-  const login = context.match(/const login = async[\s\S]*?\n  \};/)?.[0] ?? '';
-  assert.match(login, /markJustLoggedIn\(\)/, 'a marca precisa ser gravada no login bem-sucedido, não em outro lugar');
-
-  // ...a sidebar lê no inicializador (senão ela abriria só depois de um quadro piscando)...
+  // Estado inicial aberto: `desktopCollapsed = false`. Antes, o padrão era recolhida e só abria
+  // por causa de uma marca gravada no login — mecanismo que existia só para contornar o padrão.
   assert.match(
     sidebar,
-    /useState\(\(\) => !wasJustLoggedIn\(\)\)/,
-    'a sidebar voltou a nascer sempre recolhida',
+    /const \[desktopCollapsed, setDesktopCollapsed\] = useState\(false\)/,
+    'a sidebar voltou a nascer recolhida',
   );
 
-  // ...e apaga a marca uma única vez, para não reabrir sozinha a cada remontagem.
-  assert.match(sidebar, /clearJustLoggedIn\(\)/, 'a marca nunca é apagada e a sidebar reabriria sozinha');
-  assert.match(marks, /sessionStorage/, 'a marca precisa sobreviver à navegação — sessionStorage, não memória');
+  // E o estado inicial não pode depender de quem acabou de entrar.
+  assert.doesNotMatch(
+    sidebar,
+    /wasJustLoggedIn|clearJustLoggedIn/,
+    'a abertura da sidebar voltou a depender da marca de sessão',
+  );
+  assert.doesNotMatch(
+    context,
+    /markJustLoggedIn/,
+    'o login ainda grava uma marca que ninguém lê',
+  );
 });
 
 test('"lembrar o acesso" é enviado ao servidor, não é só um quadradinho', async () => {

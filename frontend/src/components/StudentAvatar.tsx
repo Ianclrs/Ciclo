@@ -18,7 +18,12 @@ interface StudentAvatarProps {
   size?: 'sm' | 'md' | 'lg';
 }
 
-/** Foto do aluno em círculo; sem foto, mostra as iniciais do nome. */
+/**
+ * Avatar em círculo a partir de nome + foto; sem foto, mostra as iniciais.
+ *
+ * Nasceu para o aluno, mas o contrato é genérico (nome + foto) e serve a qualquer pessoa —
+ * o perfil de usuário e a lista de usuários usam o mesmo componente.
+ */
 export function StudentAvatar({ name, photo, size = 'md' }: StudentAvatarProps) {
   const dimension = `${SIZES[size]} rounded-full shrink-0`;
 

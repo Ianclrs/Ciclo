@@ -1,5 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Ciclo.Api.Authorization;
+using Ciclo.Core.Entities;
 using Ciclo.Infrastructure.Contracts;
 using Ciclo.Infrastructure.Security;
 using Ciclo.Infrastructure.Services;
@@ -19,6 +21,7 @@ namespace Ciclo.Api.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/academic")]
+[RequiresFeature(TenantFeature.AcademicPerformance)]
 public class AcademicController : ControllerBase
 {
     private readonly IAcademicService _academicService;

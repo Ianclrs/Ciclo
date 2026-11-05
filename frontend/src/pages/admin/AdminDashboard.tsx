@@ -10,7 +10,7 @@ import { RecentNotifications } from '../../components/RecentNotifications';
 import { Skeleton } from '../../components/Skeleton';
 import { useAuth } from '../../hooks/useAuth';
 import { useLocale } from '../../i18n/LocaleContext';
-import { formatDate, formatTime } from '../../utils/format';
+import { formatDate, formatTime, share } from '../../utils/format';
 import * as studentsApi from '../../api/students';
 import * as enrollmentsApi from '../../api/enrollments';
 import * as documentsApi from '../../api/documents';
@@ -78,11 +78,6 @@ function remainingBadge(
     };
   }
   return { text: t('dash.daysLeftMany', { days }), variant: 'success' };
-}
-
-/** Fração parte/total, com 0 quando não há base — evita divisão por zero e barra cheia falsa. */
-function share(part: number, total: number): number {
-  return total > 0 ? part / total : 0;
 }
 
 export default function AdminDashboard() {

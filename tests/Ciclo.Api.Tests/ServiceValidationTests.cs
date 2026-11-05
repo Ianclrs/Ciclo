@@ -128,6 +128,68 @@ public sealed class StudentValidationTests
 
         Assert.Equal(foto, created.Foto);
     }
+
+    /// <summary>
+    /// Regressão do relato "troquei só a foto e recebi CPF inválido": o formulário reenvia o
+    /// cadastro inteiro, então o CPF que já estava gravado vai junto. Um registro antigo cujo
+    /// CPF não passa nos dígitos verificadores não pode bloquear a edição dos outros campos.
+    /// </summary>
+    [Fact]
+    public async Task UpdatingAnotherField_KeepsUnchangedCpfWithoutRevalidating()
+    {
+        var (db, tenantId, service) = await CreateAsync();
+        await using var _ = db;
+
+        var original = await service.CreateAsync(Request(), tenantId, UserRole.Admin);
+
+        // Estado legado: CPF gravado antes da validação existir (a semente usava valores assim).
+        var student = await db.Students.SingleAsync(s => s.Id == original.Id);
+        student.Cpf = "12345678901";
+        await db.SaveChangesAsync();
+
+        var updated = await service.UpdateAsync(
+            original.Id,
+            new UpdateStudentRequest(
+                "Aluno com foto nova",
+                student.DataNascimento,
+                student.Cpf,
+                original.Turma,
+                original.AnoLetivo,
+                null,
+                null),
+            tenantId,
+            UserRole.Admin);
+
+        Assert.Equal("Aluno com foto nova", updated.Nome);
+        var stored = await db.Students.SingleAsync(s => s.Id == original.Id);
+        Assert.Equal("12345678901", stored.Cpf);
+    }
+
+    /// <summary>A tolerância vale só para o valor idêntico: CPF novo inválido continua recusado.</summary>
+    [Fact]
+    public async Task UpdatingWithNewInvalidCpf_IsStillRejected()
+    {
+        var (db, tenantId, service) = await CreateAsync();
+        await using var _ = db;
+
+        var original = await service.CreateAsync(Request(cpf: ValidCpf), tenantId, UserRole.Admin);
+
+        var ex = await Assert.ThrowsAsync<StudentException>(
+            () => service.UpdateAsync(
+                original.Id,
+                new UpdateStudentRequest(
+                    "Aluno",
+                    DateTime.UtcNow.AddYears(-10),
+                    "12345678901",
+                    original.Turma,
+                    original.AnoLetivo,
+                    null,
+                    null),
+                tenantId,
+                UserRole.Admin));
+
+        Assert.Equal("cpf_invalid", ex.Message);
+    }
 }
 
 public sealed class DocumentValidationTests

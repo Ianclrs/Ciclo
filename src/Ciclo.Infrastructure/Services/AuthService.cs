@@ -10,6 +10,7 @@ using Ciclo.Core.Interfaces;
 using Ciclo.Infrastructure.Auth;
 using Ciclo.Infrastructure.Data;
 using Ciclo.Infrastructure.Security;
+using Ciclo.Infrastructure.Storage;
 using Ciclo.Infrastructure.Tenancy;
 
 namespace Ciclo.Infrastructure.Services;
@@ -36,6 +37,9 @@ public interface IAuthService
         Guid userId, bool isActive, Guid actorId, Guid tenantId, UserRole actorRole);
     Task<string?> ResendConfirmationAsync(string email);
     Task ConfirmEmailAsync(ConfirmEmailRequest request);
+
+    /// <summary>Atualiza a foto de perfil do próprio usuário (qualquer papel autenticado).</summary>
+    Task<UserDto> UpdateMyPhotoAsync(Guid userId, string? foto);
 }
 
 public class AuthService : IAuthService
@@ -503,14 +507,43 @@ public class AuthService : IAuthService
             RefreshToken: refreshToken.Token,
             User: new UserDto(
                 user.Id, user.Email ?? string.Empty, user.Name, user.Role.ToString(), user.TenantId,
-                user.EmailConfirmed, user.IsActive));
+                user.EmailConfirmed, user.IsActive, user.Foto));
     }
 
     // ── M11: gestão de usuários ─────────────────────────────────────
 
     private static UserDto ToDto(User user) => new(
         user.Id, user.Email ?? string.Empty, user.Name, user.Role.ToString(), user.TenantId,
-        user.EmailConfirmed, user.IsActive);
+        user.EmailConfirmed, user.IsActive, user.Foto);
+
+    /// <summary>
+    /// Foto de perfil do próprio usuário. A validação é a MESMA da foto do aluno — o dono da regra
+    /// é <see cref="ImageDataUrl"/>; duplicar limites aqui criaria duas verdades sobre o que é uma
+    /// imagem aceitável.
+    /// </summary>
+    public async Task<UserDto> UpdateMyPhotoAsync(Guid userId, string? foto)
+    {
+        var user = await _dbContext.Users
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(u => u.Id == userId);
+
+        if (user is null)
+            throw new AuthException("user_not_found", 404);
+
+        if (!string.IsNullOrWhiteSpace(foto))
+        {
+            if (foto.Length > ImageDataUrl.MaxLength)
+                throw new AuthException("foto_too_large", 400);
+
+            if (!ImageDataUrl.IsSupported(foto))
+                throw new AuthException("foto_invalid_format", 400);
+        }
+
+        user.Foto = string.IsNullOrWhiteSpace(foto) ? null : foto;
+        await _dbContext.SaveChangesAsync();
+
+        return ToDto(user);
+    }
 
     public async Task<List<UserDto>> ListUsersAsync(Guid tenantId, UserRole actorRole)
     {
@@ -522,7 +555,8 @@ public class AuthService : IAuthService
             .Where(u => u.TenantId == tenantId)
             .OrderBy(u => u.Name)
             .Select(u => new UserDto(
-                u.Id, u.Email ?? string.Empty, u.Name, u.Role.ToString(), u.TenantId, u.EmailConfirmed, u.IsActive))
+                u.Id, u.Email ?? string.Empty, u.Name, u.Role.ToString(), u.TenantId, u.EmailConfirmed,
+                u.IsActive, u.Foto))
             .ToListAsync();
     }
 

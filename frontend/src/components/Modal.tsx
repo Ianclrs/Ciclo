@@ -13,6 +13,11 @@ interface ModalProps {
   confirmVariant?: 'primary' | 'danger';
   /** Bloqueia a confirmação enquanto o formulário do modal não estiver completo. */
   confirmDisabled?: boolean;
+  /**
+   * Rótulo do botão de fechar. O padrão continua sendo "Cancelar" — diálogos que só informam
+   * (sem nada a confirmar) passam "Fechar", porque cancelar o que não começou não faz sentido.
+   */
+  closeLabel?: string;
 }
 
 /**
@@ -32,6 +37,7 @@ export function Modal({
   confirmLabel,
   confirmVariant = 'primary',
   confirmDisabled = false,
+  closeLabel,
 }: ModalProps) {
   const { t } = useLocale();
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -107,7 +113,7 @@ export function Modal({
         <h3 id={titleId} className="text-lg font-semibold text-gray-900 mb-4">{title}</h3>
         <div className="text-sm text-gray-600 mb-6">{children}</div>
         <div className="flex justify-end gap-3">
-          <Button variant="secondary" onClick={onClose}>{t('common.cancel')}</Button>
+          <Button variant="secondary" onClick={onClose}>{closeLabel ?? t('common.cancel')}</Button>
           {onConfirm && (
             <Button variant={confirmVariant} onClick={onConfirm} disabled={confirmDisabled}>
               {confirmLabel || t('common.confirm')}

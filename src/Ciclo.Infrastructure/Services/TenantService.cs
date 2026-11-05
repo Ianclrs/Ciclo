@@ -106,7 +106,13 @@ public class TenantService : ITenantService
             Estado = NullIfEmpty(request.Estado),
             Cep = NullIfEmpty(request.Cep),
             IsActive = true,
-            CreatedAt = DateTime.UtcNow
+            CreatedAt = DateTime.UtcNow,
+
+            // O tenant nasce com o conjunto padrão do próprio plano (ADR-200-2). Sem isso a tela
+            // de configuração abriria com todas as funcionalidades desmarcadas para uma escola
+            // recém-cadastrada, contradizendo o plano que ela já declara.
+            Plan = TenantPlan.Basic,
+            FeatureFlags = TenantFeature.DefaultCsv(TenantPlan.Basic)
         };
         _dbContext.Tenants.Add(tenant);
         await _dbContext.SaveChangesAsync();

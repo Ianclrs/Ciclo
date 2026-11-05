@@ -6,12 +6,14 @@ using Ciclo.Infrastructure.Contracts;
 using Ciclo.Infrastructure.Security;
 using Ciclo.Infrastructure.Services;
 
+using Ciclo.Api.Authorization;
 using Ciclo.Api.Middleware;
 
 namespace Ciclo.Api.Controllers;
 
 [ApiController]
 [Route("api/notifications")]
+[RequiresFeature(TenantFeature.Notifications)]
 public class NotificationController : ControllerBase
 {
     private readonly INotificationService _service;

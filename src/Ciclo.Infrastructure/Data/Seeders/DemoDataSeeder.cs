@@ -56,7 +56,9 @@ public static class DemoDataSeeder
             Name = "Colégio Modelo",
             Slug = DemoSlug,
             IsActive = true,
-            CreatedAt = DateTime.UtcNow
+            CreatedAt = DateTime.UtcNow,
+            Plan = TenantPlan.Basic,
+            FeatureFlags = TenantFeature.DefaultCsv(TenantPlan.Basic)
         };
         db.Tenants.Add(tenant);
         await db.SaveChangesAsync();
@@ -78,12 +80,12 @@ public static class DemoDataSeeder
         // 4. Students
         var students = new List<Student>
         {
-            CreateStudent(tenant.Id, "João Pedro Silva", new DateTime(2016, 3, 15), "123.456.789-01", "1º Ano A", 2026),
-            CreateStudent(tenant.Id, "Ana Clara Silva", new DateTime(2017, 7, 22), "123.456.789-02", "1º Ano A", 2026),
-            CreateStudent(tenant.Id, "Lucas Oliveira Souza", new DateTime(2015, 11, 8), "123.456.789-03", "2º Ano B", 2026),
-            CreateStudent(tenant.Id, "Beatriz Souza", new DateTime(2016, 1, 30), "123.456.789-04", "2º Ano B", 2026),
-            CreateStudent(tenant.Id, "Miguel Santos", new DateTime(2014, 9, 12), "123.456.789-05", "3º Ano C", 2026),
-            CreateStudent(tenant.Id, "Laura Costa", new DateTime(2015, 4, 5), "123.456.789-06", "3º Ano C", 2026),
+            CreateStudent(tenant.Id, "João Pedro Silva", new DateTime(2016, 3, 15), "123.456.789-09", "1º Ano A", 2026),
+            CreateStudent(tenant.Id, "Ana Clara Silva", new DateTime(2017, 7, 22), "234.567.890-92", "1º Ano A", 2026),
+            CreateStudent(tenant.Id, "Lucas Oliveira Souza", new DateTime(2015, 11, 8), "345.678.901-75", "2º Ano B", 2026),
+            CreateStudent(tenant.Id, "Beatriz Souza", new DateTime(2016, 1, 30), "456.789.012-49", "2º Ano B", 2026),
+            CreateStudent(tenant.Id, "Miguel Santos", new DateTime(2014, 9, 12), "567.890.123-03", "3º Ano C", 2026),
+            CreateStudent(tenant.Id, "Laura Costa", new DateTime(2015, 4, 5), "678.901.234-69", "3º Ano C", 2026),
         };
         db.Students.AddRange(students);
         await db.SaveChangesAsync();

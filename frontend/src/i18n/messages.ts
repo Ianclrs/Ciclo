@@ -37,6 +37,11 @@ export type MessageKey =
   | 'nav.settings'
   | 'nav.privacy'
   | 'nav.logout'
+  | 'nav.account'
+  | 'profile.changePhoto'
+  | 'profile.removePhoto'
+  | 'profile.photoSaved'
+  | 'profile.photoError'
   | 'nav.openMenu'
   | 'nav.closeMenu'
   | 'nav.notificationsUnread'
@@ -53,9 +58,6 @@ export type MessageKey =
   | 'settings.section.plan'
   | 'settings.features.legend'
   | 'settings.field.displayName'
-  | 'settings.field.logoUrl'
-  | 'settings.field.primaryColor'
-  | 'settings.field.secondaryColor'
   | 'settings.field.timeZone'
   | 'settings.field.schoolYear'
   | 'settings.field.locale'
@@ -77,8 +79,7 @@ export type MessageKey =
   | 'settings.error.load'
   | 'settings.error.save'
   | 'settings.error.numbers'
-  | 'settings.error.color'
-  | 'settings.error.logo'
+  | 'settings.error.featuresRequired'
   | 'settings.hint.locale'
   | 'common.search'
   | 'common.clear'
@@ -140,6 +141,10 @@ export type MessageKey =
   | 'struct.yearLabel'
   | 'struct.assessmentWeight'
   | 'struct.recoveryTag'
+  | 'struct.kpi.activeOf'
+  | 'struct.kpi.noActiveYear'
+  | 'struct.kpi.classesInActiveYears'
+  | 'struct.kpi.recovery'
   | 'struct.form.yearActive'
   | 'struct.form.componentActive'
   | 'struct.form.isRecovery'
@@ -197,7 +202,8 @@ export type MessageKey =
   | 'priv.grantedAt'
   | 'priv.revokedAt'
   | 'priv.openRequestHint'
-  | 'settings.hint.logoNone'
+  | 'priv.consentsTitle'
+  | 'priv.openRequests'
   // Rótulos de domínio compartilhados entre telas
   | 'common.cancel'
   | 'common.confirm'
@@ -467,6 +473,8 @@ export type MessageKey =
   | 'child.col.regular'
   | 'child.col.recovery'
   | 'child.col.final'
+  | 'child.kpi.components'
+  | 'child.kpi.ofTotal'
   | 'notify.createTitle'
   | 'notify.createSubtitle'
   | 'notify.compose'
@@ -503,13 +511,20 @@ export type MessageKey =
   | 'renewal.col.carried'
   | 'renewal.col.pending'
   | 'renewal.selectStudent'
+  | 'renewal.kpi.students'
+  | 'renewal.kpi.eligible'
+  | 'renewal.kpi.blocked'
+  | 'renewal.kpi.carried'
+  | 'renewal.kpi.ofTotal'
+  | 'renewal.selectAll'
+  | 'renewal.selectedCount'
+  | 'renewal.reviewTitle'
   | 'renewal.notEligible'
   | 'renewal.noDoc'
   | 'renewal.expired'
   | 'renewal.reused'
   | 'renewal.none'
   | 'renewal.batchTitle'
-  | 'renewal.batchSummary'
   | 'renewal.noSelection'
   | 'renewal.batchDone'
   | 'renewal.batchError'
@@ -530,6 +545,7 @@ export type MessageKey =
   | 'grades.noAssessments'
   | 'grades.noStudents'
   | 'grades.col.grade'
+  | 'grades.studentCount'
   | 'grades.gradeAria'
   | 'grades.saved'
   | 'grades.saveError'
@@ -562,6 +578,15 @@ export type MessageKey =
   | 'docs.loadListError'
   | 'docs.noneExpiring'
   | 'docs.confirmApprove'
+  | 'docs.view.label'
+  | 'docs.kpi.pending'
+  | 'docs.kpi.approved'
+  | 'docs.kpi.rejected'
+  | 'docs.kpi.expiring'
+  | 'docs.kpi.ofTotal'
+  | 'docs.expiresToday'
+  | 'docs.expiresTomorrow'
+  | 'docs.expiringIn'
   | 'struct.title'
   | 'struct.subtitle'
   | 'struct.schoolYears'
@@ -606,6 +631,7 @@ export type MessageKey =
   | 'struct.add.assessment'
   | 'struct.error.yearDigits'
   | 'struct.error.dates'
+  | 'struct.error.dateOrder'
   | 'struct.error.className'
   | 'struct.error.selectYear'
   | 'struct.error.componentName'
@@ -698,6 +724,11 @@ const PT: Record<MessageKey, string> = {
   'nav.settings': 'Configurações',
   'nav.privacy': 'Privacidade',
   'nav.logout': 'Sair',
+  'nav.account': 'Minha conta',
+  'profile.changePhoto': 'Trocar foto',
+  'profile.removePhoto': 'Remover foto',
+  'profile.photoSaved': 'Foto de perfil atualizada.',
+  'profile.photoError': 'Não foi possível atualizar a foto.',
   'nav.openMenu': 'Abrir menu',
   'nav.closeMenu': 'Fechar menu',
   'nav.notificationsUnread': 'Notificações ({count} não lidas)',
@@ -714,9 +745,6 @@ const PT: Record<MessageKey, string> = {
   'settings.section.plan': 'Plano e funcionalidades',
   'settings.features.legend': 'Funcionalidades',
   'settings.field.displayName': 'Nome de exibição',
-  'settings.field.logoUrl': 'URL do logotipo',
-  'settings.field.primaryColor': 'Cor primária',
-  'settings.field.secondaryColor': 'Cor secundária',
   'settings.field.timeZone': 'Fuso horário',
   'settings.field.schoolYear': 'Ano letivo padrão',
   'settings.field.locale': 'Idioma padrão da escola',
@@ -738,8 +766,7 @@ const PT: Record<MessageKey, string> = {
   'settings.error.load': 'Não foi possível carregar a configuração da escola.',
   'settings.error.save': 'Não foi possível salvar a configuração.',
   'settings.error.numbers': 'Informe números válidos no ano letivo e nas cotas.',
-  'settings.error.color': 'Use o formato hexadecimal, como #1A2B3C.',
-  'settings.error.logo': 'A imagem não carregou. Confira a URL do logotipo.',
+  'settings.error.featuresRequired': 'Mantenha pelo menos uma funcionalidade habilitada.',
   'settings.hint.locale': 'Trocar aqui também muda o idioma da interface; salvar define o padrão da escola.',
   'common.search': 'Buscar',
   'common.clear': 'Limpar',
@@ -791,11 +818,15 @@ const PT: Record<MessageKey, string> = {
   'reg.schoolYearLabel': 'Ano letivo:',
   'struct.actions.gradeEntry': 'Lançar notas',
   'struct.actions.newYear': 'Novo ano letivo',
-  'struct.active': 'ativo',
-  'struct.inactive': 'inativo',
+  'struct.active': 'Ativo',
+  'struct.inactive': 'Inativo',
   'struct.yearLabel': 'Ano letivo {year}',
   'struct.assessmentWeight': 'peso {weight}',
-  'struct.recoveryTag': 'recuperação',
+  'struct.recoveryTag': 'Recuperação',
+  'struct.kpi.activeOf': 'Ativos: {active} de {total}',
+  'struct.kpi.noActiveYear': 'Nenhum ano letivo ativo',
+  'struct.kpi.classesInActiveYears': 'Em anos letivos ativos: {count}',
+  'struct.kpi.recovery': 'Recuperação: {count} de {total}',
   'struct.form.yearActive': 'Ano letivo ativo',
   'struct.form.componentActive': 'Componente ativo',
   'struct.form.isRecovery': 'É avaliação de recuperação',
@@ -851,8 +882,9 @@ const PT: Record<MessageKey, string> = {
   'priv.grantedAt': 'Concedido em {date}',
   'priv.revokedAt': 'Revogado em {date}',
   'priv.openRequestHint': 'Pedidos com solicitação aberta do mesmo tipo ficam desabilitados até a conclusão pelo colégio.',
+  'priv.consentsTitle': 'Consentimentos',
+  'priv.openRequests': 'Solicitações abertas: {count}',
   'settings.hint.plan': 'Trocar o plano sem alterar as funcionalidades aplica o conjunto padrão do plano.',
-  'settings.hint.logoNone': 'Nenhum logotipo definido.',
 
   'common.cancel': 'Cancelar',
   'common.confirm': 'Confirmar',
@@ -1122,6 +1154,8 @@ const PT: Record<MessageKey, string> = {
   'child.col.regular': 'Média regular',
   'child.col.recovery': 'Recuperação',
   'child.col.final': 'Média final',
+  'child.kpi.components': 'Componentes',
+  'child.kpi.ofTotal': '{count} de {total}',
   'notify.createTitle': 'Nova notificação',
   'notify.createSubtitle': 'Escolha o destino, escreva e envie.',
   'notify.compose': 'Compor mensagem',
@@ -1158,13 +1192,20 @@ const PT: Record<MessageKey, string> = {
   'renewal.col.carried': 'Documentos reaproveitados',
   'renewal.col.pending': 'Pendências',
   'renewal.selectStudent': 'Selecionar {name}',
+  'renewal.kpi.students': 'Alunos',
+  'renewal.kpi.eligible': 'Elegíveis',
+  'renewal.kpi.blocked': 'Bloqueados',
+  'renewal.kpi.carried': 'Documentos reaproveitados',
+  'renewal.kpi.ofTotal': '{count} de {total}',
+  'renewal.selectAll': 'Selecionar todos os elegíveis',
+  'renewal.selectedCount': 'Selecionados: {count}',
+  'renewal.reviewTitle': 'Alunos para rematrícula',
   'renewal.notEligible': 'Não elegível para renovação.',
   'renewal.noDoc': 'Nenhum documento',
   'renewal.expired': 'vencido',
   'renewal.reused': 'reaproveitado',
   'renewal.none': 'Nenhuma',
   'renewal.batchTitle': 'Desfecho do lote · ano letivo {year}',
-  'renewal.batchSummary': '{renewed} renovado(s) · {skipped} já existia(m) · {blocked} bloqueado(s) · {failed} falha(s)',
   'renewal.noSelection': 'Selecione ao menos um aluno elegível.',
   'renewal.batchDone': 'Lote processado. Confira o desfecho de cada aluno.',
   'renewal.batchError': 'Não foi possível executar o lote.',
@@ -1176,15 +1217,16 @@ const PT: Record<MessageKey, string> = {
   'grades.subtitle': 'Escolha a turma e a avaliação, depois grave a nota de cada aluno.',
   'grades.classesError': 'Não foi possível carregar as turmas.',
   'grades.rosterError': 'Não foi possível carregar a turma.',
-  'grades.noClasses': 'Nenhuma turma cadastrada. Cadastre a estrutura acadêmica primeiro em',
+  'grades.noClasses': 'Nenhuma turma cadastrada ainda.',
   'grades.academicStructure': 'Estrutura acadêmica',
   'grades.field.assessment': 'Avaliação',
   'grades.noAssessment': 'Nenhuma avaliação nesta turma',
   'grades.weight': 'peso',
   'grades.recovery': 'recuperação',
-  'grades.noAssessments': 'Esta turma não tem avaliações. Cadastre uma em',
+  'grades.noAssessments': 'Esta turma não tem avaliações.',
   'grades.noStudents': 'Nenhum aluno nesta turma.',
   'grades.col.grade': 'Nota (0 a 10)',
+  'grades.studentCount': 'Alunos: {count}',
   'grades.gradeAria': 'Nota de {name}',
   'grades.saved': 'Nota de {name} salva.',
   'grades.saveError': 'Não foi possível salvar a nota de {name}.',
@@ -1217,6 +1259,15 @@ const PT: Record<MessageKey, string> = {
   'docs.loadListError': 'Não foi possível carregar os documentos. Tente novamente.',
   'docs.noneExpiring': 'Nenhum documento vence nos próximos 30 dias.',
   'docs.confirmApprove': 'Confirmar a aprovação deste documento?',
+  'docs.view.label': 'Visão dos documentos',
+  'docs.kpi.pending': 'Pendentes',
+  'docs.kpi.approved': 'Aprovados',
+  'docs.kpi.rejected': 'Rejeitados',
+  'docs.kpi.expiring': 'A vencer em 30 dias',
+  'docs.kpi.ofTotal': '{count} de {total}',
+  'docs.expiresToday': 'vence hoje',
+  'docs.expiresTomorrow': 'vence amanhã',
+  'docs.expiringIn': 'vence em {days} dias',
   'struct.title': 'Estrutura acadêmica',
   'struct.subtitle': 'Anos letivos, turmas, componentes curriculares e avaliações.',
   'struct.schoolYears': 'Anos letivos',
@@ -1261,6 +1312,7 @@ const PT: Record<MessageKey, string> = {
   'struct.add.assessment': 'Nova avaliação',
   'struct.error.yearDigits': 'Informe o ano com quatro dígitos.',
   'struct.error.dates': 'Informe o início e o fim do ano letivo.',
+  'struct.error.dateOrder': 'A data de término não pode ser anterior à de início.',
   'struct.error.className': 'Informe o nome da turma.',
   'struct.error.selectYear': 'Selecione o ano letivo.',
   'struct.error.componentName': 'Informe o nome do componente.',
@@ -1355,6 +1407,11 @@ const EN: Record<MessageKey, string> = {
   'nav.settings': 'Settings',
   'nav.privacy': 'Privacy',
   'nav.logout': 'Sign out',
+  'nav.account': 'My account',
+  'profile.changePhoto': 'Change photo',
+  'profile.removePhoto': 'Remove photo',
+  'profile.photoSaved': 'Profile photo updated.',
+  'profile.photoError': 'The photo could not be updated.',
   'nav.openMenu': 'Open menu',
   'nav.closeMenu': 'Close menu',
   'nav.notificationsUnread': 'Notifications ({count} unread)',
@@ -1371,9 +1428,6 @@ const EN: Record<MessageKey, string> = {
   'settings.section.plan': 'Plan and features',
   'settings.features.legend': 'Features',
   'settings.field.displayName': 'Display name',
-  'settings.field.logoUrl': 'Logo URL',
-  'settings.field.primaryColor': 'Primary color',
-  'settings.field.secondaryColor': 'Secondary color',
   'settings.field.timeZone': 'Time zone',
   'settings.field.schoolYear': 'Default school year',
   'settings.field.locale': 'School default language',
@@ -1395,8 +1449,7 @@ const EN: Record<MessageKey, string> = {
   'settings.error.load': 'The school settings could not be loaded.',
   'settings.error.save': 'The settings could not be saved.',
   'settings.error.numbers': 'Enter valid numbers for the school year and quotas.',
-  'settings.error.color': 'Use the hexadecimal format, such as #1A2B3C.',
-  'settings.error.logo': 'The image did not load. Check the logo URL.',
+  'settings.error.featuresRequired': 'Keep at least one feature enabled.',
   'settings.hint.locale': 'Changing this also switches the interface language; saving sets the school default.',
   'common.search': 'Search',
   'common.clear': 'Clear',
@@ -1448,11 +1501,15 @@ const EN: Record<MessageKey, string> = {
   'reg.schoolYearLabel': 'School year:',
   'struct.actions.gradeEntry': 'Enter grades',
   'struct.actions.newYear': 'New school year',
-  'struct.active': 'active',
-  'struct.inactive': 'inactive',
+  'struct.active': 'Active',
+  'struct.inactive': 'Inactive',
   'struct.yearLabel': 'School year {year}',
   'struct.assessmentWeight': 'weight {weight}',
-  'struct.recoveryTag': 'recovery',
+  'struct.recoveryTag': 'Recovery',
+  'struct.kpi.activeOf': 'Active: {active} of {total}',
+  'struct.kpi.noActiveYear': 'No active school year',
+  'struct.kpi.classesInActiveYears': 'In active school years: {count}',
+  'struct.kpi.recovery': 'Recovery: {count} of {total}',
   'struct.form.yearActive': 'School year active',
   'struct.form.componentActive': 'Component active',
   'struct.form.isRecovery': 'This is a recovery assessment',
@@ -1508,8 +1565,9 @@ const EN: Record<MessageKey, string> = {
   'priv.grantedAt': 'Granted on {date}',
   'priv.revokedAt': 'Revoked on {date}',
   'priv.openRequestHint': 'Requests of the same type stay disabled while one is open, until the school completes it.',
+  'priv.consentsTitle': 'Consents',
+  'priv.openRequests': 'Open requests: {count}',
   'settings.hint.plan': 'Changing the plan without touching the features applies the plan default set.',
-  'settings.hint.logoNone': 'No logo set.',
 
   'common.cancel': 'Cancel',
   'common.confirm': 'Confirm',
@@ -1779,6 +1837,8 @@ const EN: Record<MessageKey, string> = {
   'child.col.regular': 'Regular average',
   'child.col.recovery': 'Recovery',
   'child.col.final': 'Final average',
+  'child.kpi.components': 'Components',
+  'child.kpi.ofTotal': '{count} of {total}',
   'notify.createTitle': 'New notification',
   'notify.createSubtitle': 'Choose the target, write and send.',
   'notify.compose': 'Compose message',
@@ -1815,13 +1875,20 @@ const EN: Record<MessageKey, string> = {
   'renewal.col.carried': 'Reused documents',
   'renewal.col.pending': 'Pending items',
   'renewal.selectStudent': 'Select {name}',
+  'renewal.kpi.students': 'Students',
+  'renewal.kpi.eligible': 'Eligible',
+  'renewal.kpi.blocked': 'Blocked',
+  'renewal.kpi.carried': 'Reused documents',
+  'renewal.kpi.ofTotal': '{count} of {total}',
+  'renewal.selectAll': 'Select every eligible student',
+  'renewal.selectedCount': 'Selected: {count}',
+  'renewal.reviewTitle': 'Students for re-enrollment',
   'renewal.notEligible': 'Not eligible for renewal.',
   'renewal.noDoc': 'No document',
   'renewal.expired': 'expired',
   'renewal.reused': 'reused',
   'renewal.none': 'None',
   'renewal.batchTitle': 'Batch outcome · school year {year}',
-  'renewal.batchSummary': '{renewed} renewed · {skipped} already existed · {blocked} blocked · {failed} failed',
   'renewal.noSelection': 'Select at least one eligible student.',
   'renewal.batchDone': 'Batch processed. Check the outcome of each student.',
   'renewal.batchError': 'The batch could not run.',
@@ -1833,15 +1900,16 @@ const EN: Record<MessageKey, string> = {
   'grades.subtitle': 'Choose the class and the assessment, then save each student grade.',
   'grades.classesError': 'The classes could not be loaded.',
   'grades.rosterError': 'The class could not be loaded.',
-  'grades.noClasses': 'No class registered. Create the academic structure first at',
+  'grades.noClasses': 'No class registered yet.',
   'grades.academicStructure': 'Academic structure',
   'grades.field.assessment': 'Assessment',
   'grades.noAssessment': 'No assessment in this class',
   'grades.weight': 'weight',
   'grades.recovery': 'recovery',
-  'grades.noAssessments': 'This class has no assessments. Create one at',
+  'grades.noAssessments': 'This class has no assessments.',
   'grades.noStudents': 'No student in this class.',
   'grades.col.grade': 'Grade (0 to 10)',
+  'grades.studentCount': 'Students: {count}',
   'grades.gradeAria': 'Grade for {name}',
   'grades.saved': 'Grade of {name} saved.',
   'grades.saveError': 'The grade of {name} could not be saved.',
@@ -1874,6 +1942,15 @@ const EN: Record<MessageKey, string> = {
   'docs.loadListError': 'The documents could not be loaded. Try again.',
   'docs.noneExpiring': 'No document expires in the next 30 days.',
   'docs.confirmApprove': 'Confirm the approval of this document?',
+  'docs.view.label': 'Document view',
+  'docs.kpi.pending': 'Pending',
+  'docs.kpi.approved': 'Approved',
+  'docs.kpi.rejected': 'Rejected',
+  'docs.kpi.expiring': 'Expiring in 30 days',
+  'docs.kpi.ofTotal': '{count} of {total}',
+  'docs.expiresToday': 'expires today',
+  'docs.expiresTomorrow': 'expires tomorrow',
+  'docs.expiringIn': 'expires in {days} days',
   'struct.title': 'Academic structure',
   'struct.subtitle': 'School years, classes, curriculum components and assessments.',
   'struct.schoolYears': 'School years',
@@ -1918,6 +1995,7 @@ const EN: Record<MessageKey, string> = {
   'struct.add.assessment': 'New assessment',
   'struct.error.yearDigits': 'Enter the year with four digits.',
   'struct.error.dates': 'Enter the start and end of the school year.',
+  'struct.error.dateOrder': 'The end date cannot be earlier than the start date.',
   'struct.error.className': 'Enter the class name.',
   'struct.error.selectYear': 'Select the school year.',
   'struct.error.componentName': 'Enter the component name.',
@@ -2012,6 +2090,11 @@ const ES: Record<MessageKey, string> = {
   'nav.settings': 'Configuración',
   'nav.privacy': 'Privacidad',
   'nav.logout': 'Salir',
+  'nav.account': 'Mi cuenta',
+  'profile.changePhoto': 'Cambiar foto',
+  'profile.removePhoto': 'Quitar foto',
+  'profile.photoSaved': 'Foto de perfil actualizada.',
+  'profile.photoError': 'No fue posible actualizar la foto.',
   'nav.openMenu': 'Abrir menú',
   'nav.closeMenu': 'Cerrar menú',
   'nav.notificationsUnread': 'Notificaciones ({count} sin leer)',
@@ -2028,9 +2111,6 @@ const ES: Record<MessageKey, string> = {
   'settings.section.plan': 'Plan y funcionalidades',
   'settings.features.legend': 'Funcionalidades',
   'settings.field.displayName': 'Nombre visible',
-  'settings.field.logoUrl': 'URL del logotipo',
-  'settings.field.primaryColor': 'Color primario',
-  'settings.field.secondaryColor': 'Color secundario',
   'settings.field.timeZone': 'Zona horaria',
   'settings.field.schoolYear': 'Año lectivo por defecto',
   'settings.field.locale': 'Idioma predeterminado del colegio',
@@ -2052,8 +2132,7 @@ const ES: Record<MessageKey, string> = {
   'settings.error.load': 'No fue posible cargar la configuración del colegio.',
   'settings.error.save': 'No fue posible guardar la configuración.',
   'settings.error.numbers': 'Introduce números válidos en el año lectivo y las cuotas.',
-  'settings.error.color': 'Usa el formato hexadecimal, como #1A2B3C.',
-  'settings.error.logo': 'La imagen no cargó. Revisa la URL del logotipo.',
+  'settings.error.featuresRequired': 'Mantén al menos una funcionalidad habilitada.',
   'settings.hint.locale': 'Cambiar esto también cambia el idioma de la interfaz; guardar define el valor predeterminado del colegio.',
   'common.search': 'Buscar',
   'common.clear': 'Limpiar',
@@ -2105,11 +2184,15 @@ const ES: Record<MessageKey, string> = {
   'reg.schoolYearLabel': 'Año lectivo:',
   'struct.actions.gradeEntry': 'Registrar notas',
   'struct.actions.newYear': 'Nuevo año lectivo',
-  'struct.active': 'activo',
-  'struct.inactive': 'inactivo',
+  'struct.active': 'Activo',
+  'struct.inactive': 'Inactivo',
   'struct.yearLabel': 'Año lectivo {year}',
   'struct.assessmentWeight': 'peso {weight}',
-  'struct.recoveryTag': 'recuperación',
+  'struct.recoveryTag': 'Recuperación',
+  'struct.kpi.activeOf': 'Activos: {active} de {total}',
+  'struct.kpi.noActiveYear': 'Ningún año lectivo activo',
+  'struct.kpi.classesInActiveYears': 'En años lectivos activos: {count}',
+  'struct.kpi.recovery': 'Recuperación: {count} de {total}',
   'struct.form.yearActive': 'Año lectivo activo',
   'struct.form.componentActive': 'Componente activo',
   'struct.form.isRecovery': 'Es una evaluación de recuperación',
@@ -2165,8 +2248,9 @@ const ES: Record<MessageKey, string> = {
   'priv.grantedAt': 'Concedido el {date}',
   'priv.revokedAt': 'Revocado el {date}',
   'priv.openRequestHint': 'Las solicitudes del mismo tipo quedan deshabilitadas hasta que el colegio las complete.',
+  'priv.consentsTitle': 'Consentimientos',
+  'priv.openRequests': 'Solicitudes abiertas: {count}',
   'settings.hint.plan': 'Cambiar el plan sin tocar las funcionalidades aplica el conjunto predeterminado del plan.',
-  'settings.hint.logoNone': 'Ningún logotipo definido.',
 
   'common.cancel': 'Cancelar',
   'common.confirm': 'Confirmar',
@@ -2436,6 +2520,8 @@ const ES: Record<MessageKey, string> = {
   'child.col.regular': 'Promedio regular',
   'child.col.recovery': 'Recuperación',
   'child.col.final': 'Promedio final',
+  'child.kpi.components': 'Componentes',
+  'child.kpi.ofTotal': '{count} de {total}',
   'notify.createTitle': 'Nueva notificación',
   'notify.createSubtitle': 'Elige el destino, escribe y envía.',
   'notify.compose': 'Componer mensaje',
@@ -2472,13 +2558,20 @@ const ES: Record<MessageKey, string> = {
   'renewal.col.carried': 'Documentos reutilizados',
   'renewal.col.pending': 'Pendientes',
   'renewal.selectStudent': 'Seleccionar {name}',
+  'renewal.kpi.students': 'Alumnos',
+  'renewal.kpi.eligible': 'Elegibles',
+  'renewal.kpi.blocked': 'Bloqueados',
+  'renewal.kpi.carried': 'Documentos reutilizados',
+  'renewal.kpi.ofTotal': '{count} de {total}',
+  'renewal.selectAll': 'Seleccionar todos los elegibles',
+  'renewal.selectedCount': 'Seleccionados: {count}',
+  'renewal.reviewTitle': 'Alumnos para rematrícula',
   'renewal.notEligible': 'No elegible para renovación.',
   'renewal.noDoc': 'Ningún documento',
   'renewal.expired': 'vencido',
   'renewal.reused': 'reutilizado',
   'renewal.none': 'Ninguna',
   'renewal.batchTitle': 'Desenlace del lote · año lectivo {year}',
-  'renewal.batchSummary': '{renewed} renovado(s) · {skipped} ya existía(n) · {blocked} bloqueado(s) · {failed} fallo(s)',
   'renewal.noSelection': 'Selecciona al menos un alumno elegible.',
   'renewal.batchDone': 'Lote procesado. Revisa el desenlace de cada alumno.',
   'renewal.batchError': 'No fue posible ejecutar el lote.',
@@ -2490,15 +2583,16 @@ const ES: Record<MessageKey, string> = {
   'grades.subtitle': 'Elige la clase y la evaluación, luego guarda la nota de cada alumno.',
   'grades.classesError': 'No fue posible cargar las clases.',
   'grades.rosterError': 'No fue posible cargar la clase.',
-  'grades.noClasses': 'Ninguna clase registrada. Crea la estructura académica primero en',
+  'grades.noClasses': 'Ninguna clase registrada aún.',
   'grades.academicStructure': 'Estructura académica',
   'grades.field.assessment': 'Evaluación',
   'grades.noAssessment': 'Ninguna evaluación en esta clase',
   'grades.weight': 'peso',
   'grades.recovery': 'recuperación',
-  'grades.noAssessments': 'Esta clase no tiene evaluaciones. Crea una en',
+  'grades.noAssessments': 'Esta clase no tiene evaluaciones.',
   'grades.noStudents': 'Ningún alumno en esta clase.',
   'grades.col.grade': 'Nota (0 a 10)',
+  'grades.studentCount': 'Alumnos: {count}',
   'grades.gradeAria': 'Nota de {name}',
   'grades.saved': 'Nota de {name} guardada.',
   'grades.saveError': 'No fue posible guardar la nota de {name}.',
@@ -2531,6 +2625,15 @@ const ES: Record<MessageKey, string> = {
   'docs.loadListError': 'No fue posible cargar los documentos. Inténtalo de nuevo.',
   'docs.noneExpiring': 'Ningún documento caduca en los próximos 30 días.',
   'docs.confirmApprove': '¿Confirmar la aprobación de este documento?',
+  'docs.view.label': 'Vista de documentos',
+  'docs.kpi.pending': 'Pendientes',
+  'docs.kpi.approved': 'Aprobados',
+  'docs.kpi.rejected': 'Rechazados',
+  'docs.kpi.expiring': 'Por caducar en 30 días',
+  'docs.kpi.ofTotal': '{count} de {total}',
+  'docs.expiresToday': 'caduca hoy',
+  'docs.expiresTomorrow': 'caduca mañana',
+  'docs.expiringIn': 'caduca en {days} días',
   'struct.title': 'Estructura académica',
   'struct.subtitle': 'Años lectivos, clases, componentes curriculares y evaluaciones.',
   'struct.schoolYears': 'Años lectivos',
@@ -2575,6 +2678,7 @@ const ES: Record<MessageKey, string> = {
   'struct.add.assessment': 'Nueva evaluación',
   'struct.error.yearDigits': 'Indica el año con cuatro dígitos.',
   'struct.error.dates': 'Indica el inicio y el fin del año lectivo.',
+  'struct.error.dateOrder': 'La fecha de fin no puede ser anterior a la de inicio.',
   'struct.error.className': 'Indica el nombre de la clase.',
   'struct.error.selectYear': 'Selecciona el año lectivo.',
   'struct.error.componentName': 'Indica el nombre del componente.',

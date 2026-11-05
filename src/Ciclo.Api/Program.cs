@@ -158,6 +158,10 @@ try
     builder.Services.AddMemoryCache();
     builder.Services.AddScoped<ITenantService, TenantService>();
 
+    // Portão das funcionalidades (ADR-200-2): responde às flags lendo a configuração já
+    // cacheada pelo TenantService. É o que `[RequiresFeature]` consulta no portão da API.
+    builder.Services.AddScoped<ITenantFeatureGate, TenantFeatureGate>();
+
     // Student services (Spec 40)
     builder.Services.AddScoped<IStudentService, StudentService>();
 

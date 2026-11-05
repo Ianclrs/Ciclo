@@ -6,6 +6,8 @@ export interface User {
   tenantId: string;
   /** M11: presente em /auth/me e na gestão de usuários. */
   emailConfirmed?: boolean;
+  /** Foto de perfil (data URL) ou `null` quando não há — mesma forma da foto do aluno. */
+  foto?: string | null;
 }
 
 /** Colégio do usuário logado (`GET /api/tenants/me`). */
@@ -26,6 +28,8 @@ export interface ManagedUser {
   tenantId: string;
   emailConfirmed: boolean;
   isActive: boolean;
+  /** Foto de perfil (data URL). Serve ao reconhecimento em listas longas. */
+  foto?: string | null;
 }
 
 export interface Student {

@@ -1,8 +1,13 @@
-import { useId, type InputHTMLAttributes } from 'react';
+import { useId, type InputHTMLAttributes, type Ref } from 'react';
 
 interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
   label?: string;
   error?: string;
+  /**
+   * Ref do input, como no elemento nativo — o React 19 já entrega `ref` como prop.
+   * Necessária para campos cujo valor é lido fora do React, como o `<input type="file">`.
+   */
+  ref?: Ref<HTMLInputElement>;
 }
 
 /**
@@ -13,7 +18,7 @@ interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
  * para ele com `htmlFor`, e o estado inválido é exposto por `aria-invalid` +
  * `aria-describedby` apontando para o parágrafo do erro.
  */
-export function Input({ label, error, className = '', id, ...props }: InputProps) {
+export function Input({ label, error, className = '', id, ref, ...props }: InputProps) {
   const generatedId = useId();
   const fieldId = id ?? generatedId;
   const errorId = `${fieldId}-error`;
@@ -27,6 +32,7 @@ export function Input({ label, error, className = '', id, ...props }: InputProps
       )}
       <input
         {...props}
+        ref={ref}
         id={fieldId}
         aria-invalid={error ? true : undefined}
         aria-describedby={error ? errorId : undefined}

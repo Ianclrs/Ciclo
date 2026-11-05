@@ -34,10 +34,18 @@ public record RefreshedSession(AuthResponse Response, bool RememberMe)
 
 /// <summary>
 /// M11: <c>EmailConfirmed</c> passa a integrar o contrato — a tela pode cobrar a confirmação
-/// sem precisar de outro endpoint só para isso.
+/// sem precisar de outro endpoint só para isso. <c>Foto</c> é a foto de perfil (data URL) e entra
+/// com valor padrão para não quebrar quem já construía o DTO sem ela.
 /// </summary>
 public record UserDto(
-    Guid Id, string Email, string Name, string Role, Guid TenantId, bool EmailConfirmed, bool IsActive);
+    Guid Id, string Email, string Name, string Role, Guid TenantId, bool EmailConfirmed, bool IsActive,
+    string? Foto = null);
+
+/// <summary>
+/// Foto de perfil do próprio usuário. <c>null</c> remove a foto; o formato é validado pela API com
+/// as mesmas regras da foto do aluno (PNG/JPEG/WebP, até ~150 KB de imagem).
+/// </summary>
+public record UpdateUserPhotoRequest(string? Foto);
 
 public record ForgotPasswordRequest(string Email);
 public record ResetPasswordRequest(string Email, string Token, string NewPassword);

@@ -86,3 +86,14 @@ export function formatPercent(
 ): string {
   return formatNumber(value, locale, { style: 'percent', ...options });
 }
+
+/**
+ * Fração parte/total, com 0 quando não há base.
+ *
+ * Existe porque os cartões de indicador recebem uma fração de 0 a 1 para a barra de
+ * proporção, e a divisão por zero produziria `NaN`/`Infinity` — a barra sairia cheia quando
+ * a base é vazia, afirmando um progresso que não existe.
+ */
+export function share(part: number, total: number): number {
+  return total > 0 ? part / total : 0;
+}

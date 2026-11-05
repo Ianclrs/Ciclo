@@ -39,6 +39,15 @@ export async function getMe(): Promise<User> {
   return res.data;
 }
 
+/**
+ * Foto de perfil do usuário logado. `null` remove a foto; a imagem já vai reduzida pelo
+ * navegador (`utils/image`), e a API valida tamanho e formato de novo.
+ */
+export async function updateMyPhoto(foto: string | null): Promise<User> {
+  const res = await api.put('/api/auth/me/photo', { foto });
+  return res.data;
+}
+
 export async function forgotPassword(email: string): Promise<{ resetToken?: string }> {
   const res = await api.post('/api/auth/forgot-password', { email });
   return res.data;

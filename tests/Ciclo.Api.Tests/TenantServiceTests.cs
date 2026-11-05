@@ -98,6 +98,22 @@ public sealed class TenantServiceTests : IDisposable
         Assert.True(admin.IsActive);
     }
 
+    /// <summary>
+    /// Um tenant nasce com o plano padrão E com as flags daquele plano. Se as flags nascessem
+    /// vazias, a tela de configuração mostraria todas as funcionalidades desmarcadas para uma
+    /// escola que acabou de ser cadastrada — plano e flags contariam coisas diferentes.
+    /// </summary>
+    [Fact]
+    public async Task RegisterSchoolAsync_SeedsPlanDefaultFeatureFlags()
+    {
+        var result = await _tenantService.RegisterSchoolAsync(ValidRequest());
+
+        var tenant = await _dbContext.Tenants.FirstAsync(t => t.Id == result.TenantId);
+
+        Assert.Equal(TenantPlan.Basic, tenant.Plan);
+        Assert.Equal("Documents,ParentPortal", tenant.FeatureFlags);
+    }
+
     [Fact]
     public async Task RegisterSchoolAsync_AccentedName_GeneratesAsciiSlug()
     {

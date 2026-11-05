@@ -180,3 +180,291 @@ test('rota não coberta responde 404 em vez de devolver lista vazia silenciosa',
   assert.equal(result.status, 404);
   assert.match((result.data as { title: string }).title, /não coberta pela demonstração/);
 });
+
+// ── Estrutura acadêmica ────────────────────────────────────────────────────
+
+test('as rotas acadêmicas deixaram de cair no 404 genérico', () => {
+  const state = fresh();
+
+  for (const route of [
+    '/api/academic/years',
+    '/api/academic/classes',
+    '/api/academic/components',
+    '/api/academic/assessments',
+  ]) {
+    const result = handleRequest(state, 'GET', route);
+    assert.equal(result.status, 200, `${route} ainda não é coberta pela demonstração`);
+  }
+});
+
+test('a turma da semente tem roster e mais de uma avaliação', () => {
+  const state = fresh();
+  const classes = handleRequest(state, 'GET', '/api/academic/classes').data as {
+    id: string;
+    name: string;
+  }[];
+  assert.ok(classes.length > 0, 'a demonstração precisa de turmas');
+
+  const turma = classes.find((item) => item.name === '3º A');
+  assert.ok(turma, 'a semente precisa da turma 3º A para a tela de notas');
+
+  const roster = handleRequest(state, 'GET', `/api/academic/classes/${turma.id}/students`).data as {
+    nome: string;
+  }[];
+  assert.ok(roster.length >= 2, 'a turma precisa de alunos no roster');
+
+  const assessments = handleRequest(state, 'GET', '/api/academic/assessments', {
+    schoolClassId: turma.id,
+  }).data as { id: string; isRecovery: boolean }[];
+  assert.ok(assessments.length >= 2, 'a turma precisa de mais de uma avaliação para trocar de prova');
+  assert.ok(
+    assessments.some((assessment) => assessment.isRecovery),
+    'falta a avaliação de recuperação',
+  );
+});
+
+test('lançar nota é idempotente e recusa valor fora da faixa', () => {
+  const state = fresh();
+
+  const turma = state.classes.find((item) => item.name === '3º A');
+  assert.ok(turma);
+  const assessment = state.assessments.find(
+    (item) => item.schoolClassId === turma.id && item.curriculumComponentId === 'component-mat',
+  );
+  assert.ok(assessment);
+  const student = state.students.find((item) => item.turma === '3º A');
+  assert.ok(student);
+
+  const route = `/api/academic/assessments/${assessment.id}/grades/${student.id}`;
+  const primeiro = handleRequest(state, 'PUT', route, {}, { value: 8.5 });
+  assert.equal(primeiro.status, 200);
+  // Mesmo DTO do backend: a disciplina é o nome do componente.
+  assert.deepEqual(primeiro.data, { disciplina: 'Matemática', nota: 8.5, observacoes: null });
+
+  // Relançar atualiza o mesmo registro: a chave é o par avaliação/aluno (a semente já tem
+  // notas, então o que importa é a chave não se multiplicar).
+  const chave = `${assessment.id}:${student.id}`;
+  const antesDeRelancar = Object.keys(state.assessmentGrades).length;
+  handleRequest(state, 'PUT', route, {}, { value: 9 });
+  assert.equal(state.assessmentGrades[chave], 9);
+  assert.ok(
+    Object.keys(state.assessmentGrades).length <= antesDeRelancar + 1,
+    'relançar a nota duplicou a chave',
+  );
+
+  const fora = handleRequest(state, 'PUT', route, {}, { value: 11 });
+  assert.equal(fora.status, 400);
+  assert.equal((fora.data as { code: string }).code, 'grade_out_of_range');
+});
+
+test('nota de aluno de outra turma é conflito, não gravação', () => {
+  const state = fresh();
+
+  const turma = state.classes.find((item) => item.name === '3º A');
+  assert.ok(turma);
+  const assessment = state.assessments.find((item) => item.schoolClassId === turma.id);
+  assert.ok(assessment);
+  const deOutraTurma = state.students.find((item) => item.turma === '1º B');
+  assert.ok(deOutraTurma);
+
+  const antes = { ...state.assessmentGrades };
+  const result = handleRequest(
+    state,
+    'PUT',
+    `/api/academic/assessments/${assessment.id}/grades/${deOutraTurma.id}`,
+    {},
+    { value: 7 },
+  );
+
+  assert.equal(result.status, 409);
+  assert.equal((result.data as { code: string }).code, 'student_not_in_class');
+  assert.deepEqual(state.assessmentGrades, antes, 'nota de outra turma não pode ser gravada');
+});
+
+// ── Privacidade e boletim do responsável ───────────────────────────────────
+
+test('consentimentos são por aluno e a solicitação nasce aguardando decisão', () => {
+  const state = fresh();
+  const [ana] = state.students;
+
+  const dela = handleRequest(state, 'GET', '/api/privacy/consents', {
+    subjectId: ana.id,
+    subjectType: 'Student',
+  }).data as { subjectId: string }[];
+  const deOutro = handleRequest(state, 'GET', '/api/privacy/consents', {
+    subjectId: 'nao-existe',
+  }).data as unknown[];
+
+  assert.ok(dela.length > 0, 'a semente precisa de consentimentos para o filho');
+  assert.ok(dela.every((consent) => consent.subjectId === ana.id));
+  assert.equal(deOutro.length, 0);
+
+  const criada = handleRequest(state, 'POST', '/api/privacy/requests', {}, {
+    studentId: ana.id,
+    type: 'Anonymization',
+  });
+  assert.equal(criada.status, 201);
+  assert.equal((criada.data as { status: string }).status, 'Submitted');
+  assert.equal(state.privacyRequests.length, 2);
+});
+
+test('exportação do titular responde um Blob que a tela consegue baixar', () => {
+  const state = fresh();
+  const result = handleRequest(state, 'GET', `/api/privacy/students/${state.students[0].id}/export`);
+
+  assert.equal(result.status, 200);
+  // A tela entrega o corpo direto para `URL.createObjectURL`: precisa ser Blob de verdade.
+  assert.ok(result.data instanceof Blob, 'a exportação precisa ser um Blob');
+});
+
+test('o boletim aplica a fórmula do backend por componente', () => {
+  const state = fresh();
+  const boletim = (studentId: string) =>
+    handleRequest(state, 'GET', `/api/parent/children/${studentId}/report-card`).data as {
+      componentes: { componente: string; mediaRegular: number | null; mediaFinal: number | null; situacao: string }[];
+    };
+
+  const ana = boletim('student-1');
+  const matematica = ana.componentes.find((entry) => entry.componente === 'Matemática');
+  assert.ok(matematica);
+  // Prova 1 (7,5 · peso 2) é a única regular; a recuperação (7) não reduz a média.
+  assert.equal(matematica.mediaRegular, 7.5);
+  assert.equal(matematica.mediaFinal, 7.5);
+  assert.equal(matematica.situacao, 'aprovado');
+
+  // Camila fica abaixo de 6: a situação precisa sair "em recuperação".
+  const camila = boletim('student-4');
+  assert.ok(camila.componentes.some((entry) => entry.situacao === 'recuperacao'));
+});
+
+test('exclusão bloqueada devolve o código de conflito do backend', () => {
+  const state = fresh();
+
+  const emUso = state.academicYears.find((item) => item.year === 2026);
+  assert.ok(emUso);
+  const ano = handleRequest(state, 'DELETE', `/api/academic/years/${emUso.id}`);
+  assert.equal(ano.status, 409);
+  assert.equal((ano.data as { code: string }).code, 'academic_year_in_use');
+
+  // 2025 não tem turma nem aluno: é o caminho de sucesso da exclusão.
+  const livre = state.academicYears.find((item) => item.year === 2025);
+  assert.ok(livre);
+  assert.equal(handleRequest(state, 'DELETE', `/api/academic/years/${livre.id}`).status, 204);
+
+  const comAluno = state.classes.find((item) => item.name === '3º A');
+  assert.ok(comAluno);
+  const turma = handleRequest(state, 'DELETE', `/api/academic/classes/${comAluno.id}`);
+  assert.equal(turma.status, 409);
+  assert.equal((turma.data as { code: string }).code, 'school_class_in_use');
+});
+
+test('criar ano letivo valida faixa e duplicidade com código traduzível', () => {
+  const state = fresh();
+
+  const invertido = handleRequest(state, 'POST', '/api/academic/years', {}, {
+    year: 2028,
+    startDate: '2028-12-01',
+    endDate: '2028-02-01',
+  });
+  assert.equal(invertido.status, 400);
+  assert.equal((invertido.data as { code: string }).code, 'academic_year_range_invalid');
+
+  const duplicado = handleRequest(state, 'POST', '/api/academic/years', {}, {
+    year: 2026,
+    startDate: '2026-02-01',
+    endDate: '2026-12-15',
+  });
+  assert.equal(duplicado.status, 409);
+  assert.equal((duplicado.data as { code: string }).code, 'academic_year_already_exists');
+
+  const criado = handleRequest(state, 'POST', '/api/academic/years', {}, {
+    year: 2028,
+    startDate: '2028-02-01',
+    endDate: '2028-12-15',
+    isActive: true,
+  });
+  assert.equal(criado.status, 201);
+  assert.equal(state.academicYears.length, 3);
+});
+
+// ── Rematrícula em lote ────────────────────────────────────────────────────
+
+interface PreviewItem {
+  studentId: string;
+  studentName: string;
+  eligible: boolean;
+  blockReason: string | null;
+  missingDocumentTypes: string[];
+  enrollmentAlreadyExists: boolean;
+}
+
+function previewOf(state: ReturnType<typeof createSeed>, periodId: string) {
+  return handleRequest(state, 'GET', '/api/enrollments/renewal-preview', { periodId }).data as {
+    periodName: string;
+    anoLetivo: number;
+    items: PreviewItem[];
+  };
+}
+
+test('a prévia de rematrícula lista candidatos e respeita os bloqueios', () => {
+  const state = fresh();
+  const preview = previewOf(state, 'period-2027');
+
+  assert.equal(preview.anoLetivo, 2027);
+  assert.ok(preview.items.length > 0, 'o período 2027 precisa de candidatos');
+  assert.ok(
+    preview.items.some((item) => item.eligible),
+    'sem elegível, o caminho de sucesso da rematrícula nunca aparece',
+  );
+  assert.ok(preview.items.some((item) => item.blockReason === 'student_inactive'));
+  assert.ok(preview.items.some((item) => item.blockReason === 'student_transferred'));
+
+  // "Elegível" é exatamente "sem motivo de bloqueio" — nenhuma regra paralela na tela.
+  for (const item of preview.items) {
+    assert.equal(item.eligible, item.blockReason === null);
+  }
+});
+
+test('aluno do próprio ano do período não é candidato', () => {
+  const state = fresh();
+  const aluno = state.students[0];
+  aluno.anoLetivo = 2027;
+
+  const preview = previewOf(state, 'period-2027');
+  assert.ok(!preview.items.some((item) => item.studentId === aluno.id));
+});
+
+test('o lote renova o elegível, bloqueia a pendência e promove o aluno', () => {
+  const state = fresh();
+  const preview = previewOf(state, 'period-2027');
+
+  const elegivel = preview.items.find((item) => item.eligible);
+  assert.ok(elegivel);
+  const pendente = preview.items.find((item) => item.blockReason === 'pending_required_documents');
+  assert.ok(pendente);
+
+  const lote = handleRequest(state, 'POST', '/api/enrollments/renewal-batch', {}, {
+    enrollmentPeriodId: 'period-2027',
+    studentIds: [elegivel.studentId, pendente.studentId],
+  }).data as {
+    renewed: number;
+    blocked: number;
+    items: { outcome: string }[];
+  };
+
+  assert.equal(lote.renewed, 1);
+  assert.equal(lote.blocked, 1);
+  // Um item por aluno: nada de sucesso/falha global.
+  assert.equal(lote.items.length, 2);
+
+  // A aprovação promove o aluno, e promovido ele sai da prévia.
+  assert.ok(!previewOf(state, 'period-2027').items.some((item) => item.studentId === elegivel.studentId));
+
+  // Repetir o mesmo aluno não duplica a matrícula: vira "já existia".
+  const repetido = handleRequest(state, 'POST', '/api/enrollments/renewal-batch', {}, {
+    enrollmentPeriodId: 'period-2027',
+    studentIds: [elegivel.studentId],
+  }).data as { skipped: number; renewed: number };
+  assert.equal(repetido.skipped, 1);
+  assert.equal(repetido.renewed, 0);
+});
